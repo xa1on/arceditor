@@ -428,6 +428,14 @@ You are helping the user build dynamic, scalable expression rigs and automations
 *** AVAILABLE HIGH-LEVEL TOOL CALLS & EDITING API (ArcEditor) ***
 To make editing, composition, and timeline automation simple and bulletproof, you have access to a pre-compiled high-level global API object named \`ArcEditor\` inside the host ExtendScript environment. Use these functions in your generated scripts to perform complex editing tasks reliably:
 
+Layer Referencing (Avoid Fragile Indices!):
+- Instead of raw layer indexes (which shift dynamically), always refer to layers using a \`layerRef\`.
+- \`layerRef\` can be:
+  1. The unique persistent layer \`id\` (integer, e.g. 24). This is the absolute best way to target a layer, especially when multiple layers share the same name!
+  2. The exact layer \`name\` string (e.g. "Logo Controls").
+  3. A 1-based layer index (e.g. 1) as a fallback if no specific ID or Name exists.
+- In your active timeline context JSON, every layer has a unique \`id\` and a \`name\`. Inspect the JSON, find the target layer, and use its unique \`id\` (or name) for the \`layerRef\` parameter.
+
 1. \`ArcEditor.createLayer(type, name, size)\`
    - Description: Creates a new layer in the active composition.
    - Parameters:
@@ -436,52 +444,52 @@ To make editing, composition, and timeline automation simple and bulletproof, yo
      * \`size\`: (Optional) [width, height] array (e.g. \`[1920, 1080]\`).
    - Returns: The created Layer object.
 
-2. \`ArcEditor.applyEffect(layerIndex, effectMatchName, effectDisplayName)\`
+2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`
    - Description: Applies a native After Effects effect to a layer.
    - Parameters:
-     * \`layerIndex\`: Integer index.
+     * \`layerRef\`: Layer unique ID, name, or index.
      * \`effectMatchName\`: String match name (e.g. "ADBE Slider Control", "ADBE Color Control", "ADBE Gaussian Blur 2").
      * \`effectDisplayName\`: (Optional) String display name.
    - Returns: The created Effect object.
 
-3. \`ArcEditor.setPropertyValue(layerIndex, propPath, value, time)\`
+3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
    - Description: Sets a static value or a keyframe value at a specific time.
    - Parameters:
-     * \`layerIndex\`: Integer index.
+     * \`layerRef\`: Layer unique ID, name, or index.
      * \`propPath\`: String name (e.g. "Position") or Array path (e.g. \`["Transform", "Position"]\`).
      * \`value\`: Number or Array value (e.g. \`[960, 540]\`).
      * \`time\`: (Optional) Number time in seconds to set keyframe value.
 
-4. \`ArcEditor.setPropertyExpression(layerIndex, propPath, expressionStr)\`
+4. \`ArcEditor.setPropertyExpression(layerRef, propPath, expressionStr)\`
    - Description: Writes a JavaScript expression onto a property.
    - Parameters:
-     * \`layerIndex\`: Integer index.
+     * \`layerRef\`: Layer unique ID, name, or index.
      * \`propPath\`: String name or Array path.
      * \`expressionStr\`: String expression.
 
-5. \`ArcEditor.setKeyframes(layerIndex, propPath, times, values, easeIn, easeOut)\`
+5. \`ArcEditor.setKeyframes(layerRef, propPath, times, values, easeIn, easeOut)\`
    - Description: Generates multiple eased keyframes on a property.
    - Parameters:
-     * \`layerIndex\`: Integer index.
+     * \`layerRef\`: Layer unique ID, name, or index.
      * \`propPath\`: String name or Array path.
      * \`times\`: Array of numbers (times in seconds, e.g. \`[0, 1.5, 3]\`).
      * \`values\`: Array of corresponding values (e.g. \`[[100, 100], [200, 200], [100, 100]]\`).
      * \`easeIn\`, \`easeOut\`: (Optional) Booleans to apply Easy Ease.
 
-6. \`ArcEditor.parentLayer(layerIndex, parentLayerIndex)\`
-   - Description: Parents one layer to another. Pass \`null\` as parentLayerIndex to unparent.
+6. \`ArcEditor.parentLayer(layerRef, parentLayerRef)\`
+   - Description: Parents one layer to another. Pass \`null\` as parentLayerRef to unparent.
 
-7. \`ArcEditor.trimLayer(layerIndex, inPoint, outPoint, startTime)\`
+7. \`ArcEditor.trimLayer(layerRef, inPoint, outPoint, startTime)\`
    - Description: Sets layer inPoint, outPoint, and timeline startTime in seconds.
 
-8. \`ArcEditor.precompose(layerIndices, precompName, moveAllAttributes)\`
+8. \`ArcEditor.precompose(layerRefs, precompName, moveAllAttributes)\`
    - Description: Groups selected layers into a precomposition.
    - Parameters:
-     * \`layerIndices\`: Array of layer integer indices (e.g. \`[1, 2, 3]\`).
+     * \`layerRefs\`: Array of layer references (IDs, names, or indexes, e.g. \`[24, 25, "Logo Background"]\`).
      * \`precompName\`: String name.
      * \`moveAllAttributes\`: (Optional) Boolean. Defaults to true.
 
-9. \`ArcEditor.setLayerBlendMode(layerIndex, blendModeName)\`
+9. \`ArcEditor.setLayerBlendMode(layerRef, blendModeName)\`
    - Description: Changes layer blend mode.
    - Parameters:
      * \`blendModeName\`: "ADD", "SCREEN", "MULTIPLY", "OVERLAY", "DARKEN", "LIGHTEN", "DIFFERENCE", "NORMAL".
@@ -753,18 +761,43 @@ async function runAgenticExecutionLoop(userText) {
     let isCompleted = false;
     let loopRetries = 0;
     const maxRetries = 3;
+    let toolTurns = 0;
+    const maxToolTurns = 5;
     
-    while (!isCompleted && loopRetries < maxRetries) {
+    while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
             const llmResponse = await callLLMApi(chatHistory, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
             });
             chatHistory.push({ role: "assistant", content: llmResponse });
             
-            // Extract the generated ExtendScript code block
+            // Check for JSON tool calls first, then JSX code blocks
+            const jsonBlock = extractJSONToolCalls(llmResponse);
             const jsxBlock = extractJSXCode(llmResponse);
             
-            if (jsxBlock) {
+            if (jsonBlock) {
+                toolTurns++;
+                updateConsolePane(jsonBlock);
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
+                
+                const observations = await executeToolCalls(jsonBlock);
+                console.log("[ArcEditor Tool Calls Observations]:", observations);
+                
+                // Append observations to history
+                chatHistory.push({ 
+                    role: "user", 
+                    content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.` 
+                });
+                
+                // Show feedback in UI and prepare next turn
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                    `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Tools Executed:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
+                
+                continue; // Run next loop turn immediately
+                
+            } else if (jsxBlock) {
                 updateConsolePane(jsxBlock);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
@@ -810,12 +843,86 @@ async function runAgenticExecutionLoop(userText) {
         aiBubble.querySelector(".message-content").innerHTML += 
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
     }
+    if (toolTurns >= maxToolTurns && !isCompleted) {
+        aiBubble.querySelector(".message-content").innerHTML += 
+            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
+    }
 }
 
 function extractJSXCode(text) {
     // Regex matches text inside ```javascript or ```js or ```extendscript or ```jsx
     const match = text.match(/```(?:javascript|js|extendscript|jsx)?\n([\s\S]*?)\n```/);
     return match ? match[1].trim() : null;
+}
+
+function extractJSONToolCalls(text) {
+    // Regex matches text inside ```json
+    const match = text.match(/```json\n([\s\S]*?)\n```/);
+    return match ? match[1].trim() : null;
+}
+
+async function executeToolCalls(jsonStr) {
+    let toolCalls = [];
+    try {
+        const parsed = JSON.parse(jsonStr);
+        toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+    } catch(e) {
+        return `Error parsing JSON tool calls: ${e.message}. Ensure your JSON blocks are strictly valid.`;
+    }
+    
+    let observations = [];
+    
+    // Begin AE Undo Group for atomic operations
+    await evalScriptAsync(`app.beginUndoGroup("ArcEditor Agent Tools")`);
+    
+    try {
+        for (let i = 0; i < toolCalls.length; i++) {
+            const tc = toolCalls[i];
+            const toolName = tc.tool;
+            const params = tc.parameters || {};
+            const ref = params.layerRef !== undefined ? params.layerRef : params.layerIndex;
+            const serializedRef = typeof ref === "string" ? `"${ref.replace(/"/g, '\\"')}"` : (ref !== undefined ? ref : 'null');
+            
+            let jsxCommand = "";
+            if (toolName === "createLayer") {
+                jsxCommand = `(function() { var l = ArcEditor.createLayer("${params.type}", "${params.name || 'Layer'}", ${params.size ? JSON.stringify(params.size) : 'null'}); return "Success: Created layer '" + l.name + "' at index " + l.index; })()`;
+            } else if (toolName === "applyEffect") {
+                jsxCommand = `(function() { var fx = ArcEditor.applyEffect(${serializedRef}, "${params.effectMatchName}", "${params.effectDisplayName || ''}"); return "Success: Applied effect '" + fx.name + "' to layer " + ${serializedRef}; })()`;
+            } else if (toolName === "setPropertyValue") {
+                jsxCommand = `(function() { ArcEditor.setPropertyValue(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.value)}, ${params.time !== undefined && params.time !== null ? params.time : 'null'}); return "Success: Set property value on layer " + ${serializedRef}; })()`;
+            } else if (toolName === "setPropertyExpression") {
+                jsxCommand = `(function() { ArcEditor.setPropertyExpression(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.expressionStr)}); return "Success: Set expression on layer " + ${serializedRef}; })()`;
+            } else if (toolName === "setKeyframes") {
+                jsxCommand = `(function() { ArcEditor.setKeyframes(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.times)}, ${JSON.stringify(params.values)}, ${!!params.easeIn}, ${!!params.easeOut}); return "Success: Set keyframes on layer " + ${serializedRef}; })()`;
+            } else if (toolName === "parentLayer") {
+                const pRef = params.parentLayerRef !== undefined ? params.parentLayerRef : params.parentLayerIndex;
+                const serializedParentRef = pRef === null || pRef === undefined ? 'null' : (typeof pRef === "string" ? `"${pRef.replace(/"/g, '\\"')}"` : pRef);
+                jsxCommand = `(function() { ArcEditor.parentLayer(${serializedRef}, ${serializedParentRef}); return "Success: Set parenting for layer " + ${serializedRef}; })()`;
+            } else if (toolName === "trimLayer") {
+                jsxCommand = `(function() { ArcEditor.trimLayer(${serializedRef}, ${params.inPoint !== undefined && params.inPoint !== null ? params.inPoint : 'null'}, ${params.outPoint !== undefined && params.outPoint !== null ? params.outPoint : 'null'}, ${params.startTime !== undefined && params.startTime !== null ? params.startTime : 'null'}); return "Success: Trimmed layer " + ${serializedRef}; })()`;
+            } else if (toolName === "precompose") {
+                const refs = params.layerRefs !== undefined ? params.layerRefs : params.layerIndices;
+                jsxCommand = `(function() { var l = ArcEditor.precompose(${JSON.stringify(refs)}, "${params.precompName}", ${params.moveAllAttributes !== false}); return "Success: Created precomposition layer '" + l.name + "' at index " + l.index; })()`;
+            } else if (toolName === "setLayerBlendMode") {
+                jsxCommand = `(function() { ArcEditor.setLayerBlendMode(${serializedRef}, "${params.blendModeName}"); return "Success: Set blend mode to " + "${params.blendModeName}" + " on layer " + ${serializedRef}; })()`;
+            } else {
+                throw new Error(`Unsupported tool name: ${toolName}`);
+            }
+            
+            const result = await evalScriptAsync(jsxCommand);
+            observations.push(`- Tool "${toolName}": ${result}`);
+            
+            if (result.indexOf("Error:") === 0) {
+                break;
+            }
+        }
+        await evalScriptAsync(`app.endUndoGroup()`);
+    } catch(err) {
+        await evalScriptAsync(`app.endUndoGroup()`);
+        observations.push(`- Tool execution exception: ${err.message}`);
+    }
+    
+    return observations.join("\n");
 }
 
 // --- SECTION 8: USER INTERFACE RENDERERS & EVENT BINDINGS ---
@@ -952,7 +1059,7 @@ function updateConsolePane(code) {
     document.getElementById("console-output").querySelector("code").innerText = code;
 }
 
-// Premium Markdown formatting helper that supports multi-line fenced code viewports
+// Premium Markdown formatting helper that supports segment-scoped code viewports
 function formatMarkdown(text) {
     if (!text) return "";
     
@@ -967,21 +1074,16 @@ function formatMarkdown(text) {
         return `<pre class="code-viewport"><code>${code}</code></pre>`;
     });
     
-    // Handle inline code: `code`
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-    
-    // Handle bold: **text**
-    html = html.replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>");
-    
-    // Handle italics: *text*
-    html = html.replace(/\*([\s\S]*?)\*/g, "<em>$1</em>");
-    
-    // Split the text into segments to apply <br> line breaks ONLY outside <pre> code blocks
+    // Split the text into segments to apply formatting ONLY outside <pre> code blocks
     const segments = html.split(/(<pre[\s\S]*?<\/pre>)/g);
     for (let i = 0; i < segments.length; i++) {
-        // If this is NOT a pre block, replace newlines with <br>
         if (!segments[i].startsWith("<pre")) {
-            segments[i] = segments[i].replace(/\n/g, "<br>");
+            // Apply inline formatting only inside text segments, preserving code contents pristine
+            segments[i] = segments[i]
+                .replace(/`([^`]+)`/g, "<code>$1</code>")
+                .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
+                .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
+                .replace(/\n/g, "<br>");
         }
     }
     

@@ -87,6 +87,7 @@ var ArcInspector = {
             
             var layerData = {
                 index: layer.index,
+                id: layer.id,
                 name: layer.name,
                 type: layerType,
                 selected: layer.selected,
@@ -231,7 +232,7 @@ var ArcRigger = {
      * @param {number} defaultValue Initial value for the slider control.
      * @param {string} expressionTemplate Expression string to write on the target property.
      */
-    createSliderRig: function(layerIndex, propertyName, rigName, controlName, defaultValue, expressionTemplate) {
+    createSliderRig: function(layerRef, propertyName, rigName, controlName, defaultValue, expressionTemplate) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
             return "Error: Active composition not found.";
@@ -239,10 +240,10 @@ var ArcRigger = {
         
         app.beginUndoGroup("ArcEditor Rigging: " + rigName);
         try {
-            var targetLayer = comp.layer(layerIndex);
+            var targetLayer = ArcEditor.resolveLayer(layerRef);
             if (!targetLayer) {
                 app.endUndoGroup();
-                return "Error: Target layer index " + layerIndex + " not found.";
+                return "Error: Target layer " + layerRef + " not found.";
             }
             
             // 1. Locate or create the Null Control Layer
@@ -334,6 +335,63 @@ var ArcRigger = {
 // --- SECTION 4: THE HIGH-LEVEL EDITING & COMPOSITING SUITE ---
 var ArcEditor = {
     /**
+     * Resolves a layer reference (ID, Name, Index, or Layer Object) safely.
+     */
+    resolveLayer: function(layerRef) {
+        if (!layerRef) return null;
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        
+        // If layerRef is already a Layer object
+        if (layerRef instanceof Layer || (layerRef && typeof layerRef.index === "number")) {
+            return layerRef;
+        }
+        
+        // If layerRef is a number (ID or index)
+        if (typeof layerRef === "number") {
+            // Check for unique persistent layer ID first
+            for (var i = 1; i <= comp.numLayers; i++) {
+                if (comp.layer(i).id === layerRef) {
+                    return comp.layer(i);
+                }
+            }
+            // Fallback to 1-based index
+            if (layerRef > 0 && layerRef <= comp.numLayers) {
+                return comp.layer(layerRef);
+            }
+        }
+        
+        // If layerRef is a string
+        if (typeof layerRef === "string") {
+            var numericId = parseInt(layerRef, 10);
+            if (!isNaN(numericId)) {
+                for (var i = 1; i <= comp.numLayers; i++) {
+                    if (comp.layer(i).id === numericId) {
+                        return comp.layer(i);
+                    }
+                }
+            }
+            
+            var matches = [];
+            for (var i = 1; i <= comp.numLayers; i++) {
+                if (comp.layer(i).name === layerRef) {
+                    matches.push(comp.layer(i));
+                }
+            }
+            if (matches.length === 1) {
+                return matches[0];
+            } else if (matches.length > 1) {
+                for (var j = 0; j < matches.length; j++) {
+                    if (matches[j].selected) return matches[j];
+                }
+                return matches[0];
+            }
+        }
+        
+        throw new Error("Could not resolve layer reference: " + layerRef);
+    },
+
+    /**
      * Creates a new layer in the active composition.
      * 
      * @param {string} type Layer type: "Solid", "Text", "Shape", "Null", "Camera", "Light".
@@ -371,11 +429,11 @@ var ArcEditor = {
     /**
      * Applies a native After Effects effect to a layer and sets its name.
      */
-    applyEffect: function(layerIndex, effectMatchName, effectDisplayName) {
+    applyEffect: function(layerRef, effectMatchName, effectDisplayName) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
-        if (!layer) throw new Error("Layer at index " + layerIndex + " not found.");
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
         
         var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
         if (!effectGroup) throw new Error("Effects parameter not supported on this layer.");
@@ -392,34 +450,45 @@ var ArcEditor = {
      */
     resolveProperty: function(layer, propPath) {
         if (!layer) throw new Error("Invalid layer parameter.");
+        var prop;
         if (typeof propPath === "string") {
-            var prop = layer.property(propPath);
+            prop = layer.property(propPath);
             if (!prop) {
                 // Try inside Transform group
                 var transform = layer.property("Transform") || layer.property("ADBE Transform Group");
                 if (transform) prop = transform.property(propPath);
             }
             if (!prop) throw new Error("Property not found: " + propPath);
-            return prop;
-        }
-        if (propPath instanceof Array) {
+        } else if (propPath instanceof Array) {
             var curr = layer;
             for (var i = 0; i < propPath.length; i++) {
                 curr = curr.property(propPath[i]);
                 if (!curr) throw new Error("Property path segment not found: " + propPath[i]);
             }
-            return curr;
+            prop = curr;
+        } else {
+            prop = propPath; // Already a property object
         }
-        return propPath; // Already a property object
+
+        // Handle Separate Dimensions spatial constraint
+        if (prop && prop.matchName === "ADBE Position") {
+            try {
+                if (prop.dimensionsSeparated) {
+                    prop.dimensionsSeparated = false;
+                }
+            } catch (e) {}
+        }
+
+        return prop;
     },
     
     /**
      * Sets value on a property at a specific time or overall.
      */
-    setPropertyValue: function(layerIndex, propPath, value, time) {
+    setPropertyValue: function(layerRef, propPath, value, time) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
+        var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
         
         if (time !== undefined && time !== null) {
@@ -433,10 +502,10 @@ var ArcEditor = {
     /**
      * Sets expression on a property.
      */
-    setPropertyExpression: function(layerIndex, propPath, expressionStr) {
+    setPropertyExpression: function(layerRef, propPath, expressionStr) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
+        var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
         
         prop.expression = expressionStr;
@@ -447,10 +516,10 @@ var ArcEditor = {
     /**
      * Sets multiple keyframes on a property with optional Easy Ease.
      */
-    setKeyframes: function(layerIndex, propPath, times, values, easeIn, easeOut) {
+    setKeyframes: function(layerRef, propPath, times, values, easeIn, easeOut) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
+        var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
         
         prop.setValuesAtTimes(times, values);
@@ -468,12 +537,12 @@ var ArcEditor = {
     /**
      * Parents one layer to another on the timeline.
      */
-    parentLayer: function(layerIndex, parentLayerIndex) {
+    parentLayer: function(layerRef, parentLayerRef) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var child = comp.layer(layerIndex);
-        var parent = parentLayerIndex ? comp.layer(parentLayerIndex) : null;
-        if (!child) throw new Error("Child layer not found.");
+        var child = this.resolveLayer(layerRef);
+        var parent = parentLayerRef ? this.resolveLayer(parentLayerRef) : null;
+        if (!child) throw new Error("Child layer not found: " + layerRef);
         
         child.parent = parent;
         return true;
@@ -482,11 +551,11 @@ var ArcEditor = {
     /**
      * Trims layer timing and start times on timeline.
      */
-    trimLayer: function(layerIndex, inPoint, outPoint, startTime) {
+    trimLayer: function(layerRef, inPoint, outPoint, startTime) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
-        if (!layer) throw new Error("Layer not found.");
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
         
         if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
         if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
@@ -495,15 +564,18 @@ var ArcEditor = {
     },
     
     /**
-     * Precomposes a list of layer indices into a precomposition.
+     * Precomposes a list of layer references into a precomposition.
      */
-    precompose: function(layerIndices, precompName, moveAllAttributes) {
+    precompose: function(layerRefs, precompName, moveAllAttributes) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         
         var indices = [];
-        for (var i = 0; i < layerIndices.length; i++) {
-            indices.push(layerIndices[i]);
+        for (var i = 0; i < layerRefs.length; i++) {
+            var layer = this.resolveLayer(layerRefs[i]);
+            if (layer) {
+                indices.push(layer.index);
+            }
         }
         
         var newCompLayer = comp.layers.precompose(indices, precompName, moveAllAttributes !== false);
@@ -513,11 +585,11 @@ var ArcEditor = {
     /**
      * Sets blend mode of a layer.
      */
-    setLayerBlendMode: function(layerIndex, blendModeName) {
+    setLayerBlendMode: function(layerRef, blendModeName) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        var layer = comp.layer(layerIndex);
-        if (!layer) throw new Error("Layer not found.");
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
         
         var mode = BlendMode.NORMAL;
         var m = blendModeName.toUpperCase();
