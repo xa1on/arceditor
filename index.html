@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArcEditor</title>
+    <!-- Modern Premium Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body class="dark-theme">
+    <div id="arc-root" class="glass-container">
+        
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-glow"></span>
+                <h1 class="logo-title">Arc<span>Editor</span></h1>
+            </div>
+            <div class="header-actions">
+                <div id="status-dot" class="status-dot offline" title="Not connected to LLM"></div>
+                <button id="btn-settings" class="icon-btn" title="API Settings">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN VIEWPORT (TABS) -->
+        <div class="view-tabs">
+            <button id="tab-chat" class="tab-btn active">Chat</button>
+            <button id="tab-console" class="tab-btn">JSX Console</button>
+        </div>
+
+        <main class="content-viewport">
+            <!-- CHAT PANE -->
+            <div id="pane-chat" class="view-pane active">
+                <div id="chat-messages" class="chat-scroller">
+                    <!-- Dynamic Messages will load here -->
+                    <div class="message system-msg">
+                        <div class="message-content">
+                            <p><strong>ArcEditor v1.0.0</strong> initialized. Setup your API key or point to a local Lemonade server to begin rigging compositions!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONSOLE PANE -->
+            <div id="pane-console" class="view-pane">
+                <div class="console-wrapper">
+                    <div class="console-header">
+                        <span>Last Script Executed</span>
+                        <button id="btn-clear-console" class="txt-btn">Clear</button>
+                    </div>
+                    <pre id="console-output" class="code-viewport"><code>// No scripts executed yet. Run a prompt in Chat.</code></pre>
+                </div>
+            </div>
+        </main>
+
+        <!-- PERSISTED DOCK PREVIEW (IF ATTACHED) -->
+        <div id="frame-attachment-preview" class="attachment-dock hidden">
+            <div class="dock-img-wrap">
+                <img id="attached-preview-img" src="" alt="Active frame preview">
+                <button id="btn-remove-attachment" class="close-badge">&times;</button>
+            </div>
+            <span class="dock-label">Current frame captured for analysis</span>
+        </div>
+
+        <!-- QUICK CHIPS & UTILITIES -->
+        <div class="quick-utilities">
+            <button id="chip-capture" class="chip">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                <span>See Canvas</span>
+            </button>
+            <button id="chip-inspect" class="chip">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <span>Read Comp</span>
+            </button>
+        </div>
+
+        <!-- FOOTER INPUT -->
+        <footer class="app-footer">
+            <div class="input-glow-wrapper">
+                <textarea id="chat-input" placeholder="Ask Arc to rig or animate..." rows="1"></textarea>
+                <button id="btn-send" class="send-btn" disabled>
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </footer>
+
+        <!-- DRAWER SETTINGS PANEL -->
+        <div id="settings-drawer" class="drawer hidden">
+            <div class="drawer-overlay"></div>
+            <div class="drawer-content">
+                <div class="drawer-header">
+                    <h2>API Settings</h2>
+                    <button id="btn-close-settings" class="close-btn">&times;</button>
+                </div>
+                <div class="drawer-body">
+                    <form id="form-settings">
+                        
+                        <div class="field-group">
+                            <label for="setting-provider">AI Provider</label>
+                            <select id="setting-provider" class="form-input">
+                                <option value="lemonade">Lemonade (Local Server)</option>
+                                <option value="gemini">Google Gemini</option>
+                                <option value="openai">OpenAI (ChatGPT)</option>
+                                <option value="anthropic">Anthropic Claude</option>
+                            </select>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="setting-url">Base URL</label>
+                            <input type="text" id="setting-url" class="form-input" placeholder="http://localhost:1337/v1">
+                            <small class="form-tip">Leave empty for standard cloud endpoints.</small>
+                        </div>
+
+                        <div class="field-group">
+                            <label for="setting-model">Model Name</label>
+                            <input type="text" id="setting-model" class="form-input" placeholder="e.g. qwen2.5-coder-7b">
+                        </div>
+
+                        <div class="field-group">
+                            <label for="setting-key">API Key</label>
+                            <div class="password-wrap">
+                                <input type="password" id="setting-key" class="form-input" placeholder="API access key">
+                            </div>
+                        </div>
+
+                        <div class="drawer-actions">
+                            <button type="submit" id="btn-save-settings" class="btn-primary">Save & Apply</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Adobe CEP Library -->
+    <script src="lib/CSInterface.js"></script>
+    <!-- Agent Core Controller logic -->
+    <script src="index.js"></script>
+</body>
+</html>
