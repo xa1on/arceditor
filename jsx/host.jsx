@@ -330,3 +330,211 @@ var ArcRigger = {
         }
     }
 };
+
+// --- SECTION 4: THE HIGH-LEVEL EDITING & COMPOSITING SUITE ---
+var ArcEditor = {
+    /**
+     * Creates a new layer in the active composition.
+     * 
+     * @param {string} type Layer type: "Solid", "Text", "Shape", "Null", "Camera", "Light".
+     * @param {string} name Custom name for the new layer.
+     * @param {Array} size Optional [width, height] array. Defaults to comp size.
+     */
+    createLayer: function(type, name, size) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        
+        var w = (size && size[0]) ? size[0] : comp.width;
+        var h = (size && size[1]) ? size[1] : comp.height;
+        var layer;
+        
+        if (type === "Null") {
+            layer = comp.layers.addNull(comp.duration);
+            layer.name = name;
+        } else if (type === "Text") {
+            layer = comp.layers.addText(name);
+        } else if (type === "Shape") {
+            layer = comp.layers.addShape();
+            layer.name = name;
+        } else if (type === "Solid") {
+            layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
+        } else if (type === "Camera") {
+            layer = comp.layers.addCamera(name, [w/2, h/2]);
+        } else if (type === "Light") {
+            layer = comp.layers.addLight(name, [w/2, h/2]);
+        } else {
+            throw new Error("Unsupported layer type: " + type);
+        }
+        return layer;
+    },
+    
+    /**
+     * Applies a native After Effects effect to a layer and sets its name.
+     */
+    applyEffect: function(layerIndex, effectMatchName, effectDisplayName) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        if (!layer) throw new Error("Layer at index " + layerIndex + " not found.");
+        
+        var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
+        if (!effectGroup) throw new Error("Effects parameter not supported on this layer.");
+        
+        var fx = effectGroup.addProperty(effectMatchName);
+        if (effectDisplayName) {
+            fx.name = effectDisplayName;
+        }
+        return fx;
+    },
+    
+    /**
+     * Resolves a property path safely on a layer (e.g. "Position" or ["Transform", "Position"]).
+     */
+    resolveProperty: function(layer, propPath) {
+        if (!layer) throw new Error("Invalid layer parameter.");
+        if (typeof propPath === "string") {
+            var prop = layer.property(propPath);
+            if (!prop) {
+                // Try inside Transform group
+                var transform = layer.property("Transform") || layer.property("ADBE Transform Group");
+                if (transform) prop = transform.property(propPath);
+            }
+            if (!prop) throw new Error("Property not found: " + propPath);
+            return prop;
+        }
+        if (propPath instanceof Array) {
+            var curr = layer;
+            for (var i = 0; i < propPath.length; i++) {
+                curr = curr.property(propPath[i]);
+                if (!curr) throw new Error("Property path segment not found: " + propPath[i]);
+            }
+            return curr;
+        }
+        return propPath; // Already a property object
+    },
+    
+    /**
+     * Sets value on a property at a specific time or overall.
+     */
+    setPropertyValue: function(layerIndex, propPath, value, time) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        var prop = this.resolveProperty(layer, propPath);
+        
+        if (time !== undefined && time !== null) {
+            prop.setValueAtTime(time, value);
+        } else {
+            prop.setValue(value);
+        }
+        return true;
+    },
+    
+    /**
+     * Sets expression on a property.
+     */
+    setPropertyExpression: function(layerIndex, propPath, expressionStr) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        var prop = this.resolveProperty(layer, propPath);
+        
+        prop.expression = expressionStr;
+        prop.expressionEnabled = true;
+        return true;
+    },
+    
+    /**
+     * Sets multiple keyframes on a property with optional Easy Ease.
+     */
+    setKeyframes: function(layerIndex, propPath, times, values, easeIn, easeOut) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        var prop = this.resolveProperty(layer, propPath);
+        
+        prop.setValuesAtTimes(times, values);
+        
+        // Easing curves
+        if (easeIn || easeOut) {
+            for (var k = 1; k <= times.length; k++) {
+                var ease = new KeyframeEase(0, 33.3);
+                prop.setTemporalEaseAtKey(k, [ease], [ease]);
+            }
+        }
+        return true;
+    },
+    
+    /**
+     * Parents one layer to another on the timeline.
+     */
+    parentLayer: function(layerIndex, parentLayerIndex) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var child = comp.layer(layerIndex);
+        var parent = parentLayerIndex ? comp.layer(parentLayerIndex) : null;
+        if (!child) throw new Error("Child layer not found.");
+        
+        child.parent = parent;
+        return true;
+    },
+    
+    /**
+     * Trims layer timing and start times on timeline.
+     */
+    trimLayer: function(layerIndex, inPoint, outPoint, startTime) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        if (!layer) throw new Error("Layer not found.");
+        
+        if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
+        if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
+        if (outPoint !== undefined && outPoint !== null) layer.outPoint = outPoint;
+        return true;
+    },
+    
+    /**
+     * Precomposes a list of layer indices into a precomposition.
+     */
+    precompose: function(layerIndices, precompName, moveAllAttributes) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        
+        var indices = [];
+        for (var i = 0; i < layerIndices.length; i++) {
+            indices.push(layerIndices[i]);
+        }
+        
+        var newCompLayer = comp.layers.precompose(indices, precompName, moveAllAttributes !== false);
+        return newCompLayer;
+    },
+    
+    /**
+     * Sets blend mode of a layer.
+     */
+    setLayerBlendMode: function(layerIndex, blendModeName) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = comp.layer(layerIndex);
+        if (!layer) throw new Error("Layer not found.");
+        
+        var mode = BlendMode.NORMAL;
+        var m = blendModeName.toUpperCase();
+        if (m === "ADD") mode = BlendMode.ADD;
+        else if (m === "SCREEN") mode = BlendMode.SCREEN;
+        else if (m === "MULTIPLY") mode = BlendMode.MULTIPLY;
+        else if (m === "OVERLAY") mode = BlendMode.OVERLAY;
+        else if (m === "DARKEN") mode = BlendMode.DARKEN;
+        else if (m === "LIGHTEN") mode = BlendMode.LIGHTEN;
+        else if (m === "DIFFERENCE") mode = BlendMode.DIFFERENCE;
+        else if (m === "HUE") mode = BlendMode.HUE;
+        else if (m === "SATURATION") mode = BlendMode.SATURATION;
+        else if (m === "COLOR") mode = BlendMode.COLOR;
+        else if (m === "LUMINOSITY") mode = BlendMode.LUMINOSITY;
+        
+        layer.blendMode = mode;
+        return true;
+    }
+};
+
