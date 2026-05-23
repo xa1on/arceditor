@@ -602,3 +602,38 @@ select.form-input {
     background: #4a4a4a;
     border-color: #666;
 }
+
+/* Premium Three-Dots Loading Animation */
+.dots-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px;
+}
+
+.dots-loader span {
+    width: 6px;
+    height: 6px;
+    background-color: var(--text-accent);
+    border-radius: 50%;
+    display: inline-block;
+    animation: dots-pulse 1.4s infinite ease-in-out both;
+}
+
+.dots-loader span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.dots-loader span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes dots-pulse {
+    0%, 80%, 100% { 
+        transform: scale(0);
+        opacity: 0.35;
+    } 40% { 
+        transform: scale(1.0);
+        opacity: 1;
+    }
+}

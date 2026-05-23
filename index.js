@@ -182,6 +182,74 @@ function makeRequest(url, method, headers, payload) {
     });
 }
 
+function makeStreamingRequest(url, method, headers, payload, onChunk) {
+    return new Promise((resolve, reject) => {
+        if (!httpsClient && !httpClient) {
+            reject(new Error("Node.js network modules (https/http) not loaded."));
+            return;
+        }
+        
+        try {
+            const urlObj = new URL(url);
+            const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
+            const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
+            
+            const options = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+                path: urlObj.pathname + urlObj.search,
+                method: method,
+                headers: {
+                    ...headers,
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+            
+            const req = client.request(options, (res) => {
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    let errData = '';
+                    res.on('data', (chunk) => { errData += chunk; });
+                    res.on('end', () => { reject(new Error(`HTTP Error ${res.statusCode}: ${errData}`)); });
+                    return;
+                }
+                
+                let buffer = '';
+                res.on('data', (chunk) => {
+                    buffer += chunk.toString();
+                    
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line
+                    
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (!line) continue;
+                        onChunk(line);
+                    }
+                });
+                
+                res.on('end', () => {
+                    if (buffer.trim()) {
+                        onChunk(buffer.trim());
+                    }
+                    resolve();
+                });
+            });
+            
+            req.on('error', (err) => {
+                reject(err);
+            });
+            
+            if (method !== 'GET' && postData) {
+                req.write(postData);
+            }
+            req.end();
+            
+        } catch(e) {
+            reject(e);
+        }
+    });
+}
+
 // --- SECTION 2: CONNECTION VALIDATION ---
 async function validateConnection() {
     const statusDot = document.getElementById("status-dot");
@@ -358,7 +426,12 @@ You are helping the user build dynamic, scalable expression rigs and automations
 - Wrap all property additions in an app.beginUndoGroup("Rigging Name") and app.endUndoGroup() to allow easy rollbacks.
 
 *** HOW TO COMUNICATE EXECUTION CODE ***
-Output your technical plan in chat, and then output your After Effects ExtendScript JSX script inside a single, clean code block marked with:
+- You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
+- Write your code blocks as direct, self-executing actions that run immediately on the active composition.
+- Double-check your code for basic JavaScript syntax errors. Ensure math operators are explicit (e.g., use \`spacing * 2\` rather than missing characters like \`spacing 2\`).
+- Only output a code block with ExtendScript if the user's request requires writing, modifying, or executing After Effects setups.
+- If the user's request is purely informational, conversational, or a general question, answer directly in plain markdown without any JavaScript code blocks. Do not invent scripts unnecessarily.
+- When a script is required, output your technical plan first, and then output your After Effects ExtendScript JSX script inside a single, clean code block marked with:
 \`\`\`javascript
 // ExtendScript goes here
 \`\`\`
@@ -366,12 +439,12 @@ Do not write any comments inside the markdown formatting outside the code blocks
 `;
 
 // --- SECTION 6: LLM CLIENT COMPILERS ---
-async function callLLMApi(messages, base64Frame) {
+async function callLLMApi(messages, onChunkReceived) {
     if (!httpsClient && !httpClient) {
         // Fallback mock mode ONLY inside standalone browsers
         return new Promise((resolve) => {
             setTimeout(() => {
-                resolve(`Based on your request, I will create a Scale bounce control slider rig to automate the bounce scaling.
+                const text = `Based on your request, I will create a Scale bounce control slider rig to automate the bounce scaling.
 
 Here is the ExtendScript to build it:
 
@@ -388,7 +461,22 @@ Here is the ExtendScript to build it:
     return result;
 })();
 \`\`\`
-`);
+`;
+                if (onChunkReceived) {
+                    let chars = text.split("");
+                    let i = 0;
+                    let interval = setInterval(() => {
+                        if (i < chars.length) {
+                            onChunkReceived(chars.slice(0, i+1).join(""));
+                            i += 5; // Stream fast in mock
+                        } else {
+                            clearInterval(interval);
+                            resolve(text);
+                        }
+                    }, 30);
+                } else {
+                    resolve(text);
+                }
             }, 1000);
         });
     }
@@ -396,20 +484,6 @@ Here is the ExtendScript to build it:
     const headers = { "Content-Type": "application/json" };
     let payload = {};
     let targetUrl = apiUrl;
-    
-    // Prepare prompt messages array
-    let processedMessages = [...messages];
-    
-    if (base64Frame) {
-        // If vision is supported, attach visual frame to the very last message in OpenAI-compatible standard format
-        const lastMsg = processedMessages[processedMessages.length - 1];
-        if (lastMsg.role === "user") {
-            lastMsg.content = [
-                { type: "text", text: lastMsg.content },
-                { type: "image_url", image_url: { url: `data:image/png;base64,${base64Frame}` } }
-            ];
-        }
-    }
     
     if (currentProvider === "lemonade" || currentProvider === "openai") {
         targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
@@ -421,21 +495,45 @@ Here is the ExtendScript to build it:
             model: modelName,
             messages: [
                 { role: "system", content: SYSTEM_INSTRUCTIONS },
-                ...processedMessages
+                ...messages
             ],
-            temperature: 0.2
+            temperature: 0.2,
+            stream: !!onChunkReceived
         };
         
-        const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-        const responseData = JSON.parse(responseText);
-        return responseData.choices[0].message.content;
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    if (dataStr === "[DONE]") return;
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const content = parsed.choices[0].delta.content;
+                        if (content) {
+                            accumulatedText += content;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch(e) {}
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.choices[0].message.content;
+        }
         
     } else if (currentProvider === "gemini") {
         // Target Gemini generateContent API
-        targetUrl = `${apiUrl}/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
+        targetUrl = `${apiUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
+        if (onChunkReceived) {
+            targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
+        }
         
         // Convert messages to Gemini format
-        const contents = processedMessages.map(m => {
+        const contents = messages.map(m => {
             const parts = [];
             if (typeof m.content === "string") {
                 parts.push({ text: m.content });
@@ -443,10 +541,12 @@ Here is the ExtendScript to build it:
                 m.content.forEach(c => {
                     if (c.type === "text") parts.push({ text: c.text });
                     if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
                         parts.push({
                             inlineData: {
                                 mimeType: "image/png",
-                                data: base64Frame // Inject base64 directly
+                                data: base64Data
                             }
                         });
                     }
@@ -468,9 +568,27 @@ Here is the ExtendScript to build it:
             }
         };
         
-        const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-        const responseData = JSON.parse(responseText);
-        return responseData.candidates[0].content.parts[0].text;
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const text = parsed.candidates[0].content.parts[0].text;
+                        if (text) {
+                            accumulatedText += text;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch(e) {}
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.candidates[0].content.parts[0].text;
+        }
         
     } else if (currentProvider === "anthropic") {
         // Target Claude API
@@ -479,7 +597,7 @@ Here is the ExtendScript to build it:
         headers["anthropic-version"] = "2023-06-01";
         
         // Convert vision base64 input to Anthropic's block format
-        const anthropicMessages = processedMessages.map(m => {
+        const anthropicMessages = messages.map(m => {
             let contentArr = [];
             if (typeof m.content === "string") {
                 contentArr.push({ type: "text", text: m.content });
@@ -487,12 +605,14 @@ Here is the ExtendScript to build it:
                 m.content.forEach(c => {
                     if (c.type === "text") contentArr.push({ type: "text", text: c.text });
                     if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
                         contentArr.push({
                             type: "image",
                             source: {
                                 type: "base64",
                                 media_type: "image/png",
-                                data: base64Frame
+                                data: base64Data
                             }
                         });
                     }
@@ -509,12 +629,30 @@ Here is the ExtendScript to build it:
             system: SYSTEM_INSTRUCTIONS,
             messages: anthropicMessages,
             max_tokens: 4096,
-            temperature: 0.2
+            temperature: 0.2,
+            stream: !!onChunkReceived
         };
         
-        const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-        const responseData = JSON.parse(responseText);
-        return responseData.content[0].text;
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
+                            accumulatedText += parsed.delta.text;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch(e) {}
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.content[0].text;
+        }
     }
 }
 
@@ -531,22 +669,35 @@ async function runAgenticExecutionLoop(userText) {
         enrichedPrompt += `\n\n[Active Timeline Context: No composition currently open. Prompt the user to open one if the task requires a timeline].`;
     }
     
-    chatHistory.push({ role: "user", content: enrichedPrompt });
-    
-    const aiBubbleId = addBubble("ai", "Analyzing and planning animation rig...");
-    const aiBubble = document.getElementById(aiBubbleId);
-    
-    let isCompleted = false;
-    let loopRetries = 0;
-    const maxRetries = 3;
     let visualFrameInput = attachedFrameBase64;
     
     // Reset attachments
     clearAttachmentDock();
     
+    if (visualFrameInput) {
+        chatHistory.push({
+            role: "user",
+            content: [
+                { type: "text", text: enrichedPrompt },
+                { type: "image_url", image_url: { url: `data:image/png;base64,${visualFrameInput}` } }
+            ]
+        });
+    } else {
+        chatHistory.push({ role: "user", content: enrichedPrompt });
+    }
+    
+    const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
+    const aiBubble = document.getElementById(aiBubbleId);
+    
+    let isCompleted = false;
+    let loopRetries = 0;
+    const maxRetries = 3;
+    
     while (!isCompleted && loopRetries < maxRetries) {
         try {
-            const llmResponse = await callLLMApi(chatHistory, visualFrameInput);
+            const llmResponse = await callLLMApi(chatHistory, (chunkText) => {
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
+            });
             chatHistory.push({ role: "assistant", content: llmResponse });
             
             // Extract the generated ExtendScript code block
@@ -554,7 +705,8 @@ async function runAgenticExecutionLoop(userText) {
             
             if (jsxBlock) {
                 updateConsolePane(jsxBlock);
-                aiBubble.querySelector(".message-content").innerHTML = `<p>Executing dynamic rigging ExtendScript...</p>`;
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
                 
                 // Execute ExtendScript via CEP evalScript
                 const execResult = await evalScriptAsync(jsxBlock);
@@ -562,7 +714,8 @@ async function runAgenticExecutionLoop(userText) {
                 
                 if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
                     loopRetries++;
-                    aiBubble.querySelector(".message-content").innerHTML = `<p>Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</p>`;
+                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
                     
                     // Push error feedback to conversation memory
                     chatHistory.push({ 
@@ -701,7 +854,11 @@ function addBubble(sender, text) {
     
     const content = document.createElement("div");
     content.className = "message-content";
-    content.innerHTML = formatMarkdown(text);
+    if (text.indexOf("dots-loader") !== -1) {
+        content.innerHTML = text; // Bypass markdown formatting for raw loader elements
+    } else {
+        content.innerHTML = formatMarkdown(text);
+    }
     
     wrapper.appendChild(content);
     scroller.appendChild(wrapper);
@@ -734,15 +891,38 @@ function updateConsolePane(code) {
     document.getElementById("console-output").querySelector("code").innerText = code;
 }
 
-// Simple Markdown formatting helper suitable for clean UI display
+// Premium Markdown formatting helper that supports multi-line fenced code viewports
 function formatMarkdown(text) {
     if (!text) return "";
-    return text
+    
+    // First, escape HTML characters to prevent XSS
+    let html = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
-        .replace(/`([^`]+)`/g, "<code>$1</code>")
-        .replace(/\n/g, "<br>");
+        .replace(/>/g, "&gt;");
+        
+    // Handle multi-line fenced code blocks: ```javascript ... ```
+    html = html.replace(/```(?:javascript|js|extendscript|jsx)?\n([\s\S]*?)\n```/g, (match, code) => {
+        return `<pre class="code-viewport"><code>${code}</code></pre>`;
+    });
+    
+    // Handle inline code: `code`
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    
+    // Handle bold: **text**
+    html = html.replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>");
+    
+    // Handle italics: *text*
+    html = html.replace(/\*([\s\S]*?)\*/g, "<em>$1</em>");
+    
+    // Split the text into segments to apply <br> line breaks ONLY outside <pre> code blocks
+    const segments = html.split(/(<pre[\s\S]*?<\/pre>)/g);
+    for (let i = 0; i < segments.length; i++) {
+        // If this is NOT a pre block, replace newlines with <br>
+        if (!segments[i].startsWith("<pre")) {
+            segments[i] = segments[i].replace(/\n/g, "<br>");
+        }
+    }
+    
+    return segments.join("");
 }
