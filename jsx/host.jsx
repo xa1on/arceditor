@@ -742,19 +742,19 @@ var ArcEditor = {
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
 
-        var mode = BlendMode.NORMAL;
+        var mode = BlendingMode.NORMAL;
         var m = blendModeName.toUpperCase();
-        if (m === "ADD") mode = BlendMode.ADD;
-        else if (m === "SCREEN") mode = BlendMode.SCREEN;
-        else if (m === "MULTIPLY") mode = BlendMode.MULTIPLY;
-        else if (m === "OVERLAY") mode = BlendMode.OVERLAY;
-        else if (m === "DARKEN") mode = BlendMode.DARKEN;
-        else if (m === "LIGHTEN") mode = BlendMode.LIGHTEN;
-        else if (m === "DIFFERENCE") mode = BlendMode.DIFFERENCE;
-        else if (m === "HUE") mode = BlendMode.HUE;
-        else if (m === "SATURATION") mode = BlendMode.SATURATION;
-        else if (m === "COLOR") mode = BlendMode.COLOR;
-        else if (m === "LUMINOSITY") mode = BlendMode.LUMINOSITY;
+        if (m === "ADD") mode = BlendingMode.ADD;
+        else if (m === "SCREEN") mode = BlendingMode.SCREEN;
+        else if (m === "MULTIPLY") mode = BlendingMode.MULTIPLY;
+        else if (m === "OVERLAY") mode = BlendingMode.OVERLAY;
+        else if (m === "DARKEN") mode = BlendingMode.DARKEN;
+        else if (m === "LIGHTEN") mode = BlendingMode.LIGHTEN;
+        else if (m === "DIFFERENCE") mode = BlendingMode.DIFFERENCE;
+        else if (m === "HUE") mode = BlendingMode.HUE;
+        else if (m === "SATURATION") mode = BlendingMode.SATURATION;
+        else if (m === "COLOR") mode = BlendingMode.COLOR;
+        else if (m === "LUMINOSITY") mode = BlendingMode.LUMINOSITY;
 
         layer.blendMode = mode;
         return true;
