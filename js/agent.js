@@ -224,11 +224,14 @@ async function runAgenticExecutionLoop(userText) {
         chatHistory.push({ role: "user", content: userText });
     }
 
-    await pruneHistoryContexts();
+    // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
+    let activeContext = JSON.parse(JSON.stringify(chatHistory));
+    activeContext = await pruneHistoryContexts(activeContext);
+    
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
-    writeToDebugLog("Prompt / History Context", JSON.stringify(chatHistory, null, 2));
+    writeToDebugLog("Prompt / History Context", JSON.stringify(activeContext, null, 2));
 
     const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
     const aiBubble = document.getElementById(aiBubbleId);
@@ -238,15 +241,17 @@ async function runAgenticExecutionLoop(userText) {
     const maxRetries = 3;
     let toolTurns = 0;
     const maxToolTurns = 5;
+    let finalLlmResponse = "";
 
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
-            const llmResponse = await callLLMApi(chatHistory, (chunkText) => {
+            const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
                 aiBubble.setAttribute("data-raw-text", chunkText);
             });
             aiBubble.setAttribute("data-raw-text", llmResponse);
-            chatHistory.push({ role: "assistant", content: llmResponse });
+            activeContext.push({ role: "assistant", content: llmResponse });
+            finalLlmResponse = llmResponse;
 
             writeToDebugLog("LLM Raw Response", llmResponse);
 
@@ -267,8 +272,8 @@ async function runAgenticExecutionLoop(userText) {
 
                 writeToDebugLog("Tool Execution Observations", observations);
 
-                // Append observations to history
-                chatHistory.push({
+                // Append observations to local context history
+                activeContext.push({
                     role: "user",
                     content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`
                 });
@@ -298,8 +303,8 @@ async function runAgenticExecutionLoop(userText) {
                     aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
 
-                    // Push error feedback to conversation memory
-                    chatHistory.push({
+                    // Push error feedback to local context history
+                    activeContext.push({
                         role: "user",
                         content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`
                     });
@@ -336,8 +341,22 @@ async function runAgenticExecutionLoop(userText) {
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
     }
 
+    // Persist strictly the final, resolved assistant message in visual chatHistory (keeps UI 100% clean of JSON tool observations)
+    if (finalLlmResponse) {
+        chatHistory.push({ role: "assistant", content: finalLlmResponse });
+    }
     updateCurrentSessionHistory();
     updateContextSizeInfo();
+
+    // Expose activeContext strictly for testing, assertion, and developer inspection
+    if (typeof window !== "undefined") {
+        window.lastActiveContext = activeContext;
+    } else if (typeof global !== "undefined") {
+        global.lastActiveContext = activeContext;
+    }
+    try {
+        lastActiveContext = activeContext;
+    } catch (e) {}
 }
 
 function extractJSXCode(text) {
@@ -485,17 +504,19 @@ function formatMarkdown(text) {
     return result;
 }
 
-async function pruneHistoryContexts() {
+async function pruneHistoryContexts(contextArray) {
+    if (!contextArray) return [];
+    
     // 1. If history length is greater than 10 messages (5 turns), trigger memory condensation
     const maxThreshold = 10;
-    if (chatHistory.length > maxThreshold) {
+    if (contextArray.length > maxThreshold) {
         // Keep the last 6 messages (3 turns) completely raw as active transactional context
         const rawTurnsCount = 6;
-        const cutIndex = chatHistory.length - rawTurnsCount;
+        const cutIndex = contextArray.length - rawTurnsCount;
         
         // Retrieve the older turns to be compressed
-        const olderMessages = chatHistory.slice(0, cutIndex);
-        const youngerMessages = chatHistory.slice(cutIndex);
+        const olderMessages = contextArray.slice(0, cutIndex);
+        const youngerMessages = contextArray.slice(cutIndex);
         
         // Filter out any older system compression messages to avoid bloat and infinite loops
         const messagesToCondense = olderMessages.filter(msg => {
@@ -529,29 +550,33 @@ async function pruneHistoryContexts() {
                     content: `[Condensed Session History: ${summaryText.trim()}]`
                 };
                 
-                // Reconstruct the chat history
-                chatHistory = [condensedBlock, ...youngerMessages];
-                console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", chatHistory.length);
+                // Reconstruct and return the chat history
+                const resultHistory = [condensedBlock, ...youngerMessages];
+                console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", resultHistory.length);
+                return resultHistory;
             } catch (err) {
                 console.error("[ArcEditor] Background memory condensation failed:", err);
                 // Fallback to sliding window pruner if LLM call fails
-                fallbackSlidingWindowPrune();
+                return fallbackSlidingWindowPrune(contextArray);
             }
         }
     }
+    return contextArray;
 }
 
-function fallbackSlidingWindowPrune() {
+function fallbackSlidingWindowPrune(contextArray) {
+    if (!contextArray) return [];
     const maxHistoryMessages = 12;
-    if (chatHistory.length > maxHistoryMessages) {
-        let cutIndex = chatHistory.length - maxHistoryMessages;
-        while (cutIndex < chatHistory.length && chatHistory[cutIndex].role !== "user") {
+    if (contextArray.length > maxHistoryMessages) {
+        let cutIndex = contextArray.length - maxHistoryMessages;
+        while (cutIndex < contextArray.length && contextArray[cutIndex].role !== "user") {
             cutIndex++;
         }
-        if (cutIndex < chatHistory.length) {
-            chatHistory = chatHistory.slice(cutIndex);
+        if (cutIndex < contextArray.length) {
+            return contextArray.slice(cutIndex);
         }
     }
+    return contextArray;
 }
 
 function writeToDebugLog(category, text) {
