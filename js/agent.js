@@ -141,6 +141,21 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`easeIn\`: String preset name (\`"linear"\`, \`"easyEase"\`, \`"easeInQuad"\`, \`"easeOutQuad"\`, \`"easeInOutQuad"\`, \`"easeInExpo"\`, \`"easeOutExpo"\`, \`"easeInOutExpo"\`) OR custom Bezier object \`{ speed: Number, influence: Number }\`.
       * \`easeOut\`: String preset name OR custom Bezier object \`{ speed: Number, influence: Number }\`.
 
+14. \`ArcEditor.setTextProperties(layerRef, properties)\`
+    - Description: Sets multiple typography and style properties on an existing Text layer in a single atomic call.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index.
+      * \`properties\`: Configuration JSON object. Supports any subset of these optional keys:
+        - \`text\`: (Optional) String new text content.
+        - \`font\`: (Optional) String PostScript font name (e.g. \`"Arial-BoldMT"\`).
+        - \`fontSize\`: (Optional) Number font size in pixels.
+        - \`fillColor\`: (Optional) String color hex code (e.g. \`"#FF3366"\`). Maps to RGB array and turns fill on under the hood.
+        - \`strokeColor\`: (Optional) String color hex code. Maps to RGB array and turns stroke on under the hood.
+        - \`strokeWidth\`: (Optional) Number stroke width in pixels.
+        - \`tracking\`: (Optional) Number horizontal tracking.
+        - \`leading\`: (Optional) Number line leading.
+        - \`alignment\`: (Optional) String alignment (\`"left"\`, \`"center"\`, \`"right"\`). Maps to ParagraphJustification.
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -353,6 +368,8 @@ async function executeToolCalls(jsonStr) {
                 const easeInVal = typeof params.easeIn === "string" ? `"${params.easeIn}"` : JSON.stringify(params.easeIn);
                 const easeOutVal = typeof params.easeOut === "string" ? `"${params.easeOut}"` : JSON.stringify(params.easeOut);
                 jsxCommand = `(function() { return ArcEditor.setKeyframeEasing(${serializedRef}, ${JSON.stringify(params.propPath)}, ${params.keyIndex}, ${easeInVal}, ${easeOutVal}); })()`;
+            } else if (toolName === "setTextProperties") {
+                jsxCommand = `(function() { return ArcEditor.setTextProperties(${serializedRef}, ${JSON.stringify(params.properties)}); })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }

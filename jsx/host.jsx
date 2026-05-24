@@ -161,7 +161,29 @@ var ArcInspector = {
 
                 if (layerType === "Text") {
                     try {
-                        layerData.textString = layer.property("Source Text").value.text;
+                        var textDocument = layer.property("Source Text").value;
+                        layerData.textString = textDocument.text;
+                        layerData.font = textDocument.font;
+                        layerData.fontSize = textDocument.fontSize;
+                        
+                        if (textDocument.applyFill && textDocument.fillColor) {
+                            var fc = textDocument.fillColor;
+                            var r = Math.round(fc[0] * 255).toString(16);
+                            var g = Math.round(fc[1] * 255).toString(16);
+                            var b = Math.round(fc[2] * 255).toString(16);
+                            if (r.length === 1) r = "0" + r;
+                            if (g.length === 1) g = "0" + g;
+                            if (b.length === 1) b = "0" + b;
+                            layerData.fillColor = "#" + r + g + b;
+                        }
+                        
+                        if (textDocument.justification === ParagraphJustification.CENTER_JUSTIFY) {
+                            layerData.alignment = "center";
+                        } else if (textDocument.justification === ParagraphJustification.RIGHT_JUSTIFY) {
+                            layerData.alignment = "right";
+                        } else {
+                            layerData.alignment = "left";
+                        }
                     } catch (e) { }
                 }
             }
@@ -898,6 +920,80 @@ var ArcEditor = {
 
         prop.setTemporalEaseAtKey(keyIndex, inEaseArray, outEaseArray);
         return "Success: Applied easing to keyframe " + keyIndex + " on property '" + prop.name + "'";
+    },
+
+    /**
+     * Sets multiple text document styling properties in a single atomic call.
+     */
+    setTextProperties: function (layerRef, properties) {
+        if (!properties) throw new Error("No properties object provided.");
+
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
+        if (!(layer instanceof TextLayer)) throw new Error("Layer is not a TextLayer.");
+
+        var sourceTextProp = layer.property("Source Text") || layer.property("ADBE Source Text");
+        if (!sourceTextProp) throw new Error("Source Text property not found.");
+
+        var textDocument = sourceTextProp.value;
+
+        var hexToRgb = function (hex) {
+            if (!hex) return [0, 0, 0];
+            var s = hex.replace("#", "");
+            if (s.length === 3) {
+                s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+            }
+            if (s.length !== 6) return [0, 0, 0];
+            var r = parseInt(s.substring(0, 2), 16) / 255;
+            var g = parseInt(s.substring(2, 4), 16) / 255;
+            var b = parseInt(s.substring(4, 6), 16) / 255;
+            return [Math.round(r * 100) / 100, Math.round(g * 100) / 100, Math.round(b * 100) / 100];
+        };
+
+        if (properties.text !== undefined && properties.text !== null) {
+            textDocument.text = String(properties.text);
+        }
+        if (properties.font !== undefined && properties.font !== null) {
+            textDocument.font = String(properties.font);
+        }
+        if (properties.fontSize !== undefined && properties.fontSize !== null) {
+            textDocument.fontSize = Number(properties.fontSize);
+        }
+        if (properties.fillColor !== undefined && properties.fillColor !== null) {
+            textDocument.fillColor = hexToRgb(properties.fillColor);
+            textDocument.applyFill = true;
+        }
+        if (properties.strokeColor !== undefined && properties.strokeColor !== null) {
+            textDocument.strokeColor = hexToRgb(properties.strokeColor);
+            textDocument.applyStroke = true;
+        }
+        if (properties.strokeWidth !== undefined && properties.strokeWidth !== null) {
+            textDocument.strokeWidth = Number(properties.strokeWidth);
+        }
+        if (properties.tracking !== undefined && properties.tracking !== null) {
+            textDocument.tracking = Number(properties.tracking);
+        }
+        if (properties.leading !== undefined && properties.leading !== null) {
+            textDocument.leading = Number(properties.leading);
+        }
+        if (properties.alignment !== undefined && properties.alignment !== null) {
+            var al = String(properties.alignment).toLowerCase();
+            var just = ParagraphJustification.LEFT_JUSTIFY;
+            if (al === "center" || al === "center_justify") {
+                just = ParagraphJustification.CENTER_JUSTIFY;
+            } else if (al === "right" || al === "right_justify") {
+                just = ParagraphJustification.RIGHT_JUSTIFY;
+            } else if (al === "justify" || al === "full_justify") {
+                just = ParagraphJustification.FULL_JUSTIFY;
+            }
+            textDocument.justification = just;
+        }
+
+        sourceTextProp.setValue(textDocument);
+        return "Success: Applied typography properties to Text layer '" + layer.name + "'";
     }
 };
 
