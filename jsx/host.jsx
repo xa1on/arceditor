@@ -180,7 +180,7 @@ var ArcInspector = {
                         layerData.textString = textDocument.text;
                         layerData.font = textDocument.font;
                         layerData.fontSize = textDocument.fontSize;
-                        
+
                         if (textDocument.applyFill && textDocument.fillColor) {
                             var fc = textDocument.fillColor;
                             var r = Math.round(fc[0] * 255).toString(16);
@@ -191,7 +191,7 @@ var ArcInspector = {
                             if (b.length === 1) b = "0" + b;
                             layerData.fillColor = "#" + r + g + b;
                         }
-                        
+
                         if (textDocument.justification === ParagraphJustification.CENTER_JUSTIFY) {
                             layerData.alignment = "center";
                         } else if (textDocument.justification === ParagraphJustification.RIGHT_JUSTIFY) {
@@ -456,7 +456,7 @@ var ArcEditor = {
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
         // If layerRef is already a Layer object
-        if (layerRef instanceof Layer || (layerRef && typeof layerRef.index === "number")) {
+        if ((typeof Layer !== "undefined" && layerRef instanceof Layer) || (layerRef && typeof layerRef.index === "number")) {
             return layerRef;
         }
 
@@ -530,16 +530,10 @@ var ArcEditor = {
         } else if (type === "Solid") {
             layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
         } else if (type === "Adjustment") {
-            layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
-            var layerId = layer.id;
+            layer = comp.layers.addSolid([1, 1, 1], name, w, h, 1.0, comp.duration);
             layer.adjustmentLayer = true;
-            // Re-retrieve valid layer object reference using unique persistent ID
-            for (var i = 1; i <= comp.numLayers; i++) {
-                if (comp.layer(i).id === layerId) {
-                    layer = comp.layer(i);
-                    break;
-                }
-            }
+            // Refresh ExtendScript DOM pointer by re-retrieving from top index 1
+            layer = comp.layer(1);
         } else if (type === "Camera") {
             layer = comp.layers.addCamera(name, [w / 2, h / 2]);
         } else if (type === "Light") {
@@ -562,6 +556,11 @@ var ArcEditor = {
         // Auto-correct common LLM prefix typo "ABDE" -> "ADBE" (short for Adobe)
         if (effectMatchName && typeof effectMatchName === "string" && effectMatchName.indexOf("ABDE") === 0) {
             effectMatchName = "ADBE" + effectMatchName.substring(4);
+        }
+
+        // Auto-correct Glow Match Name: "ADBE Glow" -> "ADBE Glo2"
+        if (effectMatchName === "ADBE Glow" || effectMatchName === "ADBE GLOW") {
+            effectMatchName = "ADBE Glo2";
         }
 
         var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
@@ -591,8 +590,17 @@ var ArcEditor = {
         } else if (propPath instanceof Array) {
             var curr = layer;
             for (var i = 0; i < propPath.length; i++) {
-                curr = curr.property(propPath[i]);
-                if (!curr) throw new Error("Property path segment not found: " + propPath[i]);
+                var segment = propPath[i];
+                var next = curr.property(segment);
+                if (!next) {
+                    if (segment === "Effects" || segment === "Effect") {
+                        next = curr.property("ADBE Effect Parade");
+                    } else if (segment === "Transform") {
+                        next = curr.property("ADBE Transform Group");
+                    }
+                }
+                if (!next) throw new Error("Property path segment not found: " + segment);
+                curr = next;
             }
             prop = curr;
         } else {
@@ -913,7 +921,7 @@ var ArcEditor = {
             if (prop.value instanceof Array) {
                 var isSpatial = false;
                 try {
-                    if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL || 
+                    if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL ||
                         prop.propertyValueType === PropertyValueType.ThreeD_SPATIAL) {
                         isSpatial = true;
                     }

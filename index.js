@@ -155,6 +155,25 @@ function initUI() {
 }
 
 async function copyToClipboard(text) {
+    // Premium CEP/Node-integrated clipboard copier
+    if (typeof require !== "undefined") {
+        try {
+            const child_process = require("child_process");
+            const os = require("os");
+            const platform = os.platform();
+            
+            if (platform === "win32") {
+                child_process.execSync("clip", { input: text });
+                return;
+            } else if (platform === "darwin") {
+                child_process.execSync("pbcopy", { input: text });
+                return;
+            }
+        } catch (err) {
+            console.error("Node-based clipboard copy failed, falling back to browser API: ", err);
+        }
+    }
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
         return navigator.clipboard.writeText(text);
     }
