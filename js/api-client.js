@@ -87,22 +87,45 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                 }
 
                 let buffer = '';
+                let decoder = null;
+                try {
+                    if (typeof require !== "undefined") {
+                        const { StringDecoder } = require('string_decoder');
+                        decoder = new StringDecoder('utf8');
+                    }
+                } catch (e) { }
+
                 res.on('data', (chunk) => {
-                    buffer += chunk.toString();
+                    const textChunk = decoder ? decoder.write(chunk) : chunk.toString();
+                    buffer += textChunk;
 
-                    let lines = buffer.split('\n');
-                    buffer = lines.pop(); // Keep incomplete line
+                    let eventBlocks = buffer.split(/\r?\n\r?\n/);
+                    buffer = eventBlocks.pop();
 
-                    for (let line of lines) {
-                        line = line.trim();
-                        if (!line) continue;
-                        onChunk(line);
+                    for (let i = 0; i < eventBlocks.length; i++) {
+                        const block = eventBlocks[i].trim();
+                        if (!block) continue;
+
+                        const lines = block.split(/\r?\n/);
+                        for (let j = 0; j < lines.length; j++) {
+                            const line = lines[j].trim();
+                            if (!line) continue;
+                            onChunk(line);
+                        }
                     }
                 });
 
                 res.on('end', () => {
-                    if (buffer.trim()) {
-                        onChunk(buffer.trim());
+                    let remaining = buffer;
+                    if (decoder) {
+                        remaining += decoder.end();
+                    }
+                    if (remaining.trim()) {
+                        const lines = remaining.split(/\r?\n/);
+                        for (let j = 0; j < lines.length; j++) {
+                            const line = lines[j].trim();
+                            if (line) onChunk(line);
+                        }
                     }
                     resolve();
                 });
