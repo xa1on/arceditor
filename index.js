@@ -1168,6 +1168,14 @@ function formatMarkdown(text) {
         if (!segments[i].startsWith("<pre")) {
             // Apply inline formatting only inside text segments, preserving code contents pristine
             segments[i] = segments[i]
+                .replace(/^###### (.*?)$/gm, "<h6>$1</h6>")
+                .replace(/^##### (.*?)$/gm, "<h5>$1</h5>")
+                .replace(/^#### (.*?)$/gm, "<h4>$1</h4>")
+                .replace(/^### (.*?)$/gm, "<h3>$1</h3>")
+                .replace(/^## (.*?)$/gm, "<h2>$1</h2>")
+                .replace(/^# (.*?)$/gm, "<h1>$1</h1>")
+                .replace(/^\s*[-*+]\s+(.*?)$/gm, "<div class='bullet-item'>• $1</div>")
+                .replace(/^\s*(\d+)\.\s+(.*?)$/gm, "<div class='bullet-item'>$1. $2</div>")
                 .replace(/`([^`]+)`/g, "<code>$1</code>")
                 .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
                 .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
@@ -1176,6 +1184,12 @@ function formatMarkdown(text) {
     }
     
     let result = segments.join("");
+    
+    // Clean up empty line breaks next to block elements
+    result = result.replace(/<(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)><br>/gi, "<$1>");
+    result = result.replace(/<\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)><br>/gi, "</$1>");
+    result = result.replace(/<br><(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)>/gi, "<$1>");
+    result = result.replace(/<br><\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)>/gi, "</$1>");
     
     // Parse thinking blocks into native AE collapsible details accordion
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
