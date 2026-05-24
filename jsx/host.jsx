@@ -981,6 +981,102 @@ var ArcEditor = {
             app.endUndoGroup();
             throw err;
         }
+    },
+
+    /**
+     * Sets the playhead position of the active composition (absolute or relative).
+     */
+    setPlayheadTime: function (timeVal) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return "Error: No active composition found.";
+        }
+        
+        var targetTime = comp.time;
+        if (typeof timeVal === "string") {
+            var val = parseFloat(timeVal);
+            if (isNaN(val)) return "Error: Invalid relative offset time format.";
+            if (timeVal.charAt(0) === "+" || timeVal.charAt(0) === "-") {
+                targetTime += val;
+            } else {
+                targetTime = val;
+            }
+        } else if (typeof timeVal === "number") {
+            targetTime = timeVal;
+        } else {
+            return "Error: Invalid time parameter type.";
+        }
+
+        // Clamp within composition bounds
+        targetTime = Math.max(0, Math.min(comp.duration, targetTime));
+        comp.time = targetTime;
+        return "Success: Playhead moved to " + targetTime.toFixed(3) + " seconds.";
+    },
+
+    /**
+     * Selects a specific layer by layerRef, optionally deselecting others.
+     */
+    selectLayer: function (layerRef, deselectOthers) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return "Error: No active composition found.";
+        }
+
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) {
+            return "Error: Layer not found for reference: " + layerRef;
+        }
+
+        if (deselectOthers !== false) {
+            for (var i = 1; i <= comp.numLayers; i++) {
+                comp.layer(i).selected = false;
+            }
+        }
+        layer.selected = true;
+        return "Success: Selected layer '" + layer.name + "'.";
+    },
+
+    /**
+     * Locates a composition in the project bin and opens it in the active viewer.
+     */
+    switchComposition: function (compRef) {
+        if (!compRef) return "Error: No composition reference provided.";
+
+        var targetComp = null;
+        var numericId = parseInt(compRef, 10);
+
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item && item instanceof CompItem) {
+                if (!isNaN(numericId) && item.id === numericId) {
+                    targetComp = item;
+                    break;
+                }
+                if (item.name === compRef) {
+                    targetComp = item;
+                    break;
+                }
+            }
+        }
+
+        if (!targetComp) {
+            return "Error: Composition not found in project bin for reference: " + compRef;
+        }
+
+        targetComp.openInViewer();
+        
+        // Return context data to save a ReAct turn
+        var activeData = {
+            id: targetComp.id,
+            name: targetComp.name,
+            width: targetComp.width,
+            height: targetComp.height,
+            duration: targetComp.duration,
+            frameRate: targetComp.frameRate,
+            currentTime: targetComp.time,
+            numLayers: targetComp.numLayers
+        };
+        return "Success: Switched active composition to '" + targetComp.name + "'. Context: " + ArcJSON.stringify(activeData);
     }
 };
 

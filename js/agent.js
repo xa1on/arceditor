@@ -218,6 +218,89 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
+20. \`setPlayheadTime\`
+    - Description: Moves the active timeline playhead/needle to a specific time or shifts it relatively.
+    - Parameters:
+      * \`time\`: Number (absolute seconds, e.g. \`2.5\`) OR String relative offset (e.g. \`"+1.5"\` or \`"-0.5"\` to shift from current position).
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "setPlayheadTime",
+        "parameters": {
+          "time": "+2.0"
+        }
+      }
+      \`\`\`
+
+21. \`selectLayer\`
+    - Description: Selects a specific layer in the active composition, optionally deselecting all other layers.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name string, or index.
+      * \`deselectOthers\`: (Optional) Boolean. Defaults to true. If false, adds to active selection.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "selectLayer",
+        "parameters": {
+          "layerRef": 24,
+          "deselectOthers": true
+        }
+      }
+      \`\`\`
+
+22. \`switchComposition\`
+    - Description: Switches the active composition by opening a target composition from the project bin in the viewer, and returns its new structural context.
+    - Parameters:
+      * \`compRef\`: Composition unique ID, name string, or index in the project bin.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "switchComposition",
+        "parameters": {
+          "compRef": "Main Precomp"
+        }
+      }
+      \`\`\`
+
+23. \`addMarker\`
+    - Description: Adds a marker to the active composition timeline or a specific layer.
+    - Parameters:
+      * \`type\`: "comp" (for composition marker) or "layer" (for layer marker).
+      * \`layerRef\`: Layer unique ID, name string, or index (ignored if type is "comp").
+      * \`time\`: Number. Time in seconds from timeline start.
+      * \`comment\`: (Optional) String text description inside the marker.
+      * \`duration\`: (Optional) Number duration in seconds (defaults to 0).
+      * \`labelIndex\`: (Optional) Integer label color index (0 to 16, e.g. 1 for Red, 9 for Green).
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "addMarker",
+        "parameters": {
+          "type": "comp",
+          "time": 3.5,
+          "comment": "Chorus Hook"
+        }
+      }
+      \`\`\`
+
+24. \`deleteMarker\`
+    - Description: Deletes a marker from the active composition or a specific layer.
+    - Parameters:
+      * \`type\`: "comp" or "layer".
+      * \`layerRef\`: Layer unique ID, name string, or index (ignored if type is "comp").
+      * \`timeOrIndex\`: Number or String. 1-based marker index (integer) or the exact time (number in seconds) of the marker to remove.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "deleteMarker",
+        "parameters": {
+          "type": "comp",
+          "timeOrIndex": 1
+        }
+      }
+      \`\`\`
+
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -489,6 +572,14 @@ async function executeToolCalls(jsonStr) {
                 await evalScriptAsync("app.undo()");
                 observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
+            } else if (toolName === "setPlayheadTime") {
+                const serializedTime = typeof params.time === "string" ? `"${params.time.replace(/"/g, '\\"')}"` : params.time;
+                jsxCommand = `(function() { return ArcEditor.setPlayheadTime(${serializedTime}); })()`;
+            } else if (toolName === "selectLayer") {
+                jsxCommand = `(function() { return ArcEditor.selectLayer(${serializedRef}, ${params.deselectOthers !== false}); })()`;
+            } else if (toolName === "switchComposition") {
+                const serializedCompRef = typeof params.compRef === "string" ? `"${params.compRef.replace(/"/g, '\\"')}"` : params.compRef;
+                jsxCommand = `(function() { return ArcEditor.switchComposition(${serializedCompRef}); })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
