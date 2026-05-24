@@ -88,7 +88,7 @@ function evalScriptAsync(script) {
 async function captureCompositionFrame() {
     if (!csInterface && !fs) {
         addSystemMessage("Visual capture not supported outside After Effects.");
-        return;
+        return null;
     }
 
     const previewContainer = document.getElementById("frame-attachment-preview");
@@ -118,8 +118,8 @@ async function captureCompositionFrame() {
             attachedFrameBase64 = base64Data;
 
             // Show visual attachment badge in UI
-            previewImg.src = `data:image/png;base64,${base64Data}`;
-            previewContainer.classList.remove("hidden");
+            if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
+            if (previewContainer) previewContainer.classList.remove("hidden");
             addSystemMessage("Canvas frame attached successfully.");
 
             // Clean up the temporary preview file from disk
@@ -127,12 +127,16 @@ async function captureCompositionFrame() {
                 fs.unlinkSync(actualPath);
             } catch (e) { }
 
+            return base64Data;
+
         } catch (err) {
             console.error("Failed to read captured PNG frame from disk:", err);
             addSystemMessage("Error reading captured frame: " + err.message);
+            return null;
         }
     } else {
         addSystemMessage(result);
+        return null;
     }
 }
 

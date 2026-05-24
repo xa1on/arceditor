@@ -3,6 +3,7 @@
  * Manages the high-level system context instructions, structured tool call routing,
  * the automated ReAct self-correction execution loop, and custom markdown paragraph parser.
  */
+let capturedFrameDataDuringLoop = null;
 
 const SYSTEM_INSTRUCTIONS = `
 You are ArcEditor, an expert technical director, motion designer, and timeline automation harness for Adobe After Effects.
@@ -195,6 +196,28 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
+18. \`captureActiveFrame\`
+    - Description: Programmatically captures the current active frame preview of the After Effects canvas. Use this tool whenever you need to visually verify layer layout coordinates, styling, expression binding outcomes, or splicing alignment.
+    - Parameters: None.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "captureActiveFrame",
+        "parameters": {}
+      }
+      \`\`\`
+
+19. \`undoLastAction\`
+    - Description: Undoes the very last committed ExtendScript action block in After Effects (acting as a programmatic 'Ctrl+Z'). Use this tool if your previous script executed successfully, but upon verification (via getTimelineContext or captureActiveFrame), you realize the resulting layout, alignment, or properties are incorrect, so you can safely roll back and retry on a clean slate.
+    - Parameters: None.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "undoLastAction",
+        "parameters": {}
+      }
+      \`\`\`
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -274,11 +297,22 @@ async function runAgenticExecutionLoop(userText) {
 
                 writeToDebugLog("Tool Execution Observations", observations);
 
-                // Append observations to local context history
-                activeContext.push({
-                    role: "user",
-                    content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`
-                });
+                // Append observations to local context history (handling multi-modal visual observations!)
+                if (capturedFrameDataDuringLoop) {
+                    activeContext.push({
+                        role: "user",
+                        content: [
+                            { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` },
+                            { type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } }
+                        ]
+                    });
+                    capturedFrameDataDuringLoop = null; // Reset for next potential capture
+                } else {
+                    activeContext.push({
+                        role: "user",
+                        content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`
+                    });
+                }
 
                 // Show feedback in UI and prepare next turn
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
@@ -441,6 +475,19 @@ async function executeToolCalls(jsonStr) {
                 continue;
             } else if (toolName === "getInstalledEffects") {
                 observations.push(`- Tool "getInstalledEffects": ${JSON.stringify(installedEffects)}`);
+                continue;
+            } else if (toolName === "captureActiveFrame") {
+                const base64Data = await captureCompositionFrame();
+                if (base64Data) {
+                    observations.push(`- Tool "captureActiveFrame": Success: Active frame successfully captured and visually attached.`);
+                    capturedFrameDataDuringLoop = base64Data;
+                } else {
+                    observations.push(`- Tool "captureActiveFrame": Error: Failed to capture active frame preview.`);
+                }
+                continue;
+            } else if (toolName === "undoLastAction") {
+                await evalScriptAsync("app.undo()");
+                observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
