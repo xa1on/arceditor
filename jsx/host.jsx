@@ -457,7 +457,14 @@ var ArcEditor = {
 
         // If layerRef is already a Layer object
         if ((typeof Layer !== "undefined" && layerRef instanceof Layer) || (layerRef && typeof layerRef.index === "number")) {
-            return layerRef;
+            try {
+                // Verify if the reference is valid by reading a simple property
+                var testIndex = layerRef.index;
+                return layerRef;
+            } catch (invalidErr) {
+                // Reference has become invalid (e.g., due to casting / solid layer type mutation in AE)
+                throw new Error("The Layer object reference is invalid (this happens in After Effects when adjustmentLayer properties are modified directly on a solid pointer, which invalidates the JavaScript reference). To prevent this, ALWAYS use 'ArcEditor.createLayer(\"Adjustment\", name)' directly to create adjustment layers, or refer to layers using their unique numeric ID or name string instead of passing raw Layer objects.");
+            }
         }
 
         // If layerRef is a number (ID or index)
@@ -566,7 +573,13 @@ var ArcEditor = {
         var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
         if (!effectGroup) throw new Error("Effects parameter not supported on this layer.");
 
-        var fx = effectGroup.addProperty(effectMatchName);
+        var fx;
+        try {
+            fx = effectGroup.addProperty(effectMatchName);
+        } catch (err) {
+            throw new Error("Failed to add effect '" + effectMatchName + "' to layer '" + layer.name + "'. This usually means the effect match name is incorrect or not installed. Please query the installed effects using the getInstalledEffects tool to find the exact match name (e.g. standard AE Glow is 'ADBE Glo2', not 'ADBE Glow'). Original error: " + err.toString());
+        }
+
         if (effectDisplayName) {
             fx.name = effectDisplayName;
         }

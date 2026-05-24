@@ -45,6 +45,7 @@
         <div class="view-tabs">
             <button id="tab-chat" class="tab-btn active">Chat</button>
             <button id="tab-console" class="tab-btn">JSX Console</button>
+            <button id="tab-debug" class="tab-btn">Debug Log</button>
         </div>
 
         <main class="content-viewport">
@@ -71,6 +72,20 @@
                         </div>
                     </div>
                     <textarea id="console-output" class="code-viewport" spellcheck="false" placeholder="// Paste or edit ExtendScript code here, then click Execute Script..." style="border: none; background: transparent; outline: none; resize: none;"></textarea>
+                </div>
+            </div>
+
+            <!-- DEBUG PANE -->
+            <div id="pane-debug" class="view-pane">
+                <div class="console-wrapper">
+                    <div class="console-header">
+                        <span>Agent Execution & Debug Log (Prompts, Responses, Tools)</span>
+                        <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
+                            <button id="btn-copy-debug" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Copy Log</button>
+                            <button id="btn-clear-debug" class="txt-btn">Clear Log</button>
+                        </div>
+                    </div>
+                    <textarea id="debug-output" class="code-viewport" spellcheck="false" readonly placeholder="// Agent debug logs (Prompts, LLM Raw Responses, and executed Tool Calls) will appear here..." style="border: none; background: transparent; outline: none; resize: none; font-family: 'JetBrains Mono', monospace; font-size: 11px;"></textarea>
                 </div>
             </div>
         </main>

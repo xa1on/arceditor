@@ -54,7 +54,7 @@ Layer Referencing (Avoid Fragile Indexes!):
 1. \`ArcEditor.createLayer(type, name, size)\`
    - Description: Creates a new layer in the active composition.
    - Parameters:
-     * \`type\`: "Solid", "Text", "Shape", "Null", "Adjustment", "Camera", "Light".
+     * \`type\`: "Solid", "Text", "Shape", "Null", "Adjustment", "Camera", "Light". (CRITICAL: ALWAYS use "Adjustment" to create adjustment layers. NEVER manually set layer.adjustmentLayer = true on a solid layer, as After Effects invalidates the ExtendScript object reference upon type mutation, causing subsequent operations to crash.)
      * \`name\`: String layer name.
      * \`size\`: (Optional) [width, height] array (e.g. \`[1920, 1080]\`).
    - Returns: The created Layer object.
@@ -228,6 +228,8 @@ async function runAgenticExecutionLoop(userText) {
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
+    writeToDebugLog("Prompt / History Context", JSON.stringify(chatHistory, null, 2));
+
     const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
     const aiBubble = document.getElementById(aiBubbleId);
 
@@ -246,6 +248,8 @@ async function runAgenticExecutionLoop(userText) {
             aiBubble.setAttribute("data-raw-text", llmResponse);
             chatHistory.push({ role: "assistant", content: llmResponse });
 
+            writeToDebugLog("LLM Raw Response", llmResponse);
+
             // Check for JSON tool calls first, then JSX code blocks
             const jsonBlock = extractJSONToolCalls(llmResponse);
             const jsxBlock = extractJSXCode(llmResponse);
@@ -256,8 +260,12 @@ async function runAgenticExecutionLoop(userText) {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
 
+                writeToDebugLog("Tool Calls Extracted", jsonBlock);
+
                 const observations = await executeToolCalls(jsonBlock);
                 console.log("[ArcEditor Tool Calls Observations]:", observations);
+
+                writeToDebugLog("Tool Execution Observations", observations);
 
                 // Append observations to history
                 chatHistory.push({
@@ -277,9 +285,13 @@ async function runAgenticExecutionLoop(userText) {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
 
+                writeToDebugLog("ExtendScript Extracted", jsxBlock);
+
                 // Execute ExtendScript via CEP evalScript
                 const execResult = await evalScriptAsync(jsxBlock);
                 console.log("[ArcEditor JSX Executed Result]:", execResult);
+
+                writeToDebugLog("ExtendScript Execution Result", execResult);
 
                 if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
                     loopRetries++;
@@ -305,6 +317,7 @@ async function runAgenticExecutionLoop(userText) {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse);
+                writeToDebugLog("Informational Response Completed", llmResponse);
             }
 
         } catch (err) {
@@ -511,4 +524,31 @@ function stripEnrichedPayloads(text) {
     // Surgically strip the massive serialized Installed Effects Catalog block
     clean = clean.replace(/\n\n\[Installed Effects Catalog [\s\S]*?\]/g, "");
     return clean;
+}
+
+function writeToDebugLog(category, text) {
+    const timestamp = new Date().toISOString();
+    const divider = "\n\n" + "=".repeat(60) + "\n";
+    const logEntry = `${divider}[${timestamp}] [${category.toUpperCase()}]\n${text}\n`;
+
+    // 1. Update UI Textarea
+    const debugTextarea = document.getElementById("debug-output");
+    if (debugTextarea) {
+        debugTextarea.value += logEntry;
+        debugTextarea.scrollTop = debugTextarea.scrollHeight; // auto-scroll to bottom
+    }
+
+    // 2. Append to persistent file in workspace if active
+    if (typeof require !== "undefined" && currentProjectPath && currentProjectPath !== "Unsaved Project") {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const lastSeparator = Math.max(currentProjectPath.lastIndexOf('/'), currentProjectPath.lastIndexOf('\\'));
+            const projectDir = currentProjectPath.substring(0, lastSeparator);
+            const debugLogPath = path.join(projectDir, "arceditor_debug.log");
+            fs.appendFileSync(debugLogPath, logEntry, 'utf8');
+        } catch (e) {
+            console.error("Failed to write to arceditor_debug.log: ", e);
+        }
+    }
 }

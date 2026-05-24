@@ -24,6 +24,7 @@ function initUI() {
     const formSettings = document.getElementById("form-settings");
     const tabChat = document.getElementById("tab-chat");
     const tabConsole = document.getElementById("tab-console");
+    const tabDebug = document.getElementById("tab-debug");
     const chatInput = document.getElementById("chat-input");
     const btnSend = document.getElementById("btn-send");
     const btnClearConsole = document.getElementById("btn-clear-console");
@@ -38,6 +39,33 @@ function initUI() {
 
     tabChat.addEventListener("click", () => switchTab("chat"));
     tabConsole.addEventListener("click", () => switchTab("console"));
+    if (tabDebug) {
+        tabDebug.addEventListener("click", () => switchTab("debug"));
+    }
+
+    const btnClearDebug = document.getElementById("btn-clear-debug");
+    if (btnClearDebug) {
+        btnClearDebug.addEventListener("click", () => {
+            const debugOutput = document.getElementById("debug-output");
+            if (debugOutput) debugOutput.value = "";
+            addSystemMessage("Debug logs cleared.");
+        });
+    }
+
+    const btnCopyDebug = document.getElementById("btn-copy-debug");
+    if (btnCopyDebug) {
+        btnCopyDebug.addEventListener("click", async () => {
+            const debugOutput = document.getElementById("debug-output");
+            if (debugOutput && debugOutput.value) {
+                try {
+                    await copyToClipboard(debugOutput.value);
+                    addSystemMessage("Debug logs copied to clipboard!");
+                } catch (err) {
+                    addSystemMessage("Failed to copy logs.");
+                }
+            }
+        });
+    }
 
     btnClearConsole.addEventListener("click", () => {
         const output = document.getElementById("console-output");
