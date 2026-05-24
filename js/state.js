@@ -45,6 +45,13 @@ try {
 // Set writable config path in user home directory (avoids Program Files read-only permission issues!)
 if (os && path) {
     configPath = path.join(os.homedir(), '.arceditor_config.json');
+    chatsConfigPath = path.join(os.homedir(), '.arceditor_chats.json');
 } else {
     configPath = "./config.json";
+    chatsConfigPath = "./chats.json";
 }
+
+// Project specific chat sessions state
+let allProjectChats = {};
+let activeSessionId = null;
+let currentProjectPath = "Unsaved Project";

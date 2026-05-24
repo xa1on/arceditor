@@ -6,10 +6,15 @@
 
 document.addEventListener("DOMContentLoaded", () => {
     loadSettings();
+    loadChats();
     initUI();
     validateConnection();
+    syncProjectPath();
     loadInstalledEffects();
     updateContextSizeInfo();
+
+    // Auto-sync active AE project file path periodically
+    setInterval(syncProjectPath, 5000);
 });
 
 // --- SECTION 8: USER INTERFACE RENDERERS & EVENT BINDINGS ---
@@ -91,6 +96,23 @@ function initUI() {
             triggerUserMessage();
         }
     });
+
+    // Chat Sessions Dropdown Selector
+    const selectSession = document.getElementById("select-chat-session");
+    if (selectSession) {
+        selectSession.addEventListener("change", (e) => {
+            if (e.target.value === "new") {
+                createNewSession();
+            } else {
+                loadSessionHistory(e.target.value);
+            }
+        });
+    }
+
+    const btnDeleteSession = document.getElementById("btn-delete-session");
+    if (btnDeleteSession) {
+        btnDeleteSession.addEventListener("click", deleteSession);
+    }
 
     // Copy Bubble Text Event Delegation
     const chatMessages = document.getElementById("chat-messages");

@@ -162,6 +162,7 @@ async function runAgenticExecutionLoop(userText) {
         chatHistory.push({ role: "user", content: enrichedPrompt });
     }
 
+    updateCurrentSessionHistory();
     updateContextSizeInfo();
 
     const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
@@ -259,6 +260,7 @@ async function runAgenticExecutionLoop(userText) {
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
     }
 
+    updateCurrentSessionHistory();
     updateContextSizeInfo();
 }
 

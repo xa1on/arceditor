@@ -47,6 +47,13 @@ if (typeof Layer !== "undefined" && !Layer.prototype.effect) {
 // --- SECTION 1: TIMELINE & COMPOSITION INSPECTOR ---
 var ArcInspector = {
     /**
+     * Returns the absolute path of the current active project file.
+     */
+    getProjectPath: function () {
+        return app.project.file ? app.project.file.fsName : "Unsaved Project";
+    },
+
+    /**
      * Serializes structural details of the active composition and its layers.
      */
     getActiveCompositionData: function () {

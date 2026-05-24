@@ -802,3 +802,62 @@ select.form-input {
     border-color: var(--border-focus);
     color: var(--text-primary);
 }
+
+/* Chat Sessions Control Bar styling */
+.chat-sessions-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 10px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.project-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 60%;
+    overflow: hidden;
+}
+
+.project-info span {
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-selector-wrap {
+    display: flex;
+    align-items: center;
+}
+
+.session-select {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 10px;
+    padding: 2px 4px;
+    border-radius: var(--border-radius-sm);
+    outline: none;
+    max-width: 120px;
+    cursor: pointer;
+}
+
+.session-select:focus {
+    border-color: var(--border-focus);
+}
+
+.btn-delete-session svg {
+    opacity: 0.6;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.btn-delete-session:hover svg {
+    opacity: 1;
+    color: var(--text-error);
+}

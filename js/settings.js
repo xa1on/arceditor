@@ -74,3 +74,211 @@ function getDefaultModel(provider) {
     if (provider === "anthropic") return "claude-3-5-sonnet-20241022";
     return "";
 }
+
+// --- PROJECT SPECIFIC CHATS AND PERSISTENT HISTORIES ---
+function loadChats() {
+    if (fs && fs.existsSync(chatsConfigPath)) {
+        try {
+            allProjectChats = JSON.parse(fs.readFileSync(chatsConfigPath, 'utf8'));
+        } catch (e) {
+            console.error("Failed to load chats database:", e);
+            allProjectChats = {};
+        }
+    } else {
+        allProjectChats = {};
+    }
+}
+
+function saveChats() {
+    if (fs) {
+        try {
+            fs.writeFileSync(chatsConfigPath, JSON.stringify(allProjectChats, null, 2), 'utf8');
+        } catch (err) {
+            console.error("Failed to save chats database to disk:", err);
+        }
+    }
+}
+
+async function syncProjectPath() {
+    let path = "Unsaved Project";
+    if (csInterface) {
+        const result = await evalScriptAsync("ArcInspector.getProjectPath()");
+        if (result && result.indexOf("Error") !== 0) {
+            path = result.trim();
+        }
+    }
+    
+    if (path !== currentProjectPath) {
+        currentProjectPath = path;
+        
+        // Update UI Label
+        const label = document.getElementById("label-active-project");
+        if (label) {
+            const lastSeparator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+            const baseName = path.substring(lastSeparator + 1);
+            label.innerText = baseName || "Unsaved Project";
+            label.title = path;
+        }
+        
+        // Load session list for this project
+        initializeProjectSessions();
+    }
+}
+
+function initializeProjectSessions() {
+    if (!allProjectChats[currentProjectPath]) {
+        allProjectChats[currentProjectPath] = [];
+    }
+    
+    const sessions = allProjectChats[currentProjectPath];
+    if (sessions.length === 0) {
+        // Create initial default session
+        const newSession = {
+            id: "session_" + Date.now(),
+            title: "New Chat",
+            history: [],
+            created: Date.now()
+        };
+        sessions.push(newSession);
+        saveChats();
+    }
+    
+    // Populate Dropdown selector
+    const select = document.getElementById("select-chat-session");
+    if (select) {
+        select.innerHTML = '<option value="new">+ New Chat...</option>';
+        
+        sessions.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.id;
+            opt.innerText = s.title;
+            select.appendChild(opt);
+        });
+        
+        // Select the last active session or the first one
+        activeSessionId = sessions[sessions.length - 1].id;
+        select.value = activeSessionId;
+    }
+    
+    // Load history of this active session
+    loadSessionHistory(activeSessionId);
+}
+
+function loadSessionHistory(sessionId) {
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+    
+    activeSessionId = sessionId;
+    chatHistory = session.history || [];
+    
+    // Clear Chat Scroller and re-render messages!
+    const scroller = document.getElementById("chat-messages");
+    if (scroller) {
+        scroller.innerHTML = `
+            <div class="message system-msg">
+                <div class="message-content">
+                    <p><strong>ArcEditor v1.0.0</strong> initialized. Setup your API key or point to a local Lemonade server to begin automating, editing, and designing compositions!</p>
+                </div>
+            </div>
+        `;
+        
+        // Re-render chat bubbles from history!
+        chatHistory.forEach(msg => {
+            if (msg.role === "user" && msg.content && typeof msg.content === "string") {
+                let cleanText = msg.content;
+                const contextIndex = cleanText.indexOf("\n\n[Active Timeline Context:");
+                if (contextIndex !== -1) {
+                    cleanText = cleanText.substring(0, contextIndex);
+                }
+                addBubble("user", cleanText);
+            } else if (msg.role === "assistant" && msg.content) {
+                addBubble("ai", msg.content);
+            }
+        });
+    }
+    
+    // Sync selection in dropdown UI
+    const select = document.getElementById("select-chat-session");
+    if (select) select.value = activeSessionId;
+    
+    updateContextSizeInfo();
+}
+
+function updateCurrentSessionHistory() {
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const session = sessions.find(s => s.id === activeSessionId);
+    if (session) {
+        session.history = chatHistory;
+        
+        // Auto-generate title from the first user prompt if the title is still "New Chat"
+        if (session.title === "New Chat" && chatHistory.length > 0) {
+            const firstUserMsg = chatHistory.find(m => m.role === "user");
+            if (firstUserMsg && typeof firstUserMsg.content === "string") {
+                let rawPrompt = firstUserMsg.content;
+                const contextIndex = rawPrompt.indexOf("\n\n[Active Timeline Context:");
+                if (contextIndex !== -1) rawPrompt = rawPrompt.substring(0, contextIndex);
+                
+                let summary = rawPrompt.trim().substring(0, 20);
+                if (rawPrompt.length > 20) summary += "...";
+                session.title = summary || "New Chat";
+                
+                // Re-populate select list to show the new title
+                const select = document.getElementById("select-chat-session");
+                if (select) {
+                    const opt = select.querySelector(`option[value="${activeSessionId}"]`);
+                    if (opt) opt.innerText = session.title;
+                }
+            }
+        }
+        
+        saveChats();
+    }
+}
+
+function createNewSession() {
+    if (!allProjectChats[currentProjectPath]) {
+        allProjectChats[currentProjectPath] = [];
+    }
+    
+    const newSession = {
+        id: "session_" + Date.now(),
+        title: "New Chat",
+        history: [],
+        created: Date.now()
+    };
+    
+    allProjectChats[currentProjectPath].push(newSession);
+    saveChats();
+    
+    // Add to select dropdown
+    const select = document.getElementById("select-chat-session");
+    if (select) {
+        const opt = document.createElement("option");
+        opt.value = newSession.id;
+        opt.innerText = newSession.title;
+        select.appendChild(opt);
+        
+        activeSessionId = newSession.id;
+        select.value = activeSessionId;
+    }
+    
+    loadSessionHistory(activeSessionId);
+}
+
+function deleteSession() {
+    const sessions = allProjectChats[currentProjectPath] || [];
+    if (sessions.length <= 1) {
+        addSystemMessage("Cannot delete the only chat session. Create a new one first.");
+        return;
+    }
+    
+    const idx = sessions.findIndex(s => s.id === activeSessionId);
+    if (idx !== -1) {
+        sessions.splice(idx, 1);
+        saveChats();
+        
+        initializeProjectSessions();
+        addSystemMessage("Chat deleted successfully.");
+    }
+}
