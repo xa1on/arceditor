@@ -111,33 +111,7 @@ async function captureCompositionFrame() {
             let actualPath = returnedPath;
 
             if (!fs.existsSync(actualPath)) {
-                // Fall back to checking the local tempPngPath computed in Node.js
-                if (fs.existsSync(tempPngPath)) {
-                    actualPath = tempPngPath;
-                } else {
-                    // Suffix scan in both the returned path's directory and our local saveDir
-                    const checkDirs = [];
-                    try { checkDirs.push(path.dirname(returnedPath)); } catch (e) { }
-                    try { checkDirs.push(path.dirname(tempPngPath)); } catch (e) { }
-
-                    let foundMatch = null;
-                    for (const dir of checkDirs) {
-                        if (!dir || !fs.existsSync(dir)) continue;
-                        const baseName = 'arc_preview';
-                        const files = fs.readdirSync(dir);
-                        const match = files.find(f => f.indexOf(baseName) === 0 && f.endsWith('.png'));
-                        if (match) {
-                            foundMatch = path.join(dir, match);
-                            break;
-                        }
-                    }
-
-                    if (foundMatch) {
-                        actualPath = foundMatch;
-                    } else {
-                        throw new Error("Could not find rendered preview file on disk at: " + returnedPath + " (also scanned local fallback directories)");
-                    }
-                }
+                throw new Error("Could not find rendered preview file on disk at: " + returnedPath);
             }
 
             const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });

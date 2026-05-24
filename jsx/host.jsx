@@ -333,117 +333,7 @@ var ArcCanvas = {
     }
 };
 
-// --- SECTION 3: ANIMATOR-CONTROL-CENTRIC TIMELINE EXPRESSION SUITE ---
-var ArcRigger = {
-    /**
-     * Creates a slider controller layer and applies an expression linking to it.
-     * 
-     * @param {number} layerIndex Target layer index inside the active composition.
-     * @param {string} propertyName Name of the property (e.g. "Position", "Scale").
-     * @param {string} rigName Name prefix for the control rig Null Layer.
-     * @param {string} controlName Name of the specific slider control (e.g. "Frequency").
-     * @param {number} defaultValue Initial value for the slider control.
-     * @param {string} expressionTemplate Expression string to write on the target property.
-     */
-    createSliderRig: function (layerRef, propertyName, rigName, controlName, defaultValue, expressionTemplate) {
-        var comp = app.project.activeItem;
-        if (!comp || !(comp instanceof CompItem)) {
-            return "Error: Active composition not found.";
-        }
 
-        app.beginUndoGroup("ArcEditor Edit: " + rigName);
-        try {
-            var targetLayer = ArcEditor.resolveLayer(layerRef);
-            if (!targetLayer) {
-                app.endUndoGroup();
-                return "Error: Target layer " + layerRef + " not found.";
-            }
-
-            // 1. Locate or create the Null Control Layer
-            var controlLayerName = rigName + " Controls";
-            var controlLayer = null;
-            for (var i = 1; i <= comp.numLayers; i++) {
-                if (comp.layer(i).name === controlLayerName) {
-                    controlLayer = comp.layer(i);
-                    break;
-                }
-            }
-
-            if (!controlLayer) {
-                controlLayer = comp.layers.addNull();
-                controlLayer.name = controlLayerName;
-                controlLayer.label = 9; // Green color tag for high visibility
-            }
-
-            // Move control layer to the top of the timeline
-            controlLayer.moveToBeginning();
-
-            // 2. Add the Slider Control effect to the Null Layer if not present
-            var effectGroup = controlLayer.property("Effects");
-            var sliderEffect = effectGroup.property(controlName);
-            if (!sliderEffect) {
-                sliderEffect = effectGroup.addProperty("ADBE Slider Control");
-                sliderEffect.name = controlName;
-                sliderEffect.property(1).setValue(defaultValue);
-            }
-
-            // 3. Apply expression to target layer property
-            var targetProperty = targetLayer.property(propertyName);
-            if (!targetProperty) {
-                app.endUndoGroup();
-                return "Error: Property '" + propertyName + "' not found on layer " + targetLayer.name;
-            }
-
-            targetProperty.expression = expressionTemplate;
-            targetProperty.expressionEnabled = true;
-
-            app.endUndoGroup();
-            return "Success: Control '" + controlLayerName + "' linked to " + targetLayer.name + "." + propertyName;
-        } catch (err) {
-            app.endUndoGroup();
-            return "Error during script execution: " + err.toString();
-        }
-    },
-
-    /**
-     * Adds an extra slider control to an existing Control layer.
-     */
-    addSliderToRig: function (rigName, controlName, defaultValue) {
-        var comp = app.project.activeItem;
-        if (!comp || !(comp instanceof CompItem)) return "Error: Comp not found.";
-
-        app.beginUndoGroup("Add Controller Slider");
-        try {
-            var controlLayerName = rigName + " Controls";
-            var controlLayer = null;
-            for (var i = 1; i <= comp.numLayers; i++) {
-                if (comp.layer(i).name === controlLayerName) {
-                    controlLayer = comp.layer(i);
-                    break;
-                }
-            }
-
-            if (!controlLayer) {
-                app.endUndoGroup();
-                return "Error: Control rig '" + controlLayerName + "' not found.";
-            }
-
-            var effectGroup = controlLayer.property("Effects");
-            var sliderEffect = effectGroup.property(controlName);
-            if (!sliderEffect) {
-                sliderEffect = effectGroup.addProperty("ADBE Slider Control");
-                sliderEffect.name = controlName;
-                sliderEffect.property(1).setValue(defaultValue);
-            }
-
-            app.endUndoGroup();
-            return "Success: Slider '" + controlName + "' added to '" + controlLayerName + "'.";
-        } catch (err) {
-            app.endUndoGroup();
-            return "Error adding slider: " + err.toString();
-        }
-    }
-};
 
 // --- SECTION 4: THE HIGH-LEVEL EDITING & COMPOSITING SUITE ---
 var ArcEditor = {
@@ -467,6 +357,14 @@ var ArcEditor = {
             }
         }
 
+        // Normalize stringified integer IDs up-front
+        if (typeof layerRef === "string") {
+            var numericId = parseInt(layerRef, 10);
+            if (!isNaN(numericId) && String(numericId) === layerRef) {
+                layerRef = numericId;
+            }
+        }
+
         // If layerRef is a number (ID or index)
         if (typeof layerRef === "number") {
             // Check for unique persistent layer ID first
@@ -481,17 +379,8 @@ var ArcEditor = {
             }
         }
 
-        // If layerRef is a string
+        // If layerRef is a string (exact name matching)
         if (typeof layerRef === "string") {
-            var numericId = parseInt(layerRef, 10);
-            if (!isNaN(numericId)) {
-                for (var i = 1; i <= comp.numLayers; i++) {
-                    if (comp.layer(i).id === numericId) {
-                        return comp.layer(i);
-                    }
-                }
-            }
-
             var matches = [];
             for (var i = 1; i <= comp.numLayers; i++) {
                 if (comp.layer(i).name === layerRef) {

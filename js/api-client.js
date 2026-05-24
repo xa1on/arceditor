@@ -157,15 +157,12 @@ Here is the ExtendScript to build it:
 
 \`\`\`javascript
 (function() {
-    var result = ArcRigger.createSliderRig(
-        1, 
-        "Scale", 
-        "Bounce Rig", 
-        "Bounce Elasticity", 
-        15, 
-        "var f = thisComp.layer('Bounce Rig Controls').effect('Bounce Elasticity')('Slider'); [100 + Math.sin(time * f) * 10, 100 + Math.sin(time * f) * 10]"
-    );
-    return result;
+    var layer = ArcEditor.resolveLayer(1);
+    var rig = ArcEditor.createLayer("Null", "Bounce Rig");
+    ArcEditor.applyEffect(rig, "ADBE Slider Control", "Bounce Elasticity");
+    ArcEditor.setPropertyValue(rig, ["Effects", "Bounce Elasticity", "Slider"], 15);
+    ArcEditor.setPropertyExpression(layer, "Scale", "var f = thisComp.layer('Bounce Rig Controls').effect('Bounce Elasticity')('Slider'); [100 + Math.sin(time * f) * 10, 100 + Math.sin(time * f) * 10]");
+    return "Success";
 })();
 \`\`\`
 `;

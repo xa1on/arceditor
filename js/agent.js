@@ -224,7 +224,7 @@ async function runAgenticExecutionLoop(userText) {
         chatHistory.push({ role: "user", content: userText });
     }
 
-    pruneHistoryContexts();
+    await pruneHistoryContexts();
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
@@ -485,25 +485,63 @@ function formatMarkdown(text) {
     return result;
 }
 
-function pruneHistoryContexts() {
-    // 1. Strip massive stale timeline and effects catalogs from past conversational turns
-    for (let i = 0; i < chatHistory.length - 1; i++) {
-        const msg = chatHistory[i];
-        if (msg.role === "user") {
-            if (typeof msg.content === "string") {
-                msg.content = stripEnrichedPayloads(msg.content);
-            } else if (Array.isArray(msg.content)) {
-                msg.content = msg.content.map(part => {
-                    if (part.type === "text" && part.text) {
-                        return { ...part, text: stripEnrichedPayloads(part.text) };
-                    }
-                    return part;
-                });
+async function pruneHistoryContexts() {
+    // 1. If history length is greater than 10 messages (5 turns), trigger memory condensation
+    const maxThreshold = 10;
+    if (chatHistory.length > maxThreshold) {
+        // Keep the last 6 messages (3 turns) completely raw as active transactional context
+        const rawTurnsCount = 6;
+        const cutIndex = chatHistory.length - rawTurnsCount;
+        
+        // Retrieve the older turns to be compressed
+        const olderMessages = chatHistory.slice(0, cutIndex);
+        const youngerMessages = chatHistory.slice(cutIndex);
+        
+        // Filter out any older system compression messages to avoid bloat and infinite loops
+        const messagesToCondense = olderMessages.filter(msg => {
+            return !(msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0);
+        });
+        
+        // Find if there is an existing summary block in the older history that we can carry forward or merge
+        const existingSummaryBlock = olderMessages.find(msg => {
+            return msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0;
+        });
+        const existingSummaryText = existingSummaryBlock ? existingSummaryBlock.content : "";
+        
+        if (messagesToCondense.length > 0) {
+            try {
+                console.log("[ArcEditor] Initiating background memory condensation...");
+                
+                // Formulate the condensation request prompt
+                const systemPrompt = "You are a memory compressor. Summarize the following video editing dialog history into a single-paragraph log of creative intents, assets added, and controller rigs configured. Keep it extremely concise (under 60 words). " +
+                                     (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
+                                     "\nDo NOT output any technical ExtendScript JSX code or observation JSON logs; summarize only the high-level accomplishments.";
+                                     
+                const compressionMessages = [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: JSON.stringify(messagesToCondense) }
+                ];
+                
+                // Call LLM API (non-streaming, direct response)
+                const summaryText = await callLLMApi(compressionMessages);
+                const condensedBlock = {
+                    role: "system",
+                    content: `[Condensed Session History: ${summaryText.trim()}]`
+                };
+                
+                // Reconstruct the chat history
+                chatHistory = [condensedBlock, ...youngerMessages];
+                console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", chatHistory.length);
+            } catch (err) {
+                console.error("[ArcEditor] Background memory condensation failed:", err);
+                // Fallback to sliding window pruner if LLM call fails
+                fallbackSlidingWindowPrune();
             }
         }
     }
+}
 
-    // 2. Sliding window turn management: Cap maximum history messages in memory.
+function fallbackSlidingWindowPrune() {
     const maxHistoryMessages = 12;
     if (chatHistory.length > maxHistoryMessages) {
         let cutIndex = chatHistory.length - maxHistoryMessages;
@@ -514,16 +552,6 @@ function pruneHistoryContexts() {
             chatHistory = chatHistory.slice(cutIndex);
         }
     }
-}
-
-function stripEnrichedPayloads(text) {
-    if (!text) return "";
-    let clean = text;
-    // Surgically strip the massive serialized Active Timeline Context block
-    clean = clean.replace(/\n\n\[Active Timeline Context: [\s\S]*?\]/g, "");
-    // Surgically strip the massive serialized Installed Effects Catalog block
-    clean = clean.replace(/\n\n\[Installed Effects Catalog [\s\S]*?\]/g, "");
-    return clean;
 }
 
 function writeToDebugLog(category, text) {
