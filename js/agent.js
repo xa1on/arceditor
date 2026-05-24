@@ -17,7 +17,9 @@ You are helping the user automate compositions, edit/splice video assets, manage
   4. Your step-by-step editing and assembly plan.
 - **ON-DEMAND CONTEXT PRINCIPLE**: You do NOT automatically receive active timeline metadata or installed effects list in the initial prompt. Whenever the user requests timeline automation, layer styling, or asset placements, you MUST first invoke the \`getTimelineContext\` or \`getInstalledEffects\` tool in a JSON block to fetch the live context before generating your reasoning and ExtendScript.
 - **NEVER GUESS EFFECT MATCH NAMES**: You must NEVER guess, assume, or hardcode match names for effects or plugins (e.g., do NOT assume Glow is "ADBE Glow"). If a request involves applying an effect, you MUST first invoke the \`getInstalledEffects\` tool, search the returned JSON catalog for the user's requested display name, and retrieve its exact, active \`matchName\` (e.g., searching 'Glow' will yield 'ADBE Glo2'). Always write the exact retrieved matchName in your generated scripts.
-- Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks.
+- **THE MULTI-SCRIPT REACT SYSTEM**: Rather than trying to combine everything into a single massive script, you are highly encouraged to use a step-by-step ReAct strategy. You can execute an ExtendScript code block, inspect the outcome returned in the next turn's Observation, and then write subsequent scripts or correction loops.
+- **EXPLICIT WORK VERIFICATION**: Always write verification scripts or use getTimelineContext to actively double-check that your modifications did exactly what was requested (e.g., verify that a layer exists, has the correct parent, has the correct blending mode, or that expressions are properly bound) before concluding. Never say you are finished until you have verified your results!
+- Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks or JSON tool calls.
 
 *** CRITICAL SYSTEM PHILOSOPHY: GENERAL VIDEO EDITING & DYNAMIC ORCHESTRATION ***
 - COMPOSITION ASSEMBLY & VIDEO EDITING:
@@ -286,6 +288,7 @@ async function runAgenticExecutionLoop(userText) {
                 continue; // Run next loop turn immediately
 
             } else if (jsxBlock) {
+                toolTurns++;
                 updateConsolePane(jsxBlock);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
@@ -312,12 +315,17 @@ async function runAgenticExecutionLoop(userText) {
                     // Don't send the base64 image again to save bandwidth
                     visualFrameInput = null;
                 } else {
-                    // Success! Display results to the user
-                    isCompleted = true;
-                    // Format response markdown nicely
+                    // Success! Feed back as an observation and continue the loop for further actions or verification
+                    activeContext.push({
+                        role: "user",
+                        content: `Observation:\nExtendScript executed successfully with result: "${execResult}"\n\nPlease verify if the work is complete, or proceed with your next planned steps.`
+                    });
+
                     aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);">✓ Timeline edits successfully applied! Check After Effects.</div>`;
+                        `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>ExtendScript Executed:</strong><br>${execResult}</div>` +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
                 }
+                continue; // Run next turn in ReAct loop to let LLM choose next step or conclude
             } else {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
