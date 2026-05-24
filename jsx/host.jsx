@@ -74,6 +74,23 @@ var ArcInspector = {
             layers: []
         };
 
+        // Retrieve composition markers
+        data.compMarkers = [];
+        try {
+            var markerProp = comp.markerProperty;
+            if (markerProp && markerProp.numKeys > 0) {
+                for (var m = 1; m <= markerProp.numKeys; m++) {
+                    var mVal = markerProp.keyValue(m);
+                    data.compMarkers.push({
+                        time: Math.round(markerProp.keyTime(m) * 100) / 100,
+                        comment: mVal.comment || "",
+                        duration: Math.round(mVal.duration * 100) / 100,
+                        label: mVal.label || 0
+                    });
+                }
+            }
+        } catch (e) { }
+
         // Inspect all layers
         for (var i = 1; i <= comp.numLayers; i++) {
             var layer = comp.layer(i);
@@ -118,6 +135,23 @@ var ArcInspector = {
                 outPoint: layer.outPoint,
                 hasParent: layer.parent !== null
             };
+
+            // Retrieve layer markers
+            layerData.markers = [];
+            try {
+                var layerMarkerProp = layer.property("Marker") || layer.property("ADBE Marker");
+                if (layerMarkerProp && layerMarkerProp.numKeys > 0) {
+                    for (var lm = 1; lm <= layerMarkerProp.numKeys; lm++) {
+                        var lmVal = layerMarkerProp.keyValue(lm);
+                        layerData.markers.push({
+                            time: Math.round(layerMarkerProp.keyTime(lm) * 100) / 100,
+                            comment: lmVal.comment || "",
+                            duration: Math.round(lmVal.duration * 100) / 100,
+                            label: lmVal.label || 0
+                        });
+                    }
+                }
+            } catch (e) { }
 
             // Add specific details for selected layer properties (reduces JSON payload size)
             if (layer.selected) {
@@ -687,6 +721,183 @@ var ArcEditor = {
 
         layer.blendMode = mode;
         return true;
+    },
+
+    /**
+     * Adds a marker to either the active composition or a specific layer.
+     */
+    addMarker: function (type, layerRef, time, comment, duration, labelIndex) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+        var markerVal = new MarkerValue(comment || "");
+        if (duration !== undefined && duration !== null) {
+            markerVal.duration = duration;
+        }
+        if (labelIndex !== undefined && labelIndex !== null) {
+            markerVal.label = labelIndex;
+        }
+
+        if (type && type.toLowerCase() === "comp") {
+            comp.markerProperty.setValueAtTime(time, markerVal);
+            return "Success: Added composition marker at " + time + "s";
+        } else {
+            var layer = this.resolveLayer(layerRef);
+            if (!layer) throw new Error("Layer not found for marker: " + layerRef);
+            var markerProp = layer.property("Marker") || layer.property("ADBE Marker");
+            if (!markerProp) throw new Error("Layer does not support markers.");
+            markerProp.setValueAtTime(time, markerVal);
+            return "Success: Added layer marker at " + time + "s on layer '" + layer.name + "'";
+        }
+    },
+
+    /**
+     * Deletes a marker from the active composition or a layer by index or time.
+     */
+    deleteMarker: function (type, layerRef, timeOrIndex) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+        var markerProp;
+        if (type && type.toLowerCase() === "comp") {
+            markerProp = comp.markerProperty;
+        } else {
+            var layer = this.resolveLayer(layerRef);
+            if (!layer) throw new Error("Layer not found: " + layerRef);
+            markerProp = layer.property("Marker") || layer.property("ADBE Marker");
+        }
+
+        if (!markerProp) throw new Error("Marker property not found.");
+
+        if (typeof timeOrIndex === "number") {
+            var keyIndex = -1;
+            if (timeOrIndex > 0 && timeOrIndex <= markerProp.numKeys && timeOrIndex % 1 === 0) {
+                keyIndex = timeOrIndex;
+            } else {
+                for (var i = 1; i <= markerProp.numKeys; i++) {
+                    if (Math.abs(markerProp.keyTime(i) - timeOrIndex) < 0.01) {
+                        keyIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (keyIndex !== -1) {
+                markerProp.removeKey(keyIndex);
+                return "Success: Deleted marker key " + keyIndex;
+            }
+            throw new Error("No marker found matching: " + timeOrIndex);
+        } else if (typeof timeOrIndex === "string") {
+            var idx = parseInt(timeOrIndex, 10);
+            if (!isNaN(idx) && idx > 0 && idx <= markerProp.numKeys) {
+                markerProp.removeKey(idx);
+                return "Success: Deleted marker key " + idx;
+            }
+            throw new Error("Invalid marker index: " + timeOrIndex);
+        } else {
+            throw new Error("Invalid timeOrIndex parameter type.");
+        }
+    },
+
+    /**
+     * Sets keyframe easing with high-level presets or custom Bezier parameters.
+     */
+    setKeyframeEasing: function (layerRef, propPath, keyIndex, easeInPresetOrCustom, easeOutPresetOrCustom) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = this.resolveLayer(layerRef);
+        var prop = this.resolveProperty(layer, propPath);
+
+        if (!prop || !prop.numKeys || keyIndex < 1 || keyIndex > prop.numKeys) {
+            throw new Error("Invalid keyframe index " + keyIndex + " on property.");
+        }
+
+        var parseEase = function (val, isOut) {
+            var res = { speed: 0, influence: 33.33, isLinear: false };
+            if (!val) return res;
+
+            if (typeof val === "string") {
+                var s = val.toLowerCase();
+                if (s === "linear") {
+                    res.isLinear = true;
+                } else if (s === "easyease" || s === "easy" || s === "easyease") {
+                    res.speed = 0;
+                    res.influence = 33.33;
+                } else if (s === "easeinquad" || s === "easein") {
+                    res.speed = 0;
+                    res.influence = isOut ? 33.33 : 50.0;
+                } else if (s === "easeoutquad" || s === "easeout") {
+                    res.speed = 0;
+                    res.influence = isOut ? 50.0 : 33.33;
+                } else if (s === "easeinoutquad" || s === "easeinout") {
+                    res.speed = 0;
+                    res.influence = 50.0;
+                } else if (s === "easeincubic") {
+                    res.speed = 0;
+                    res.influence = isOut ? 33.33 : 66.66;
+                } else if (s === "easeoutcubic") {
+                    res.speed = 0;
+                    res.influence = isOut ? 66.66 : 33.33;
+                } else if (s === "easeinoutcubic") {
+                    res.speed = 0;
+                    res.influence = 66.66;
+                } else if (s === "easeinexpo" || s === "easeinstrong") {
+                    res.speed = 0;
+                    res.influence = isOut ? 33.33 : 90.0;
+                } else if (s === "easeoutexpo" || s === "easeoutstrong") {
+                    res.speed = 0;
+                    res.influence = isOut ? 90.0 : 33.33;
+                } else if (s === "easeinoutexpo" || s === "easeinoutstrong") {
+                    res.speed = 0;
+                    res.influence = 90.0;
+                }
+            } else if (typeof val === "object") {
+                if (val.speed !== undefined) res.speed = Number(val.speed);
+                if (val.influence !== undefined) res.influence = Number(val.influence);
+                if (val.linear === true || val.isLinear === true) res.isLinear = true;
+            }
+            return res;
+        };
+
+        var parsedIn = parseEase(easeInPresetOrCustom, false);
+        var parsedOut = parseEase(easeOutPresetOrCustom, true);
+
+        if (parsedIn.isLinear || parsedOut.isLinear) {
+            var inType = parsedIn.isLinear ? KeyframeInterpolationType.LINEAR : KeyframeInterpolationType.BEZIER;
+            var outType = parsedOut.isLinear ? KeyframeInterpolationType.LINEAR : KeyframeInterpolationType.BEZIER;
+            prop.setInterpolationTypeAtKey(keyIndex, inType, outType);
+            if (parsedIn.isLinear && parsedOut.isLinear) {
+                return "Success: Applied linear interpolation to keyframe " + keyIndex + " on property '" + prop.name + "'";
+            }
+        }
+
+        var dimensionality = 1;
+        try {
+            if (prop.value instanceof Array) {
+                var isSpatial = false;
+                try {
+                    if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL || 
+                        prop.propertyValueType === PropertyValueType.ThreeD_SPATIAL) {
+                        isSpatial = true;
+                    }
+                } catch (ev) { }
+
+                if (!isSpatial) {
+                    dimensionality = prop.value.length;
+                }
+            }
+        } catch (e) { }
+
+        var inEaseArray = [];
+        var outEaseArray = [];
+
+        for (var d = 0; d < dimensionality; d++) {
+            inEaseArray.push(new KeyframeEase(parsedIn.speed, parsedIn.influence));
+            outEaseArray.push(new KeyframeEase(parsedOut.speed, parsedOut.influence));
+        }
+
+        prop.setTemporalEaseAtKey(keyIndex, inEaseArray, outEaseArray);
+        return "Success: Applied easing to keyframe " + keyIndex + " on property '" + prop.name + "'";
     }
 };
 

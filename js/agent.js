@@ -115,6 +115,32 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`layerRef\`: Layer unique ID (integer), name (string), or index (integer).
     - Returns: Native After Effects Layer object.
 
+11. \`ArcEditor.addMarker(type, layerRef, time, comment, duration, labelIndex)\`
+    - Description: Adds a marker to the active composition timeline or an individual layer.
+    - Parameters:
+      * \`type\`: String. "comp" (for composition marker) or "layer" (for layer marker).
+      * \`layerRef\`: Layer unique ID, name, or index (ignored if type is "comp", pass \`null\`).
+      * \`time\`: Number. Time in seconds from timeline start.
+      * \`comment\`: (Optional) String text description inside the marker.
+      * \`duration\`: (Optional) Number duration in seconds (defaults to \`0\`).
+      * \`labelIndex\`: (Optional) Integer label color index (0 to 16, e.g. 1 for Red, 9 for Green).
+
+12. \`ArcEditor.deleteMarker(type, layerRef, timeOrIndex)\`
+    - Description: Deletes a marker from the active composition or a specific layer.
+    - Parameters:
+      * \`type\`: String. "comp" or "layer".
+      * \`layerRef\`: Layer unique ID, name, or index (ignored if type is "comp").
+      * \`timeOrIndex\`: Number or String. 1-based marker index (integer) or the exact time (number in seconds) of the marker to remove.
+
+13. \`ArcEditor.setKeyframeEasing(layerRef, propPath, keyIndex, easeIn, easeOut)\`
+    - Description: Sets high-level ease curve presets or custom Bezier weights on an existing keyframe.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index.
+      * \`propPath\`: String name (e.g. "Position", "Opacity") or Array path (e.g. \`["Transform", "Scale"]\`).
+      * \`keyIndex\`: Integer 1-based keyframe index.
+      * \`easeIn\`: String preset name (\`"linear"\`, \`"easyEase"\`, \`"easeInQuad"\`, \`"easeOutQuad"\`, \`"easeInOutQuad"\`, \`"easeInExpo"\`, \`"easeOutExpo"\`, \`"easeInOutExpo"\`) OR custom Bezier object \`{ speed: Number, influence: Number }\`.
+      * \`easeOut\`: String preset name OR custom Bezier object \`{ speed: Number, influence: Number }\`.
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -318,6 +344,15 @@ async function executeToolCalls(jsonStr) {
                 jsxCommand = `(function() { var l = ArcEditor.precompose(${JSON.stringify(refs)}, "${params.precompName}", ${params.moveAllAttributes !== false}); return "Success: Created precomposition layer '" + l.name + "' at index " + l.index; })()`;
             } else if (toolName === "setLayerBlendMode") {
                 jsxCommand = `(function() { ArcEditor.setLayerBlendMode(${serializedRef}, "${params.blendModeName}"); return "Success: Set blend mode to " + "${params.blendModeName}" + " on layer " + ${serializedRef}; })()`;
+            } else if (toolName === "addMarker") {
+                jsxCommand = `(function() { return ArcEditor.addMarker("${params.type}", ${serializedRef}, ${params.time}, ${params.comment ? `"${params.comment.replace(/"/g, '\\"')}"` : 'null'}, ${params.duration !== undefined && params.duration !== null ? params.duration : 'null'}, ${params.labelIndex !== undefined && params.labelIndex !== null ? params.labelIndex : 'null'}); })()`;
+            } else if (toolName === "deleteMarker") {
+                const serializedTimeOrIndex = typeof params.timeOrIndex === "string" ? `"${params.timeOrIndex.replace(/"/g, '\\"')}"` : params.timeOrIndex;
+                jsxCommand = `(function() { return ArcEditor.deleteMarker("${params.type}", ${serializedRef}, ${serializedTimeOrIndex}); })()`;
+            } else if (toolName === "setKeyframeEasing") {
+                const easeInVal = typeof params.easeIn === "string" ? `"${params.easeIn}"` : JSON.stringify(params.easeIn);
+                const easeOutVal = typeof params.easeOut === "string" ? `"${params.easeOut}"` : JSON.stringify(params.easeOut);
+                jsxCommand = `(function() { return ArcEditor.setKeyframeEasing(${serializedRef}, ${JSON.stringify(params.propPath)}, ${params.keyIndex}, ${easeInVal}, ${easeOutVal}); })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
@@ -379,6 +414,10 @@ function formatMarkdown(text) {
 
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
         return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
+    });
+
+    result = result.replace(/&lt;thinking&gt;([\s\S]*?)$/g, (match, thoughts) => {
+        return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
 
     return result;
