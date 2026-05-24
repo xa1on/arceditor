@@ -48,10 +48,13 @@
             <div id="pane-console" class="view-pane">
                 <div class="console-wrapper">
                     <div class="console-header">
-                        <span>Last Script Executed</span>
-                        <button id="btn-clear-console" class="txt-btn">Clear</button>
+                        <span>JSX Console (Editable Scratchpad)</span>
+                        <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
+                            <button id="btn-run-console" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Execute Script</button>
+                            <button id="btn-clear-console" class="txt-btn">Clear</button>
+                        </div>
                     </div>
-                    <pre id="console-output" class="code-viewport"><code>// No scripts executed yet. Run a prompt in Chat.</code></pre>
+                    <textarea id="console-output" class="code-viewport" spellcheck="false" placeholder="// Paste or edit ExtendScript code here, then click Execute Script..." style="width: 100%; height: 100%; border: none; background: transparent; outline: none; resize: none;"></textarea>
                 </div>
             </div>
         </main>
@@ -78,13 +81,14 @@
         </div>
 
         <!-- FOOTER INPUT -->
-        <footer class="app-footer">
+        <footer class="app-footer" style="display: flex; flex-direction: column;">
             <div class="input-glow-wrapper">
                 <textarea id="chat-input" placeholder="Ask Arc to rig or animate..." rows="1"></textarea>
                 <button id="btn-send" class="send-btn" disabled>
                     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </div>
+            <div id="input-meta-info" class="input-meta-info">Context: 0 chars (~0 tokens)</div>
         </footer>
 
         <!-- DRAWER SETTINGS PANEL -->

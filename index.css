@@ -337,6 +337,19 @@ body {
     user-select: text;
 }
 
+textarea.code-viewport {
+    width: 100% !important;
+    flex: 1 !important;
+    height: auto !important;
+    background: transparent !important;
+    border: none !important;
+    resize: none !important;
+    outline: none !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    color: #ce9178 !important; /* Premium string color for editing scripts */
+}
+
 /* ATTACHMENT PREVIEW DOCK */
 .attachment-dock {
     display: flex;
@@ -636,4 +649,47 @@ select.form-input {
         transform: scale(1.0);
         opacity: 1;
     }
+}
+
+/* Collapsible Reasoning Details */
+.reasoning-details {
+    background-color: #161616;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    margin-bottom: 8px;
+    padding: 6px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.reasoning-details summary {
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    color: var(--text-accent);
+}
+
+.reasoning-details summary:hover {
+    color: var(--text-primary);
+}
+
+.reasoning-content {
+    margin-top: 6px;
+    border-top: 1px solid #282828;
+    padding-top: 6px;
+    font-family: var(--font-sans);
+    line-height: 1.4;
+    white-space: pre-wrap;
+}
+
+/* Tiny Unobtrusive Context Size Tracker */
+.input-meta-info {
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    padding-left: 2px;
+    text-align: left;
+    user-select: none;
+    opacity: 0.7;
 }

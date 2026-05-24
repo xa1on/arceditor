@@ -54,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadSettings();
     initUI();
     validateConnection();
+    updateContextSizeInfo();
 });
 
 // --- SECTION 1: SETTINGS & LOCAL PERSISTENCE ---
@@ -408,9 +409,21 @@ const SYSTEM_INSTRUCTIONS = `
 You are ArcEditor, an expert technical director, motion designer, and automation harness for Adobe After Effects.
 You are helping the user build dynamic, scalable expression rigs and automations directly inside After Effects.
 
+*** MANDATORY RESPONSE FORMATTING: STEP-BY-STEP REASONING ***
+- You MUST always start your response with a step-by-step thinking block enclosed within the custom HTML tags: \`<thinking>...\` and \`</thinking>\`.
+- Inside this block, clearly detail:
+  1. Your analysis of the active timeline context.
+  2. Whether any existing Null Controls layers or effects should be re-used.
+  3. Your technical design plan and the specific math/easings you will employ.
+- Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks.
+
 *** CRITICAL DESIGN PHILOSOPHY: THE ANIMATOR-CONTROL-CENTRIC PARADIGM ***
 - LLMs lack the visual timing and subjective taste of a human animator. Never bake complex static keyframes on individual text/shape/footage layers unless explicitly asked.
 - Prioritize creating Expression Control Slider Rigs to give animators 100% control over timing, intensity, colors, and layout.
+- RIG EDITING & ASSET RE-USE (AVOID DUPLICATE LAYERS):
+  * If the user requests adjustments, changes, or fine-tuning to a previously built rig, inspect the active composition timeline JSON first.
+  * DO NOT create duplicate Null Controls layers (like "Logo Controls") or duplicate slider effects if they are already present in the comp. Re-use and target them.
+  * If the user wants to adjust spacing, layout directions, or easing, rewrite/update the expressions on the target layers or update keyframes on the existing Progress slider rather than creating new layers or redundant rigs.
 - PREFER THE "PROGRESS" SLIDER ANIMATION METHOD:
   * Instead of embedding animation math (like time-based ease curves) directly inside property expressions (which locks the animation to code), create a "Progress" slider control (0-100 or 0-1) on the Controls Null layer.
   * Write expressions on target layer properties that interpolate values based on this Progress slider (e.g., \`ease(progress, 0, 100, startPos, endPos)\`).
@@ -425,6 +438,8 @@ You are helping the user build dynamic, scalable expression rigs and automations
 *** EXTENDSCRIPT SYNTAX & AE DOM RULES ***
 - ExtendScript is based on an old JavaScript ES3 engine. NEVER use modern ES6 features like 'const', 'let', '=>' arrow functions, 'Promise', or default parameters inside the JSX code blocks. Use standard 'var' and standard ES3/ES5 syntax.
 - AE Collections are 1-indexed. The first item in an array or collection is index 1 (e.g., app.project.item(1)).
+- **NEVER use After Effects' native \`comp.layer(id)\` directly with a numeric layer ID** (e.g. \`comp.layer(26)\`). Native AE scripting only accepts indices or names in \`comp.layer()\`, so passing an ID will retrieve the wrong index or crash.
+- **ALWAYS use \`ArcEditor.resolveLayer(layerRef)\`** to retrieve a layer safely from its ID, name, or index in loops (e.g., \`var layer = ArcEditor.resolveLayer(layerIds[i]);\`).
 - Property Match Names must be handled carefully. Colors are represented as an array of 4 floats: [R, G, B, A] normalized between 0.0 and 1.0 (e.g. red is [1, 0, 0, 1]).
 - If a layer is parented, its Position is in local coordinates relative to the parent.
 - Always wrap scripts in a clean try-catch block and return meaningful error messages.
@@ -498,6 +513,12 @@ Layer Referencing (Avoid Fragile Indices!):
    - Description: Changes layer blend mode.
    - Parameters:
      * \`blendModeName\`: "ADD", "SCREEN", "MULTIPLY", "OVERLAY", "DARKEN", "LIGHTEN", "DIFFERENCE", "NORMAL".
+
+10. \`ArcEditor.resolveLayer(layerRef)\`
+    - Description: Safely resolves any layer ID, name, or index into a native After Effects Layer object.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID (integer), name (string), or index (integer).
+    - Returns: Native After Effects Layer object.
 
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
@@ -760,6 +781,8 @@ async function runAgenticExecutionLoop(userText) {
         chatHistory.push({ role: "user", content: enrichedPrompt });
     }
     
+    updateContextSizeInfo();
+    
     const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
     const aiBubble = document.getElementById(aiBubbleId);
     
@@ -852,6 +875,8 @@ async function runAgenticExecutionLoop(userText) {
         aiBubble.querySelector(".message-content").innerHTML += 
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
     }
+    
+    updateContextSizeInfo();
 }
 
 function extractJSXCode(text) {
@@ -954,8 +979,28 @@ function initUI() {
     tabConsole.addEventListener("click", () => switchTab("console"));
     
     btnClearConsole.addEventListener("click", () => {
-        document.getElementById("console-output").querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
+        const output = document.getElementById("console-output");
+        if (output.tagName === "TEXTAREA") {
+            output.value = "";
+        } else if (output.querySelector("code")) {
+            output.querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
+        }
     });
+    
+    const btnRunConsole = document.getElementById("btn-run-console");
+    if (btnRunConsole) {
+        btnRunConsole.addEventListener("click", async () => {
+            const output = document.getElementById("console-output");
+            const code = output.tagName === "TEXTAREA" ? output.value : output.querySelector("code").innerText;
+            if (!code.trim()) {
+                addSystemMessage("Console is empty. Type some ExtendScript to run.");
+                return;
+            }
+            addSystemMessage("Executing custom ExtendScript...");
+            const result = await evalScriptAsync(code);
+            addSystemMessage(`Console Exec Result: ${result}`);
+        });
+    }
     
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
     
@@ -971,11 +1016,12 @@ function initUI() {
         }
     });
     
-    // Auto-resize chat input textarea
+    // Auto-resize chat input textarea and update context count
     chatInput.addEventListener("input", function() {
         this.style.height = "auto";
         this.style.height = (this.scrollHeight - 6) + "px";
         btnSend.disabled = !this.value.trim();
+        updateContextSizeInfo();
     });
     
     btnSend.addEventListener("click", triggerUserMessage);
@@ -1054,14 +1100,51 @@ function addSystemMessage(text) {
     scroller.scrollTop = scroller.scrollHeight;
 }
 
+function updateContextSizeInfo() {
+    const metaElement = document.getElementById("input-meta-info");
+    if (!metaElement) return;
+    
+    const inputText = document.getElementById("chat-input").value;
+    
+    // Calculate history size
+    let historyCharCount = 0;
+    for (const msg of chatHistory) {
+        if (typeof msg.content === "string") {
+            historyCharCount += msg.content.length;
+        } else if (Array.isArray(msg.content)) {
+            for (const part of msg.content) {
+                if (part.type === "text" && part.text) {
+                    historyCharCount += part.text.length;
+                } else if (part.type === "image_url" && part.image_url && part.image_url.url) {
+                    historyCharCount += part.image_url.url.length;
+                }
+            }
+        }
+    }
+    
+    let totalChars = historyCharCount + inputText.length;
+    if (attachedFrameBase64) {
+        totalChars += attachedFrameBase64.length;
+    }
+    
+    const estTokens = Math.round(totalChars / 4);
+    metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)`;
+}
+
 function clearAttachmentDock() {
     attachedFrameBase64 = null;
     document.getElementById("attached-preview-img").src = "";
     document.getElementById("frame-attachment-preview").classList.add("hidden");
+    updateContextSizeInfo();
 }
 
 function updateConsolePane(code) {
-    document.getElementById("console-output").querySelector("code").innerText = code;
+    const output = document.getElementById("console-output");
+    if (output.tagName === "TEXTAREA") {
+        output.value = code;
+    } else if (output.querySelector("code")) {
+        output.querySelector("code").innerText = code;
+    }
 }
 
 // Premium Markdown formatting helper that supports segment-scoped code viewports
@@ -1092,5 +1175,12 @@ function formatMarkdown(text) {
         }
     }
     
-    return segments.join("");
+    let result = segments.join("");
+    
+    // Parse thinking blocks into native AE collapsible details accordion
+    result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
+        return `<details class="reasoning-details"><summary>Reasoning / Rigging Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
+    });
+    
+    return result;
 }

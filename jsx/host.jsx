@@ -32,6 +32,9 @@ var ArcJSON = {
     }
 };
 
+// Map global JSON alias to ArcJSON (ExtendScript lacks native JSON)
+var JSON = ArcJSON;
+
 // --- SECTION 1: TIMELINE & COMPOSITION INSPECTOR ---
 var ArcInspector = {
     /**
@@ -511,6 +514,28 @@ var ArcEditor = {
         prop.expression = expressionStr;
         prop.expressionEnabled = true;
         return true;
+    },
+    
+    /**
+     * Retrieves the raw expression string of a property.
+     */
+    getPropertyExpression: function(layerRef, propPath) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = this.resolveLayer(layerRef);
+        var prop = this.resolveProperty(layer, propPath);
+        return prop.expression;
+    },
+    
+    /**
+     * Retrieves the current value of a property.
+     */
+    getPropertyValue: function(layerRef, propPath) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = this.resolveLayer(layerRef);
+        var prop = this.resolveProperty(layer, propPath);
+        return prop.value;
     },
     
     /**
