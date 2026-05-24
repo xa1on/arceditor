@@ -74,6 +74,21 @@ var ArcInspector = {
             layers: []
         };
 
+        // Retrieve all available project bin assets
+        data.projectAssets = [];
+        try {
+            for (var p = 1; p <= app.project.numItems; p++) {
+                var pItem = app.project.item(p);
+                if ((pItem instanceof FootageItem || pItem instanceof CompItem) && pItem.id !== comp.id) {
+                    data.projectAssets.push({
+                        id: pItem.id,
+                        name: pItem.name,
+                        type: pItem instanceof CompItem ? "Composition" : "Footage"
+                    });
+                }
+            }
+        } catch (err) { }
+
         // Retrieve composition markers
         data.compMarkers = [];
         try {
@@ -994,6 +1009,68 @@ var ArcEditor = {
 
         sourceTextProp.setValue(textDocument);
         return "Success: Applied typography properties to Text layer '" + layer.name + "'";
+    },
+
+    /**
+     * Adds an existing project item (footage or precomp) to the active timeline composition as a new layer.
+     */
+    addAssetToTimeline: function (assetRef, properties) {
+        if (!assetRef) throw new Error("No asset reference provided.");
+
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            throw new Error("No active composition open.");
+        }
+
+        var projectItem = null;
+        var numericId = parseInt(assetRef, 10);
+
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof FootageItem || item instanceof CompItem) {
+                if (!isNaN(numericId) && item.id === numericId) {
+                    projectItem = item;
+                    break;
+                }
+                if (item.name === assetRef) {
+                    projectItem = item;
+                    break;
+                }
+            }
+        }
+
+        if (!projectItem) {
+            throw new Error("Project asset not found for reference: " + assetRef);
+        }
+
+        app.beginUndoGroup("Add Asset to Timeline");
+        try {
+            var layer = comp.layers.add(projectItem);
+
+            var props = properties || {};
+            if (props.name) {
+                layer.name = props.name;
+            }
+
+            if (props.startTime !== undefined && props.startTime !== null) layer.startTime = Number(props.startTime);
+            if (props.inPoint !== undefined && props.inPoint !== null) layer.inPoint = Number(props.inPoint);
+            if (props.outPoint !== undefined && props.outPoint !== null) layer.outPoint = Number(props.outPoint);
+
+            if (props.parentLayerRef) {
+                var pLayer = this.resolveLayer(props.parentLayerRef);
+                if (pLayer) layer.parent = pLayer;
+            }
+
+            if (props.blendMode) {
+                this.setLayerBlendMode(layer, props.blendMode);
+            }
+
+            app.endUndoGroup();
+            return "Success: Added project asset '" + projectItem.name + "' as layer '" + layer.name + "' at index " + layer.index;
+        } catch (err) {
+            app.endUndoGroup();
+            throw err;
+        }
     }
 };
 

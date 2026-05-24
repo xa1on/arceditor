@@ -156,6 +156,19 @@ Layer Referencing (Avoid Fragile Indexes!):
         - \`leading\`: (Optional) Number line leading.
         - \`alignment\`: (Optional) String alignment (\`"left"\`, \`"center"\`, \`"right"\`). Maps to ParagraphJustification.
 
+15. \`ArcEditor.addAssetToTimeline(assetRef, properties)\`
+    - Description: Adds an existing asset from the project bin (e.g. footage, audio, or another precomposition) to the active composition timeline as a new layer.
+    - Context Awareness: Available project panel assets are automatically listed in the \`[Active Timeline Context]\` payload under \`projectAssets\`. You MUST inspect \`projectAssets\` first to verify if the asset is present in the project before trying to add it.
+    - Parameters:
+      * \`assetRef\`: Project item ID (integer) or exact item name string (e.g. \`"logo.png"\`).
+      * \`properties\`: (Optional) Configuration JSON object supporting any subset of these keys:
+        - \`name\`: (Optional) String custom layer name.
+        - \`startTime\`: (Optional) Number time in seconds to place layer inPoints on the timeline.
+        - \`inPoint\`: (Optional) Number footage inPoint.
+        - \`outPoint\`: (Optional) Number footage outPoint.
+        - \`parentLayerRef\`: (Optional) Parent layer ID, name, or index.
+        - \`blendMode\`: (Optional) String blend mode (e.g. \`"ADD"\`, \`"SCREEN"\`, \`"MULTIPLY"\`, \`"NORMAL"\`).
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -370,6 +383,9 @@ async function executeToolCalls(jsonStr) {
                 jsxCommand = `(function() { return ArcEditor.setKeyframeEasing(${serializedRef}, ${JSON.stringify(params.propPath)}, ${params.keyIndex}, ${easeInVal}, ${easeOutVal}); })()`;
             } else if (toolName === "setTextProperties") {
                 jsxCommand = `(function() { return ArcEditor.setTextProperties(${serializedRef}, ${JSON.stringify(params.properties)}); })()`;
+            } else if (toolName === "addAssetToTimeline") {
+                const serializedAssetRef = typeof params.assetRef === "string" ? `"${params.assetRef.replace(/"/g, '\\"')}"` : params.assetRef;
+                jsxCommand = `(function() { return ArcEditor.addAssetToTimeline(${serializedAssetRef}, ${JSON.stringify(params.properties)}); })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
