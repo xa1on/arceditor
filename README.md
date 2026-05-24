@@ -1,129 +1,60 @@
-# ArcEditor 🌌
+# ArcEditor
 
-ArcEditor is a premium, context-aware AI co-pilot and automated rigging harness designed as a **100% self-contained Adobe After Effects Extension**. 
-
-By leveraging Adobe CEP's mixed-context runtime, ArcEditor blends a sleek, glassmorphic HTML5/CSS panel in the frontend with a powerful embedded **Node.js** execution loop in the backend. It connects directly to local open-source models via **Lemonade** (supporting multimodal vision completions) or leading cloud APIs (Gemini, OpenAI, Anthropic), allowing you to automate repetitive tasks while retaining complete artistic control.
-
----
+ArcEditor is a context-aware AI co-pilot and editing harness built as a self-contained Adobe After Effects CEP Extension. It integrates a native dark theme HTML5 panel with an embedded Node.js execution loop to communicate with local models (via Lemonade) or cloud APIs (Gemini, OpenAI, Anthropic).
 
 ## Key Features
 
-* **100% Self-Contained**: Runs entirely within a single After Effects panel. No background terminal servers or terminal installations are required for the editor.
-* **The Animator-Control-Centric Paradigm**: Instead of baking millions of locked, un-editable keyframes, the agent creates **Null Control Layers** rigged with native **Expression Controls (Sliders, Angles, Colors)** and links them to properties via clean, live expressions. You keep 100% artistic control.
-* **Visual Context (Canvas Eye)**: Captures your active timeline frame on-demand as a PNG, translates it to a base64 payload, and feeds it into local or cloud visual LLMs so they can "see" your composition.
-* **Structural Context (Timeline Inspector)**: Automatically inspects and serializes active composition layer stacks, property parameters, and dimensions into JSON to provide strict structural prompts for the LLM.
-* **ReAct Self-Correction**: If a generated ExtendScript triggers an exception in After Effects, ArcEditor catches the error, feeds it back to the LLM, and automatically corrects and re-runs it without user intervention.
-* **AE 2020+ Backwards Compatibility**: Designed using Node 12-safe standards, fully compatible with After Effects 2020 through After Effects 2026.
+* **Self-Contained**: Runs entirely inside a single After Effects panel. No background terminal servers or external terminal processes are required.
+* **Expression-Centric Controls**: Instead of writing dense, locked keyframes, the agent creates Null Control Layers populated with Sliders, Angles, and Color effects, linking properties via dynamic expressions to preserve user control.
+* **Visual Context**: Captures the active timeline frame on-demand as a PNG, encoding it to base64 to allow VLMs to review composition alignment, text layout, and visual flow.
+* **Structural Context**: Inspector automatically serializes composition details, layer properties, dimensions, and unique layer IDs into JSON, providing exact timeline context for the agent.
+* **ReAct Self-Correction**: If a generated ExtendScript encounters an error, the panel catches the exception, pushes it back to the model, and automatically runs a corrected iteration.
+* **AE 2020+ Compatibility**: Uses Node 12 standards compatible with After Effects 2020 through 2026.
 
----
-
-## Visual File Structure
+## Directory Structure
 
 ```text
 /agentic-video-editing
 ├── /CSXS
-│     └── manifest.xml        # Panel registration, targets AE 17.0+ (CSXS 9.0+)
+│     └── manifest.xml        # Panel registration for AE 17.0+
 ├── /jsx
-│     └── host.jsx            # Core AE scripting suite (inspections, preview rendering, slider rigs)
+│     └── host.jsx            # ExtendScript API suite and inspections
 ├── /lib
-│     └── CSInterface.js      # Adobe CEP integration bridge
-├── index.html                # UI panel layout (Chat pane, settings sheet, code console)
-├── index.css                 # Advanced visual styling, custom scrollbars, and micro-animations
-├── index.js                  # Frontend orchestrator, Node.js connection client, ReAct loop
-├── package.json              # Extension metadata and script packages
-├── setup_dev_mode.ps1        # Admin PowerShell script for automatic registry & symlink setup
-└── README.md                 # Setup & usage instructions
+│     └── CSInterface.js      # Adobe CEP integration library
+├── index.html                # UI panel layout (Chat, settings, code scratchpad)
+├── index.css                 # AE native dark theme layout rules
+├── index.js                  # Frontend client and agent loop orchestration
+├── package.json              # Extension package manifest
+├── setup_dev_mode.ps1        # Admin script for symbolic link and debug registry
+└── README.md                 # Minimal setup guide
 ```
 
----
+## Setup Instructions
 
-## Installation & Configuration
-
-### Option A: Automatic Setup (PowerShell - Recommended)
-1. Close Adobe After Effects.
-2. Open PowerShell as **Administrator**.
-3. Navigate to this directory and run the helper script:
+### Option A: Automatic Setup (PowerShell)
+1. Close After Effects.
+2. Open PowerShell as Administrator.
+3. Run the setup script from the project directory:
    ```powershell
    Set-ExecutionPolicy Bypass -Scope Process
    .\setup_dev_mode.ps1
    ```
-4. This script automatically:
-   - Configures the Windows Registry to run unsigned local extensions (enables Adobe `PlayerDebugMode` across CSXS 9, 10, and 11).
-   - Creates a symbolic link directly from Adobe's extensions directory (`%APPDATA%\Adobe\CEP\extensions\`) pointing back to this workspace.
+This automatically enables Adobe PlayerDebugMode across CSXS 9 to 11 and creates a symbolic link to Adobe's CEP extensions folder.
 
 ### Option B: Manual Setup
-1. Enable Adobe PlayerDebugMode by opening PowerShell and executing:
+1. Enable Adobe PlayerDebugMode:
    ```powershell
    reg add "HKCU\Software\Adobe\CSXS.9" /v PlayerDebugMode /t REG_SZ /d 1 /f
    reg add "HKCU\Software\Adobe\CSXS.10" /v PlayerDebugMode /t REG_SZ /d 1 /f
    reg add "HKCU\Software\Adobe\CSXS.11" /v PlayerDebugMode /t REG_SZ /d 1 /f
    ```
-2. Copy the entire `/agentic-video-editing` directory to Adobe's CEP extensions folder:
-   - Path: `C:\Users\<Your_User>\AppData\Roaming\Adobe\CEP\extensions\com.arceditor\`
-3. Open this folder in terminal and install packages:
-   ```bash
-   npm install
-   ```
+2. Symlink or copy the repository directory to:
+   `%APPDATA%\Adobe\CEP\extensions\com.arceditor\`
 
----
+## Usage Guide
 
-## Quick-Start Usage Guide
-
-1. **Launch After Effects** and open a composition.
-2. Open the extension panel from **Window > Extensions > ArcEditor**.
-3. Click the **API Settings (Gear Icon)** in the header:
-   - Choose your provider: **Lemonade (Local Server)**, **Gemini**, **OpenAI**, or **Anthropic**.
-   - Input your corresponding model name and API keys (API keys are stored locally on your machine in `config.json`).
-   - Click **Save & Apply**.
-4. Check the **Status Indicator Dot** in the header. It will pulse **green** when successfully connected.
-5. Try a prompt!
-   - Select a layer in your timeline.
-   - Click the **Wiggles** quick-chip or type:
-     *"Link the scale of my selected layer to a wiggle expression control slider rig."*
-   - Press **Send**.
-   - The agent will serialize your comp, design the script, execute it inside After Effects, and notify you when complete.
-
----
-
-## The Expression Rigging Philosophy
-
-Instead of baked-keyframe files, ArcEditor writes dynamic expressions linked to expression controls. Here are examples of what the LLM generates automatically:
-
-### 1. Wiggle Rig (Position / Scale / Rotation)
-Creates a null controller with frequency/amplitude sliders and applies:
-```javascript
-var f = thisComp.layer("Wiggle Controls").effect("Frequency")("Slider");
-var a = thisComp.layer("Wiggle Controls").effect("Amplitude")("Slider");
-wiggle(f, a);
-```
-
-### 2. Smooth Inertial Bounce
-Applies a math-based decaying spring bounce that fires automatically on keyframe changes, with sliders on a controller null:
-```javascript
-var amp = thisComp.layer("Bounce Controls").effect("Amplitude")("Slider") / 100;
-var freq = thisComp.layer("Bounce Controls").effect("Frequency")("Slider");
-var decay = thisComp.layer("Bounce Controls").effect("Decay")("Slider");
-
-var n = 0;
-if (numKeys > 0) {
-  n = nearestKey(time).index;
-  if (key(n).time > time) { n--; }
-}
-if (n == 0) {
-  value;
-} else {
-  var t = time - key(n).time;
-  if (t < 0.25) {
-    var v = velocityAtTime(key(n).time - 0.001);
-    value + v * amp * Math.sin(freq * t * 2 * Math.PI) / Math.exp(decay * t);
-  } else {
-    value;
-  }
-}
-```
-
-### 3. Dynamic Visual Canvas Debugging
-Whenever you ask a visual question (e.g. *"Is my text aligned well?"*), click the **See Canvas** button:
-- The panel exports your frame as a PNG.
-- It attaches the frame to your chat prompt.
-- The visual VLM (like Lemonade's visual model or Gemini 1.5) reviews the exact text wrapping, contrast, and layout issues and writes scripts to adjust values dynamically.
+1. Open After Effects and load a composition.
+2. Open **Window > Extensions > ArcEditor**.
+3. Click the gear icon in the header to open settings, select your provider (Lemonade, Gemini, OpenAI, or Anthropic), input your keys, and save.
+4. The status indicator dot in the header will turn green once a successful connection is established.
+5. In the chat, describe your required animation or timeline structure, select target layers if needed, and send.

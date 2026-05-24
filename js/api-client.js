@@ -1,0 +1,341 @@
+/**
+ * ArcEditor API Client Module
+ * Manages http/https connections and abstracts provider compilation formats for cloud and local VLMs.
+ */
+
+function makeRequest(url, method, headers, payload) {
+    return new Promise((resolve, reject) => {
+        if (!httpsClient || !httpClient) {
+            reject(new Error("Node.js network modules (https/http) not loaded."));
+            return;
+        }
+
+        try {
+            const urlObj = new URL(url);
+            const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
+            const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
+
+            const options = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+                path: urlObj.pathname + urlObj.search,
+                method: method,
+                headers: {
+                    ...headers,
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            const req = client.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        resolve(data);
+                    } else {
+                        reject(new Error(`HTTP Error ${res.statusCode}: ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', (err) => {
+                reject(err);
+            });
+
+            if (method !== 'GET' && postData) {
+                req.write(postData);
+            }
+            req.end();
+
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+function makeStreamingRequest(url, method, headers, payload, onChunk) {
+    return new Promise((resolve, reject) => {
+        if (!httpsClient && !httpClient) {
+            reject(new Error("Node.js network modules (https/http) not loaded."));
+            return;
+        }
+
+        try {
+            const urlObj = new URL(url);
+            const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
+            const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
+
+            const options = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+                path: urlObj.pathname + urlObj.search,
+                method: method,
+                headers: {
+                    ...headers,
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            const req = client.request(options, (res) => {
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                    let errData = '';
+                    res.on('data', (chunk) => { errData += chunk; });
+                    res.on('end', () => { reject(new Error(`HTTP Error ${res.statusCode}: ${errData}`)); });
+                    return;
+                }
+
+                let buffer = '';
+                res.on('data', (chunk) => {
+                    buffer += chunk.toString();
+
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line
+
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (!line) continue;
+                        onChunk(line);
+                    }
+                });
+
+                res.on('end', () => {
+                    if (buffer.trim()) {
+                        onChunk(buffer.trim());
+                    }
+                    resolve();
+                });
+            });
+
+            req.on('error', (err) => {
+                reject(err);
+            });
+
+            if (method !== 'GET' && postData) {
+                req.write(postData);
+            }
+            req.end();
+
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+async function callLLMApi(messages, onChunkReceived) {
+    if (!httpsClient && !httpClient) {
+        // Fallback mock mode ONLY inside standalone browsers
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                const text = `Based on your request, I will create a Scale bounce control slider rig to automate the bounce scaling.
+
+Here is the ExtendScript to build it:
+
+\`\`\`javascript
+(function() {
+    var result = ArcRigger.createSliderRig(
+        1, 
+        "Scale", 
+        "Bounce Rig", 
+        "Bounce Elasticity", 
+        15, 
+        "var f = thisComp.layer('Bounce Rig Controls').effect('Bounce Elasticity')('Slider'); [100 + Math.sin(time * f) * 10, 100 + Math.sin(time * f) * 10]"
+    );
+    return result;
+})();
+\`\`\`
+`;
+                if (onChunkReceived) {
+                    let chars = text.split("");
+                    let i = 0;
+                    let interval = setInterval(() => {
+                        if (i < chars.length) {
+                            onChunkReceived(chars.slice(0, i + 1).join(""));
+                            i += 5; // Stream fast in mock
+                        } else {
+                            clearInterval(interval);
+                            resolve(text);
+                        }
+                    }, 30);
+                } else {
+                    resolve(text);
+                }
+            }, 1000);
+        });
+    }
+
+    const headers = { "Content-Type": "application/json" };
+    let payload = {};
+    let targetUrl = apiUrl;
+
+    if (currentProvider === "lemonade" || currentProvider === "openai") {
+        targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
+        if (currentProvider === "openai") {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+        }
+
+        payload = {
+            model: modelName,
+            messages: [
+                { role: "system", content: SYSTEM_INSTRUCTIONS },
+                ...messages
+            ],
+            temperature: 0.2,
+            stream: !!onChunkReceived
+        };
+
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    if (dataStr === "[DONE]") return;
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const content = parsed.choices[0].delta.content;
+                        if (content) {
+                            accumulatedText += content;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch (e) { }
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.choices[0].message.content;
+        }
+
+    } else if (currentProvider === "gemini") {
+        // Target Gemini generateContent API
+        let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
+        targetUrl = `${apiUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
+        if (onChunkReceived) {
+            targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
+        }
+
+        // Convert messages to Gemini format
+        const contents = messages.map(m => {
+            const parts = [];
+            if (typeof m.content === "string") {
+                parts.push({ text: m.content });
+            } else if (Array.isArray(m.content)) {
+                m.content.forEach(c => {
+                    if (c.type === "text") parts.push({ text: c.text });
+                    if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        parts.push({
+                            inlineData: {
+                                mimeType: "image/png",
+                                data: base64Data
+                            }
+                        });
+                    }
+                });
+            }
+            return {
+                role: m.role === "user" ? "user" : "model",
+                parts: parts
+            };
+        });
+
+        payload = {
+            systemInstruction: {
+                parts: [{ text: SYSTEM_INSTRUCTIONS }]
+            },
+            contents: contents,
+            generationConfig: {
+                temperature: 0.2
+            }
+        };
+
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        const text = parsed.candidates[0].content.parts[0].text;
+                        if (text) {
+                            accumulatedText += text;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch (e) { }
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.candidates[0].content.parts[0].text;
+        }
+
+    } else if (currentProvider === "anthropic") {
+        // Target Claude API
+        targetUrl = targetUrl.endsWith("/messages") ? targetUrl : `${targetUrl}/v1/messages`;
+        headers["x-api-key"] = apiKey;
+        headers["anthropic-version"] = "2023-06-01";
+
+        // Convert vision base64 input to Anthropic's block format
+        const anthropicMessages = messages.map(m => {
+            let contentArr = [];
+            if (typeof m.content === "string") {
+                contentArr.push({ type: "text", text: m.content });
+            } else if (Array.isArray(m.content)) {
+                m.content.forEach(c => {
+                    if (c.type === "text") contentArr.push({ type: "text", text: c.text });
+                    if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        contentArr.push({
+                            type: "image",
+                            source: {
+                                type: "base64",
+                                media_type: "image/png",
+                                data: base64Data
+                            }
+                        });
+                    }
+                });
+            }
+            return {
+                role: m.role === "user" ? "user" : "assistant",
+                content: contentArr
+            };
+        });
+
+        payload = {
+            model: modelName,
+            system: SYSTEM_INSTRUCTIONS,
+            messages: anthropicMessages,
+            max_tokens: 4096,
+            temperature: 0.2,
+            stream: !!onChunkReceived
+        };
+
+        if (onChunkReceived) {
+            let accumulatedText = "";
+            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                if (line.startsWith("data: ")) {
+                    const dataStr = line.substring(6).trim();
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
+                            accumulatedText += parsed.delta.text;
+                            onChunkReceived(accumulatedText);
+                        }
+                    } catch (e) { }
+                }
+            });
+            return accumulatedText;
+        } else {
+            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            const responseData = JSON.parse(responseText);
+            return responseData.content[0].text;
+        }
+    }
+}

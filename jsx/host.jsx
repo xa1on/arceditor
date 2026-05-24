@@ -176,6 +176,7 @@ var ArcInspector = {
     }
 };
 
+// --- SECTION 2: VISUAL CANVAS RENDERER & PNG EXPORTER ---
 var ArcCanvas = {
     /**
      * Saves the current frame of the active composition to a temporary PNG file.
