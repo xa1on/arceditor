@@ -846,7 +846,7 @@ async function runAgenticExecutionLoop(userText) {
                     isCompleted = true;
                     // Format response markdown nicely
                     aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);">✓ Rigging successfully loaded! Check Effects panel in After Effects.</div>`;
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);">✓ Timeline edits successfully applied! Check After Effects.</div>`;
                 }
             } else {
                 // LLM replied without code blocks (informational answer)
@@ -963,7 +963,6 @@ function initUI() {
     
     // Quick Chips
     const chipCapture = document.getElementById("chip-capture");
-    const chipInspect = document.getElementById("chip-inspect");
     
     btnSettings.addEventListener("click", () => toggleSettingsDrawer(true));
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
@@ -999,16 +998,20 @@ function initUI() {
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
     
     chipCapture.addEventListener("click", captureCompositionFrame);
-    chipInspect.addEventListener("click", async () => {
-        addBubble("user", "Inspect current composition structure.");
-        addSystemMessage("Loading active timeline context...");
-        const context = await getTimelineContext();
-        if (context.error) {
-            addBubble("ai", `Timeline Inspector failed:\n\n${context.error}`);
-        } else {
-            addBubble("ai", `Successfully serialised timeline! Active Comp: **${context.name}** (${context.width}x${context.height}, ${context.frameRate} fps). Layers: **${context.numLayers}**.`);
-        }
-    });
+    const btnInspectComp = document.getElementById("btn-inspect-comp");
+    if (btnInspectComp) {
+        btnInspectComp.addEventListener("click", async () => {
+            toggleSettingsDrawer(false); // Close settings drawer to let user see chat messages
+            addBubble("user", "Test Timeline Connection");
+            addSystemMessage("Loading active timeline context...");
+            const context = await getTimelineContext();
+            if (context.error) {
+                addBubble("ai", `Timeline Inspector failed:\n\n${context.error}`);
+            } else {
+                addBubble("ai", `Successfully connected to After Effects! Active Comp: **${context.name}** (${context.width}x${context.height}, ${context.frameRate} fps). Layers: **${context.numLayers}**.`);
+            }
+        });
+    }
     
     // Auto-resize chat input textarea and update context count
     chatInput.addEventListener("input", function() {
@@ -1187,7 +1190,7 @@ function formatMarkdown(text) {
     
     // Parse thinking blocks into native AE collapsible details accordion
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
-        return `<details class="reasoning-details"><summary>Reasoning / Rigging Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
+        return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
     
     return result;

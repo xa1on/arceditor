@@ -727,3 +727,25 @@ select.form-input {
     color: var(--text-primary);
     line-height: 1.4;
 }
+
+/* Secondary Button (Translucent Border) for Diagnostics */
+.btn-secondary {
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    cursor: pointer;
+    text-align: center;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-tab-hover);
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+}

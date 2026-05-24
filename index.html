@@ -74,10 +74,6 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                 <span>See Canvas</span>
             </button>
-            <button id="chip-inspect" class="chip">
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                <span>Read Comp</span>
-            </button>
         </div>
 
         <!-- FOOTER INPUT -->
@@ -130,8 +126,9 @@
                             </div>
                         </div>
 
-                        <div class="drawer-actions">
+                        <div class="drawer-actions" style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
                             <button type="submit" id="btn-save-settings" class="btn-primary">Save & Apply</button>
+                            <button type="button" id="btn-inspect-comp" class="btn-secondary">Test Connection</button>
                         </div>
                     </form>
                 </div>

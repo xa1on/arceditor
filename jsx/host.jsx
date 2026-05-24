@@ -1,7 +1,7 @@
 /**
  * ArcEditor Host ExtendScript Suite
  * Provides native After Effects scripting APIs for structural inspection,
- * visual frame rendering, and the Animator-Control-Centric expressions rigging suite.
+ * visual frame rendering, and the Animator-Control-Centric timeline expressions automation suite.
  * Compatible with After Effects 2020+ (ES3 Engine).
  */
 
@@ -223,7 +223,7 @@ var ArcCanvas = {
     }
 };
 
-// --- SECTION 3: ANIMATOR-CONTROL-CENTRIC RIGGING SUITE ---
+// --- SECTION 3: ANIMATOR-CONTROL-CENTRIC TIMELINE EXPRESSION SUITE ---
 var ArcRigger = {
     /**
      * Creates a slider controller layer and applies an expression linking to it.
@@ -241,7 +241,7 @@ var ArcRigger = {
             return "Error: Active composition not found.";
         }
         
-        app.beginUndoGroup("ArcEditor Rigging: " + rigName);
+        app.beginUndoGroup("ArcEditor Edit: " + rigName);
         try {
             var targetLayer = ArcEditor.resolveLayer(layerRef);
             if (!targetLayer) {
@@ -288,10 +288,10 @@ var ArcRigger = {
             targetProperty.expressionEnabled = true;
             
             app.endUndoGroup();
-            return "Success: Rig '" + controlLayerName + "' linked to " + targetLayer.name + "." + propertyName;
+            return "Success: Control '" + controlLayerName + "' linked to " + targetLayer.name + "." + propertyName;
         } catch(err) {
             app.endUndoGroup();
-            return "Error during rigging execution: " + err.toString();
+            return "Error during script execution: " + err.toString();
         }
     },
     
