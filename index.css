@@ -159,10 +159,10 @@ body {
     font-weight: 600;
 }
 
-/* VIEWPORT PANES */
 .content-viewport {
     flex: 1;
-    position: relative;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     margin: 8px;
     background-color: var(--bg-input);
@@ -171,22 +171,16 @@ body {
 }
 
 .view-pane {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.15s ease;
-    display: flex;
+    display: none;
     flex-direction: column;
+    flex: 1;
+    height: 100%;
     background-color: var(--bg-input);
+    overflow: hidden;
 }
 
 .view-pane.active {
-    opacity: 1;
-    visibility: visible;
+    display: flex;
 }
 
 /* CHAT AREA */
@@ -343,6 +337,9 @@ textarea.code-viewport {
     flex: 1 !important;
     height: 100% !important;
     min-height: 0 !important;
+    max-height: none !important;
+    font-family: var(--font-mono) !important;
+    font-size: 10px !important;
     background: transparent !important;
     border: none !important;
     resize: none !important;
@@ -450,7 +447,7 @@ textarea.code-viewport {
     border-color: var(--border-focus);
 }
 
-textarea {
+textarea#chat-input {
     flex: 1;
     background: none;
     border: none;
