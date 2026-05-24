@@ -7,23 +7,23 @@
 
 // Custom lightweight JSON stringifier (since ExtendScript lacks native JSON)
 var ArcJSON = {
-    stringify: function(obj) {
-        var t = typeof(obj);
+    stringify: function (obj) {
+        var t = typeof (obj);
         if (obj === null || obj === undefined) return "null";
         if (t === "string") {
             return '"' + obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
         }
         if (t === "number" || t === "boolean") return String(obj);
-        
+
         var json = [];
         var isArr = (obj instanceof Array || (obj && obj.constructor === Array));
-        
+
         for (var n in obj) {
             if (obj.hasOwnProperty(n)) {
                 var v = obj[n];
-                var t2 = typeof(v);
+                var t2 = typeof (v);
                 if (t2 === "function" || t2 === "undefined") continue;
-                
+
                 var val = this.stringify(v);
                 json.push((isArr ? "" : '"' + n + '":') + val);
             }
@@ -35,17 +35,26 @@ var ArcJSON = {
 // Map global JSON alias to ArcJSON (ExtendScript lacks native JSON)
 var JSON = ArcJSON;
 
+// Extend Layer prototype to support .effect("Effect Name") in ExtendScript scripting
+if (typeof Layer !== "undefined" && !Layer.prototype.effect) {
+    Layer.prototype.effect = function (name) {
+        var effects = this.property("Effects") || this.property("ADBE Effect Parade");
+        if (effects) return effects.property(name);
+        return null;
+    };
+}
+
 // --- SECTION 1: TIMELINE & COMPOSITION INSPECTOR ---
 var ArcInspector = {
     /**
      * Serializes structural details of the active composition and its layers.
      */
-    getActiveCompositionData: function() {
+    getActiveCompositionData: function () {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
             return ArcJSON.stringify({ error: "No active composition found. Please open a composition in the timeline." });
         }
-        
+
         var data = {
             id: comp.id,
             name: comp.name,
@@ -57,12 +66,12 @@ var ArcInspector = {
             numLayers: comp.numLayers,
             layers: []
         };
-        
+
         // Inspect all layers
         for (var i = 1; i <= comp.numLayers; i++) {
             var layer = comp.layer(i);
             var layerType = "Unknown";
-            
+
             // Determine precise layer type
             if (layer instanceof TextLayer) {
                 layerType = "Text";
@@ -80,6 +89,8 @@ var ArcInspector = {
                 } else if (layer.source.mainSource instanceof SolidSource) {
                     if (layer.nullLayer) {
                         layerType = "Null";
+                    } else if (layer.adjustmentLayer) {
+                        layerType = "Adjustment";
                     } else {
                         layerType = "Solid";
                     }
@@ -87,7 +98,7 @@ var ArcInspector = {
             } else if (layer.nullLayer) {
                 layerType = "Null";
             }
-            
+
             var layerData = {
                 index: layer.index,
                 id: layer.id,
@@ -100,30 +111,30 @@ var ArcInspector = {
                 outPoint: layer.outPoint,
                 hasParent: layer.parent !== null
             };
-            
+
             // Add specific details for selected layer properties (reduces JSON payload size)
             if (layer.selected) {
                 layerData.position = this.safePropertyValue(layer.property("Position"));
                 layerData.scale = this.safePropertyValue(layer.property("Scale"));
                 layerData.opacity = this.safePropertyValue(layer.property("Opacity"));
-                
+
                 if (layerType === "Text") {
                     try {
                         layerData.textString = layer.property("Source Text").value.text;
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             }
-            
+
             data.layers.push(layerData);
         }
-        
+
         return ArcJSON.stringify(data);
     },
-    
+
     /**
      * Safely reads a property's value or expression.
      */
-    safePropertyValue: function(prop) {
+    safePropertyValue: function (prop) {
         if (!prop) return null;
         var info = {
             hasExpression: prop.expressionEnabled,
@@ -138,10 +149,30 @@ var ArcInspector = {
             } else {
                 info.value = Math.round(prop.value * 100) / 100;
             }
-        } catch(e) {
+        } catch (e) {
             info.value = "Unreadable";
         }
         return info;
+    },
+
+    /**
+     * Serializes all installed effects, including built-ins and third-party plugins.
+     */
+    getInstalledEffects: function () {
+        var list = {};
+        if (typeof app.effects !== "undefined" && app.effects) {
+            for (var i = 0; i < app.effects.length; i++) {
+                var fx = app.effects[i];
+                if (!fx) continue;
+                var cat = fx.category || "Other";
+                if (!list[cat]) list[cat] = [];
+                list[cat].push({
+                    displayName: fx.displayName,
+                    matchName: fx.matchName
+                });
+            }
+        }
+        return ArcJSON.stringify(list);
     }
 };
 
@@ -151,24 +182,24 @@ var ArcCanvas = {
      * 
      * @param {string} tempPath Absolute file path to save the preview PNG to.
      */
-    saveCurrentFrame: function(tempPath) {
+    saveCurrentFrame: function (tempPath) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
             return "Error: No active composition found to render.";
         }
-        
+
         try {
             var file = new File(tempPath);
-            
+
             // Ensure parent directory exists inside AE
             if (!file.parent.exists) {
                 file.parent.create();
             }
-            
+
             var saveFn = comp.saveFrameToPng || comp.saveFrameToPNG;
             if (typeof saveFn === "function") {
                 saveFn.call(comp, comp.time, file);
-                
+
                 if (file.exists) {
                     return "Success: " + file.fsName;
                 } else {
@@ -182,43 +213,43 @@ var ArcCanvas = {
             return "Error rendering frame: " + err.toString();
         }
     },
-    
+
     /**
      * Fallback frame exporter utilizing Render Queue (100% universal across all AE versions)
      */
-    renderQueueFallback: function(comp, file) {
+    renderQueueFallback: function (comp, file) {
         var rq = app.project.renderQueue;
         var item = rq.items.add(comp);
         item.timeSpanStart = comp.time;
         item.timeSpanDuration = comp.frameDuration;
-        
+
         var om = item.outputModule(1);
         try {
             om.applyTemplate("PNG Sequence");
-        } catch(e) {
+        } catch (e) {
             try {
                 om.applyTemplate("Lossless");
-            } catch(e2) {}
+            } catch (e2) { }
         }
         om.file = file;
-        
+
         rq.render();
         item.remove(); // Clean up Render Queue item
-        
+
         if (file.exists) {
             return "Success: " + file.fsName;
         }
-        
+
         // Suffix check: Render Queue often appends frame number suffixes (e.g. arc_preview_00000.png)
         var dir = file.parent;
         var baseName = file.name.substring(0, file.name.lastIndexOf("."));
         var ext = file.name.substring(file.name.lastIndexOf("."));
-        
+
         var matchFiles = dir.getFiles(baseName + "*" + ext);
         if (matchFiles && matchFiles.length > 0) {
             return "Success: " + matchFiles[0].fsName;
         }
-        
+
         return "Error: Render Queue completed but file could not be found on disk.";
     }
 };
@@ -235,12 +266,12 @@ var ArcRigger = {
      * @param {number} defaultValue Initial value for the slider control.
      * @param {string} expressionTemplate Expression string to write on the target property.
      */
-    createSliderRig: function(layerRef, propertyName, rigName, controlName, defaultValue, expressionTemplate) {
+    createSliderRig: function (layerRef, propertyName, rigName, controlName, defaultValue, expressionTemplate) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
             return "Error: Active composition not found.";
         }
-        
+
         app.beginUndoGroup("ArcEditor Edit: " + rigName);
         try {
             var targetLayer = ArcEditor.resolveLayer(layerRef);
@@ -248,7 +279,7 @@ var ArcRigger = {
                 app.endUndoGroup();
                 return "Error: Target layer " + layerRef + " not found.";
             }
-            
+
             // 1. Locate or create the Null Control Layer
             var controlLayerName = rigName + " Controls";
             var controlLayer = null;
@@ -258,16 +289,16 @@ var ArcRigger = {
                     break;
                 }
             }
-            
+
             if (!controlLayer) {
                 controlLayer = comp.layers.addNull();
                 controlLayer.name = controlLayerName;
                 controlLayer.label = 9; // Green color tag for high visibility
             }
-            
+
             // Move control layer to the top of the timeline
             controlLayer.moveToBeginning();
-            
+
             // 2. Add the Slider Control effect to the Null Layer if not present
             var effectGroup = controlLayer.property("Effects");
             var sliderEffect = effectGroup.property(controlName);
@@ -276,32 +307,32 @@ var ArcRigger = {
                 sliderEffect.name = controlName;
                 sliderEffect.property(1).setValue(defaultValue);
             }
-            
+
             // 3. Apply expression to target layer property
             var targetProperty = targetLayer.property(propertyName);
             if (!targetProperty) {
                 app.endUndoGroup();
                 return "Error: Property '" + propertyName + "' not found on layer " + targetLayer.name;
             }
-            
+
             targetProperty.expression = expressionTemplate;
             targetProperty.expressionEnabled = true;
-            
+
             app.endUndoGroup();
             return "Success: Control '" + controlLayerName + "' linked to " + targetLayer.name + "." + propertyName;
-        } catch(err) {
+        } catch (err) {
             app.endUndoGroup();
             return "Error during script execution: " + err.toString();
         }
     },
-    
+
     /**
      * Adds an extra slider control to an existing Control layer.
      */
-    addSliderToRig: function(rigName, controlName, defaultValue) {
+    addSliderToRig: function (rigName, controlName, defaultValue) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) return "Error: Comp not found.";
-        
+
         app.beginUndoGroup("Add Controller Slider");
         try {
             var controlLayerName = rigName + " Controls";
@@ -312,12 +343,12 @@ var ArcRigger = {
                     break;
                 }
             }
-            
+
             if (!controlLayer) {
                 app.endUndoGroup();
                 return "Error: Control rig '" + controlLayerName + "' not found.";
             }
-            
+
             var effectGroup = controlLayer.property("Effects");
             var sliderEffect = effectGroup.property(controlName);
             if (!sliderEffect) {
@@ -325,10 +356,10 @@ var ArcRigger = {
                 sliderEffect.name = controlName;
                 sliderEffect.property(1).setValue(defaultValue);
             }
-            
+
             app.endUndoGroup();
             return "Success: Slider '" + controlName + "' added to '" + controlLayerName + "'.";
-        } catch(err) {
+        } catch (err) {
             app.endUndoGroup();
             return "Error adding slider: " + err.toString();
         }
@@ -340,16 +371,16 @@ var ArcEditor = {
     /**
      * Resolves a layer reference (ID, Name, Index, or Layer Object) safely.
      */
-    resolveLayer: function(layerRef) {
+    resolveLayer: function (layerRef) {
         if (!layerRef) return null;
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        
+
         // If layerRef is already a Layer object
         if (layerRef instanceof Layer || (layerRef && typeof layerRef.index === "number")) {
             return layerRef;
         }
-        
+
         // If layerRef is a number (ID or index)
         if (typeof layerRef === "number") {
             // Check for unique persistent layer ID first
@@ -363,7 +394,7 @@ var ArcEditor = {
                 return comp.layer(layerRef);
             }
         }
-        
+
         // If layerRef is a string
         if (typeof layerRef === "string") {
             var numericId = parseInt(layerRef, 10);
@@ -374,7 +405,7 @@ var ArcEditor = {
                     }
                 }
             }
-            
+
             var matches = [];
             for (var i = 1; i <= comp.numLayers; i++) {
                 if (comp.layer(i).name === layerRef) {
@@ -390,7 +421,7 @@ var ArcEditor = {
                 return matches[0];
             }
         }
-        
+
         throw new Error("Could not resolve layer reference: " + layerRef);
     },
 
@@ -401,14 +432,14 @@ var ArcEditor = {
      * @param {string} name Custom name for the new layer.
      * @param {Array} size Optional [width, height] array. Defaults to comp size.
      */
-    createLayer: function(type, name, size) {
+    createLayer: function (type, name, size) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        
+
         var w = (size && size[0]) ? size[0] : comp.width;
         var h = (size && size[1]) ? size[1] : comp.height;
         var layer;
-        
+
         if (type === "Null") {
             layer = comp.layers.addNull(comp.duration);
             layer.name = name;
@@ -419,39 +450,55 @@ var ArcEditor = {
             layer.name = name;
         } else if (type === "Solid") {
             layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
+        } else if (type === "Adjustment") {
+            layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
+            var layerId = layer.id;
+            layer.adjustmentLayer = true;
+            // Re-retrieve valid layer object reference using unique persistent ID
+            for (var i = 1; i <= comp.numLayers; i++) {
+                if (comp.layer(i).id === layerId) {
+                    layer = comp.layer(i);
+                    break;
+                }
+            }
         } else if (type === "Camera") {
-            layer = comp.layers.addCamera(name, [w/2, h/2]);
+            layer = comp.layers.addCamera(name, [w / 2, h / 2]);
         } else if (type === "Light") {
-            layer = comp.layers.addLight(name, [w/2, h/2]);
+            layer = comp.layers.addLight(name, [w / 2, h / 2]);
         } else {
             throw new Error("Unsupported layer type: " + type);
         }
         return layer;
     },
-    
+
     /**
      * Applies a native After Effects effect to a layer and sets its name.
      */
-    applyEffect: function(layerRef, effectMatchName, effectDisplayName) {
+    applyEffect: function (layerRef, effectMatchName, effectDisplayName) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
-        
+
+        // Auto-correct common LLM prefix typo "ABDE" -> "ADBE" (short for Adobe)
+        if (effectMatchName && typeof effectMatchName === "string" && effectMatchName.indexOf("ABDE") === 0) {
+            effectMatchName = "ADBE" + effectMatchName.substring(4);
+        }
+
         var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
         if (!effectGroup) throw new Error("Effects parameter not supported on this layer.");
-        
+
         var fx = effectGroup.addProperty(effectMatchName);
         if (effectDisplayName) {
             fx.name = effectDisplayName;
         }
         return fx;
     },
-    
+
     /**
      * Resolves a property path safely on a layer (e.g. "Position" or ["Transform", "Position"]).
      */
-    resolveProperty: function(layer, propPath) {
+    resolveProperty: function (layer, propPath) {
         if (!layer) throw new Error("Invalid layer parameter.");
         var prop;
         if (typeof propPath === "string") {
@@ -479,21 +526,21 @@ var ArcEditor = {
                 if (prop.dimensionsSeparated) {
                     prop.dimensionsSeparated = false;
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         return prop;
     },
-    
+
     /**
      * Sets value on a property at a specific time or overall.
      */
-    setPropertyValue: function(layerRef, propPath, value, time) {
+    setPropertyValue: function (layerRef, propPath, value, time) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
-        
+
         if (time !== undefined && time !== null) {
             prop.setValueAtTime(time, value);
         } else {
@@ -501,54 +548,54 @@ var ArcEditor = {
         }
         return true;
     },
-    
+
     /**
      * Sets expression on a property.
      */
-    setPropertyExpression: function(layerRef, propPath, expressionStr) {
+    setPropertyExpression: function (layerRef, propPath, expressionStr) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
-        
+
         prop.expression = expressionStr;
         prop.expressionEnabled = true;
         return true;
     },
-    
+
     /**
      * Retrieves the raw expression string of a property.
      */
-    getPropertyExpression: function(layerRef, propPath) {
+    getPropertyExpression: function (layerRef, propPath) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
         return prop.expression;
     },
-    
+
     /**
      * Retrieves the current value of a property.
      */
-    getPropertyValue: function(layerRef, propPath) {
+    getPropertyValue: function (layerRef, propPath) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
         return prop.value;
     },
-    
+
     /**
      * Sets multiple keyframes on a property with optional Easy Ease.
      */
-    setKeyframes: function(layerRef, propPath, times, values, easeIn, easeOut) {
+    setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         var prop = this.resolveProperty(layer, propPath);
-        
+
         prop.setValuesAtTimes(times, values);
-        
+
         // Easing curves
         if (easeIn || easeOut) {
             for (var k = 1; k <= times.length; k++) {
@@ -558,43 +605,43 @@ var ArcEditor = {
         }
         return true;
     },
-    
+
     /**
      * Parents one layer to another on the timeline.
      */
-    parentLayer: function(layerRef, parentLayerRef) {
+    parentLayer: function (layerRef, parentLayerRef) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var child = this.resolveLayer(layerRef);
         var parent = parentLayerRef ? this.resolveLayer(parentLayerRef) : null;
         if (!child) throw new Error("Child layer not found: " + layerRef);
-        
+
         child.parent = parent;
         return true;
     },
-    
+
     /**
      * Trims layer timing and start times on timeline.
      */
-    trimLayer: function(layerRef, inPoint, outPoint, startTime) {
+    trimLayer: function (layerRef, inPoint, outPoint, startTime) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
-        
+
         if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
         if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
         if (outPoint !== undefined && outPoint !== null) layer.outPoint = outPoint;
         return true;
     },
-    
+
     /**
      * Precomposes a list of layer references into a precomposition.
      */
-    precompose: function(layerRefs, precompName, moveAllAttributes) {
+    precompose: function (layerRefs, precompName, moveAllAttributes) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
-        
+
         var indices = [];
         for (var i = 0; i < layerRefs.length; i++) {
             var layer = this.resolveLayer(layerRefs[i]);
@@ -602,20 +649,20 @@ var ArcEditor = {
                 indices.push(layer.index);
             }
         }
-        
+
         var newCompLayer = comp.layers.precompose(indices, precompName, moveAllAttributes !== false);
         return newCompLayer;
     },
-    
+
     /**
      * Sets blend mode of a layer.
      */
-    setLayerBlendMode: function(layerRef, blendModeName) {
+    setLayerBlendMode: function (layerRef, blendModeName) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
-        
+
         var mode = BlendMode.NORMAL;
         var m = blendModeName.toUpperCase();
         if (m === "ADD") mode = BlendMode.ADD;
@@ -629,7 +676,7 @@ var ArcEditor = {
         else if (m === "SATURATION") mode = BlendMode.SATURATION;
         else if (m === "COLOR") mode = BlendMode.COLOR;
         else if (m === "LUMINOSITY") mode = BlendMode.LUMINOSITY;
-        
+
         layer.blendMode = mode;
         return true;
     }

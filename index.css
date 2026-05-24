@@ -19,6 +19,7 @@
     --text-accent: #33b5e5;     /* Safe, technical cyan highlight */
     --text-warning: #ffb300;    /* Amber warning colors */
     --text-error: #ff4444;
+    --text-success: #00c851;    /* Vibrant success green */
     
     --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
     --font-mono: Consolas, "Courier New", monospace;
@@ -213,6 +214,7 @@ body {
     display: flex;
     flex-direction: column;
     max-width: 90%;
+    position: relative;
 }
 
 .message.user {
@@ -228,6 +230,57 @@ body {
     border-radius: var(--border-radius-md);
     font-size: 11px;
     word-break: break-word;
+}
+
+.copy-bubble-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(20, 20, 20, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius-sm);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    pointer-events: auto;
+    z-index: 10;
+    padding: 0;
+}
+
+.message:hover .copy-bubble-btn {
+    opacity: 1;
+}
+
+.copy-bubble-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.copy-bubble-btn.copied {
+    border-color: var(--text-success) !important;
+    background: rgba(0, 200, 81, 0.15) !important;
+    color: var(--text-success) !important;
+}
+
+.copy-bubble-btn svg {
+    transition: transform 0.1s ease;
+}
+
+.copy-bubble-btn:active svg {
+    transform: scale(0.9);
+}
+
+/* Hide the copy button when the bubble's raw markdown text is empty or missing */
+.message:not([data-raw-text]) .copy-bubble-btn,
+.message[data-raw-text=""] .copy-bubble-btn {
+    display: none !important;
 }
 
 .message.user .message-content {

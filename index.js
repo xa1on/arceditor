@@ -13,6 +13,7 @@ let isConnected = false;
 
 let chatHistory = [];
 let attachedFrameBase64 = null;
+let installedEffects = {};
 
 // Safe Node.js loading (allows mockup testing inside standalone browsers)
 let fs = null, path = null, os = null, httpsClient = null, httpClient = null;
@@ -54,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadSettings();
     initUI();
     validateConnection();
+    loadInstalledEffects();
     updateContextSizeInfo();
 });
 
@@ -66,7 +68,7 @@ function loadSettings() {
             apiUrl = data.url || getDefaultUrl(currentProvider);
             modelName = data.model || getDefaultModel(currentProvider);
             apiKey = data.key || "";
-        } catch(e) {
+        } catch (e) {
             console.error("Failed to load saved config:", e);
         }
     } else {
@@ -75,7 +77,7 @@ function loadSettings() {
         apiUrl = getDefaultUrl(currentProvider);
         modelName = getDefaultModel(currentProvider);
     }
-    
+
     // Sync into settings DOM
     document.getElementById("setting-provider").value = currentProvider;
     document.getElementById("setting-url").value = apiUrl;
@@ -85,31 +87,31 @@ function loadSettings() {
 
 function saveSettings(e) {
     if (e) e.preventDefault();
-    
+
     currentProvider = document.getElementById("setting-provider").value;
     apiUrl = document.getElementById("setting-url").value || getDefaultUrl(currentProvider);
     modelName = document.getElementById("setting-model").value || getDefaultModel(currentProvider);
     apiKey = document.getElementById("setting-key").value;
-    
+
     const config = {
         provider: currentProvider,
         url: apiUrl,
         model: modelName,
         key: apiKey
     };
-    
+
     if (fs) {
         try {
             fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
             addSystemMessage("Settings saved successfully.");
-        } catch(err) {
+        } catch (err) {
             console.error("Failed to save settings to disk:", err);
             addSystemMessage("Error saving settings to local config file: " + err.message);
         }
     } else {
         addSystemMessage("Settings applied locally (Running in browser mode).");
     }
-    
+
     toggleSettingsDrawer(false);
     validateConnection();
 }
@@ -137,12 +139,12 @@ function makeRequest(url, method, headers, payload) {
             reject(new Error("Node.js network modules (https/http) not loaded."));
             return;
         }
-        
+
         try {
             const urlObj = new URL(url);
             const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
             const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
-            
+
             const options = {
                 hostname: urlObj.hostname,
                 port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
@@ -153,7 +155,7 @@ function makeRequest(url, method, headers, payload) {
                     'Content-Length': Buffer.byteLength(postData)
                 }
             };
-            
+
             const req = client.request(options, (res) => {
                 let data = '';
                 res.on('data', (chunk) => {
@@ -167,17 +169,17 @@ function makeRequest(url, method, headers, payload) {
                     }
                 });
             });
-            
+
             req.on('error', (err) => {
                 reject(err);
             });
-            
+
             if (method !== 'GET' && postData) {
                 req.write(postData);
             }
             req.end();
-            
-        } catch(e) {
+
+        } catch (e) {
             reject(e);
         }
     });
@@ -189,12 +191,12 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
             reject(new Error("Node.js network modules (https/http) not loaded."));
             return;
         }
-        
+
         try {
             const urlObj = new URL(url);
             const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
             const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
-            
+
             const options = {
                 hostname: urlObj.hostname,
                 port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
@@ -205,7 +207,7 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                     'Content-Length': Buffer.byteLength(postData)
                 }
             };
-            
+
             const req = client.request(options, (res) => {
                 if (res.statusCode < 200 || res.statusCode >= 300) {
                     let errData = '';
@@ -213,21 +215,21 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                     res.on('end', () => { reject(new Error(`HTTP Error ${res.statusCode}: ${errData}`)); });
                     return;
                 }
-                
+
                 let buffer = '';
                 res.on('data', (chunk) => {
                     buffer += chunk.toString();
-                    
+
                     let lines = buffer.split('\n');
                     buffer = lines.pop(); // Keep incomplete line
-                    
+
                     for (let line of lines) {
                         line = line.trim();
                         if (!line) continue;
                         onChunk(line);
                     }
                 });
-                
+
                 res.on('end', () => {
                     if (buffer.trim()) {
                         onChunk(buffer.trim());
@@ -235,17 +237,17 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                     resolve();
                 });
             });
-            
+
             req.on('error', (err) => {
                 reject(err);
             });
-            
+
             if (method !== 'GET' && postData) {
                 req.write(postData);
             }
             req.end();
-            
-        } catch(e) {
+
+        } catch (e) {
             reject(e);
         }
     });
@@ -255,11 +257,11 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
 async function validateConnection() {
     const statusDot = document.getElementById("status-dot");
     const sendBtn = document.getElementById("btn-send");
-    
+
     statusDot.className = "status-dot offline";
     statusDot.title = "Validating connection...";
     sendBtn.disabled = true;
-    
+
     if (!httpsClient && !httpClient) {
         // Standalone browser fallback mock state
         statusDot.className = "status-dot online";
@@ -268,7 +270,7 @@ async function validateConnection() {
         isConnected = true;
         return;
     }
-    
+
     try {
         if (currentProvider === "lemonade") {
             // Check local Lemonade status
@@ -282,16 +284,40 @@ async function validateConnection() {
                 return;
             }
         }
-        
+
         statusDot.className = "status-dot online";
         statusDot.title = `Connected successfully via ${currentProvider}`;
         sendBtn.disabled = false;
         isConnected = true;
-    } catch(err) {
+    } catch (err) {
         statusDot.className = "status-dot error";
         statusDot.title = `Failed to connect to ${currentProvider}: ${err.message}`;
         sendBtn.disabled = false; // Let the user send anyway to troubleshoot
         isConnected = false;
+    }
+}
+
+async function loadInstalledEffects() {
+    if (!csInterface) {
+        // Fallback mockup installed effects inside standalone browser
+        installedEffects = {
+            "Blur & Sharpen": [
+                { displayName: "Gaussian Blur", matchName: "ADBE Gaussian Blur 2" },
+                { displayName: "Fast Box Blur", matchName: "ADBE Fast Blur" }
+            ],
+            "Stylize": [
+                { displayName: "Glow", matchName: "ADBE Glow" }
+            ]
+        };
+        return;
+    }
+
+    const result = await evalScriptAsync("ArcInspector.getInstalledEffects()");
+    try {
+        installedEffects = JSON.parse(result);
+        console.log("[ArcEditor] Loaded installed effects catalog:", Object.keys(installedEffects).length, "categories");
+    } catch (e) {
+        console.error("[ArcEditor] Failed to parse installed effects:", e, result);
     }
 }
 
@@ -316,26 +342,26 @@ async function captureCompositionFrame() {
         addSystemMessage("Visual capture not supported outside After Effects.");
         return;
     }
-    
+
     const previewContainer = document.getElementById("frame-attachment-preview");
     const previewImg = document.getElementById("attached-preview-img");
-    
+
     const saveDir = (os && typeof os.homedir === "function") ? os.homedir() : (process.env.TEMP || process.env.TMP || '/tmp');
     const tempPngPath = path.join(saveDir, 'arc_preview.png');
-    
+
     // Replace backslashes for safe ExtendScript evaluation on Windows paths
     const safePath = tempPngPath.replace(/\\/g, '/');
-    
+
     const jsxCommand = `ArcCanvas.saveCurrentFrame("${safePath}")`;
     addSystemMessage("Rendering current timeline frame...");
-    
+
     const result = await evalScriptAsync(jsxCommand);
-    
+
     if (result.indexOf("Success:") === 0) {
         try {
             const returnedPath = result.substring(8).trim();
             let actualPath = returnedPath;
-            
+
             if (!fs.existsSync(actualPath)) {
                 // Fall back to checking the local tempPngPath computed in Node.js
                 if (fs.existsSync(tempPngPath)) {
@@ -343,9 +369,9 @@ async function captureCompositionFrame() {
                 } else {
                     // Suffix scan in both the returned path's directory and our local saveDir
                     const checkDirs = [];
-                    try { checkDirs.push(path.dirname(returnedPath)); } catch(e) {}
-                    try { checkDirs.push(path.dirname(tempPngPath)); } catch(e) {}
-                    
+                    try { checkDirs.push(path.dirname(returnedPath)); } catch (e) { }
+                    try { checkDirs.push(path.dirname(tempPngPath)); } catch (e) { }
+
                     let foundMatch = null;
                     for (const dir of checkDirs) {
                         if (!dir || !fs.existsSync(dir)) continue;
@@ -357,7 +383,7 @@ async function captureCompositionFrame() {
                             break;
                         }
                     }
-                    
+
                     if (foundMatch) {
                         actualPath = foundMatch;
                     } else {
@@ -365,21 +391,21 @@ async function captureCompositionFrame() {
                     }
                 }
             }
-            
+
             const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });
             attachedFrameBase64 = base64Data;
-            
+
             // Show visual attachment badge in UI
             previewImg.src = `data:image/png;base64,${base64Data}`;
             previewContainer.classList.remove("hidden");
             addSystemMessage("Canvas frame attached successfully.");
-            
+
             // Clean up the temporary preview file from disk
             try {
                 fs.unlinkSync(actualPath);
-            } catch(e) {}
-            
-        } catch(err) {
+            } catch (e) { }
+
+        } catch (err) {
             console.error("Failed to read captured PNG frame from disk:", err);
             addSystemMessage("Error reading captured frame: " + err.message);
         }
@@ -391,14 +417,14 @@ async function captureCompositionFrame() {
 async function getTimelineContext() {
     const jsxCommand = `ArcInspector.getActiveCompositionData()`;
     const jsonResult = await evalScriptAsync(jsxCommand);
-    
+
     try {
         const parsed = JSON.parse(jsonResult);
         if (parsed.error) {
             return { error: parsed.error };
         }
         return parsed;
-    } catch(e) {
+    } catch (e) {
         console.error("Failed to parse timeline inspector payload:", e);
         return { error: "Failed to parse timeline inspector data: " + jsonResult };
     }
@@ -453,16 +479,18 @@ Layer Referencing (Avoid Fragile Indices!):
 1. \`ArcEditor.createLayer(type, name, size)\`
    - Description: Creates a new layer in the active composition.
    - Parameters:
-     * \`type\`: "Solid", "Text", "Shape", "Null", "Camera", "Light".
+     * \`type\`: "Solid", "Text", "Shape", "Null", "Adjustment", "Camera", "Light".
      * \`name\`: String layer name.
      * \`size\`: (Optional) [width, height] array (e.g. \`[1920, 1080]\`).
    - Returns: The created Layer object.
 
 2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`
-   - Description: Applies a native After Effects effect to a layer.
+   - Description: Applies an effect to a layer.
+   - CRITICAL EFFECT MATCH NAME PREFIX RULE: Built-in Adobe effect match names ALWAYS begin with "ADBE" (e.g. "ADBE Glow", "ADBE Slider Control"). NEVER use "ABDE" which is a spelling typo and will crash After Effects.
+   - FOR THIRD-PARTY PLUGINS (Sapphire, Red Giant, Trapcode, etc.): Look up the exact matchName in the live [Installed Effects Catalog] provided inside your prompt context and apply it exactly as written!
    - Parameters:
      * \`layerRef\`: Layer unique ID, name, or index.
-     * \`effectMatchName\`: String match name (e.g. "ADBE Slider Control", "ADBE Color Control", "ADBE Gaussian Blur 2").
+     * \`effectMatchName\`: String match name (e.g. "ADBE Slider Control", "ADBE Glow").
      * \`effectDisplayName\`: (Optional) String display name.
    - Returns: The created Effect object.
 
@@ -556,7 +584,7 @@ Here is the ExtendScript to build it:
                     let i = 0;
                     let interval = setInterval(() => {
                         if (i < chars.length) {
-                            onChunkReceived(chars.slice(0, i+1).join(""));
+                            onChunkReceived(chars.slice(0, i + 1).join(""));
                             i += 5; // Stream fast in mock
                         } else {
                             clearInterval(interval);
@@ -573,13 +601,13 @@ Here is the ExtendScript to build it:
     const headers = { "Content-Type": "application/json" };
     let payload = {};
     let targetUrl = apiUrl;
-    
+
     if (currentProvider === "lemonade" || currentProvider === "openai") {
         targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
         if (currentProvider === "openai") {
             headers["Authorization"] = `Bearer ${apiKey}`;
         }
-        
+
         payload = {
             model: modelName,
             messages: [
@@ -589,7 +617,7 @@ Here is the ExtendScript to build it:
             temperature: 0.2,
             stream: !!onChunkReceived
         };
-        
+
         if (onChunkReceived) {
             let accumulatedText = "";
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
@@ -603,7 +631,7 @@ Here is the ExtendScript to build it:
                             accumulatedText += content;
                             onChunkReceived(accumulatedText);
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             });
             return accumulatedText;
@@ -612,7 +640,7 @@ Here is the ExtendScript to build it:
             const responseData = JSON.parse(responseText);
             return responseData.choices[0].message.content;
         }
-        
+
     } else if (currentProvider === "gemini") {
         // Target Gemini generateContent API
         let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
@@ -620,7 +648,7 @@ Here is the ExtendScript to build it:
         if (onChunkReceived) {
             targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
         }
-        
+
         // Convert messages to Gemini format
         const contents = messages.map(m => {
             const parts = [];
@@ -646,7 +674,7 @@ Here is the ExtendScript to build it:
                 parts: parts
             };
         });
-        
+
         payload = {
             systemInstruction: {
                 parts: [{ text: SYSTEM_INSTRUCTIONS }]
@@ -656,7 +684,7 @@ Here is the ExtendScript to build it:
                 temperature: 0.2
             }
         };
-        
+
         if (onChunkReceived) {
             let accumulatedText = "";
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
@@ -669,7 +697,7 @@ Here is the ExtendScript to build it:
                             accumulatedText += text;
                             onChunkReceived(accumulatedText);
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             });
             return accumulatedText;
@@ -678,13 +706,13 @@ Here is the ExtendScript to build it:
             const responseData = JSON.parse(responseText);
             return responseData.candidates[0].content.parts[0].text;
         }
-        
+
     } else if (currentProvider === "anthropic") {
         // Target Claude API
         targetUrl = targetUrl.endsWith("/messages") ? targetUrl : `${targetUrl}/v1/messages`;
         headers["x-api-key"] = apiKey;
         headers["anthropic-version"] = "2023-06-01";
-        
+
         // Convert vision base64 input to Anthropic's block format
         const anthropicMessages = messages.map(m => {
             let contentArr = [];
@@ -712,7 +740,7 @@ Here is the ExtendScript to build it:
                 content: contentArr
             };
         });
-        
+
         payload = {
             model: modelName,
             system: SYSTEM_INSTRUCTIONS,
@@ -721,7 +749,7 @@ Here is the ExtendScript to build it:
             temperature: 0.2,
             stream: !!onChunkReceived
         };
-        
+
         if (onChunkReceived) {
             let accumulatedText = "";
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
@@ -733,7 +761,7 @@ Here is the ExtendScript to build it:
                             accumulatedText += parsed.delta.text;
                             onChunkReceived(accumulatedText);
                         }
-                    } catch(e) {}
+                    } catch (e) { }
                 }
             });
             return accumulatedText;
@@ -749,7 +777,7 @@ Here is the ExtendScript to build it:
 async function runAgenticExecutionLoop(userText) {
     addSystemMessage("Gathering timeline structures...");
     const timelineData = await getTimelineContext();
-    
+
     // Inject current project properties as a helper context
     let enrichedPrompt = userText;
     if (timelineData && !timelineData.error) {
@@ -757,12 +785,17 @@ async function runAgenticExecutionLoop(userText) {
     } else {
         enrichedPrompt += `\n\n[Active Timeline Context: No composition currently open. Prompt the user to open one if the task requires a timeline].`;
     }
-    
+
+    // Inject live installed effects catalog (enabling the agent to recognize all custom and third-party plugins installed on the user's AE)
+    if (installedEffects && Object.keys(installedEffects).length > 0) {
+        enrichedPrompt += `\n\n[Installed Effects Catalog (Built-in & Third-Party plugins): ${JSON.stringify(installedEffects)}]`;
+    }
+
     let visualFrameInput = attachedFrameBase64;
-    
+
     // Reset attachments
     clearAttachmentDock();
-    
+
     if (visualFrameInput) {
         chatHistory.push({
             role: "user",
@@ -774,102 +807,104 @@ async function runAgenticExecutionLoop(userText) {
     } else {
         chatHistory.push({ role: "user", content: enrichedPrompt });
     }
-    
+
     updateContextSizeInfo();
-    
+
     const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
     const aiBubble = document.getElementById(aiBubbleId);
-    
+
     let isCompleted = false;
     let loopRetries = 0;
     const maxRetries = 3;
     let toolTurns = 0;
     const maxToolTurns = 5;
-    
+
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
             const llmResponse = await callLLMApi(chatHistory, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
+                aiBubble.setAttribute("data-raw-text", chunkText);
             });
+            aiBubble.setAttribute("data-raw-text", llmResponse);
             chatHistory.push({ role: "assistant", content: llmResponse });
-            
+
             // Check for JSON tool calls first, then JSX code blocks
             const jsonBlock = extractJSONToolCalls(llmResponse);
             const jsxBlock = extractJSXCode(llmResponse);
-            
+
             if (jsonBlock) {
                 toolTurns++;
                 updateConsolePane(jsonBlock);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
-                
+
                 const observations = await executeToolCalls(jsonBlock);
                 console.log("[ArcEditor Tool Calls Observations]:", observations);
-                
+
                 // Append observations to history
-                chatHistory.push({ 
-                    role: "user", 
-                    content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.` 
+                chatHistory.push({
+                    role: "user",
+                    content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`
                 });
-                
+
                 // Show feedback in UI and prepare next turn
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Tools Executed:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
-                
+
                 continue; // Run next loop turn immediately
-                
+
             } else if (jsxBlock) {
                 updateConsolePane(jsxBlock);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
-                
+
                 // Execute ExtendScript via CEP evalScript
                 const execResult = await evalScriptAsync(jsxBlock);
                 console.log("[ArcEditor JSX Executed Result]:", execResult);
-                
+
                 if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
                     loopRetries++;
-                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
+                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
-                    
+
                     // Push error feedback to conversation memory
-                    chatHistory.push({ 
-                        role: "user", 
-                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.` 
+                    chatHistory.push({
+                        role: "user",
+                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`
                     });
-                    
+
                     // Don't send the base64 image again to save bandwidth
                     visualFrameInput = null;
                 } else {
                     // Success! Display results to the user
                     isCompleted = true;
                     // Format response markdown nicely
-                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) + 
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);">✓ Timeline edits successfully applied! Check After Effects.</div>`;
+                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);">✓ Script successfully loaded!</div>`;
                 }
             } else {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse);
             }
-            
-        } catch(err) {
+
+        } catch (err) {
             console.error("Loop iteration failed:", err);
             aiBubble.querySelector(".message-content").innerHTML = `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`;
             isCompleted = true;
         }
     }
-    
+
     if (loopRetries >= maxRetries) {
-        aiBubble.querySelector(".message-content").innerHTML += 
+        aiBubble.querySelector(".message-content").innerHTML +=
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
     }
     if (toolTurns >= maxToolTurns && !isCompleted) {
-        aiBubble.querySelector(".message-content").innerHTML += 
+        aiBubble.querySelector(".message-content").innerHTML +=
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
     }
-    
+
     updateContextSizeInfo();
 }
 
@@ -890,15 +925,15 @@ async function executeToolCalls(jsonStr) {
     try {
         const parsed = JSON.parse(jsonStr);
         toolCalls = Array.isArray(parsed) ? parsed : [parsed];
-    } catch(e) {
+    } catch (e) {
         return `Error parsing JSON tool calls: ${e.message}. Ensure your JSON blocks are strictly valid.`;
     }
-    
+
     let observations = [];
-    
+
     // Begin AE Undo Group for atomic operations
     await evalScriptAsync(`app.beginUndoGroup("ArcEditor Agent Tools")`);
-    
+
     try {
         for (let i = 0; i < toolCalls.length; i++) {
             const tc = toolCalls[i];
@@ -906,7 +941,7 @@ async function executeToolCalls(jsonStr) {
             const params = tc.parameters || {};
             const ref = params.layerRef !== undefined ? params.layerRef : params.layerIndex;
             const serializedRef = typeof ref === "string" ? `"${ref.replace(/"/g, '\\"')}"` : (ref !== undefined ? ref : 'null');
-            
+
             let jsxCommand = "";
             if (toolName === "createLayer") {
                 jsxCommand = `(function() { var l = ArcEditor.createLayer("${params.type}", "${params.name || 'Layer'}", ${params.size ? JSON.stringify(params.size) : 'null'}); return "Success: Created layer '" + l.name + "' at index " + l.index; })()`;
@@ -932,20 +967,20 @@ async function executeToolCalls(jsonStr) {
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
-            
+
             const result = await evalScriptAsync(jsxCommand);
             observations.push(`- Tool "${toolName}": ${result}`);
-            
+
             if (result.indexOf("Error:") === 0) {
                 break;
             }
         }
         await evalScriptAsync(`app.endUndoGroup()`);
-    } catch(err) {
+    } catch (err) {
         await evalScriptAsync(`app.endUndoGroup()`);
         observations.push(`- Tool execution exception: ${err.message}`);
     }
-    
+
     return observations.join("\n");
 }
 
@@ -960,17 +995,17 @@ function initUI() {
     const btnSend = document.getElementById("btn-send");
     const btnClearConsole = document.getElementById("btn-clear-console");
     const btnRemoveAttachment = document.getElementById("btn-remove-attachment");
-    
+
     // Quick Chips
     const chipCapture = document.getElementById("chip-capture");
-    
+
     btnSettings.addEventListener("click", () => toggleSettingsDrawer(true));
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     formSettings.addEventListener("submit", saveSettings);
-    
+
     tabChat.addEventListener("click", () => switchTab("chat"));
     tabConsole.addEventListener("click", () => switchTab("console"));
-    
+
     btnClearConsole.addEventListener("click", () => {
         const output = document.getElementById("console-output");
         if (output.tagName === "TEXTAREA") {
@@ -979,7 +1014,7 @@ function initUI() {
             output.querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
         }
     });
-    
+
     const btnRunConsole = document.getElementById("btn-run-console");
     if (btnRunConsole) {
         btnRunConsole.addEventListener("click", async () => {
@@ -994,9 +1029,9 @@ function initUI() {
             addSystemMessage(`Console Exec Result: ${result}`);
         });
     }
-    
+
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
-    
+
     chipCapture.addEventListener("click", captureCompositionFrame);
     const btnInspectComp = document.getElementById("btn-inspect-comp");
     if (btnInspectComp) {
@@ -1012,15 +1047,15 @@ function initUI() {
             }
         });
     }
-    
+
     // Auto-resize chat input textarea and update context count
-    chatInput.addEventListener("input", function() {
+    chatInput.addEventListener("input", function () {
         this.style.height = "auto";
         this.style.height = (this.scrollHeight - 6) + "px";
         btnSend.disabled = !this.value.trim();
         updateContextSizeInfo();
     });
-    
+
     btnSend.addEventListener("click", triggerUserMessage);
     chatInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -1028,6 +1063,68 @@ function initUI() {
             triggerUserMessage();
         }
     });
+
+    // Copy Bubble Text Event Delegation
+    const chatMessages = document.getElementById("chat-messages");
+    if (chatMessages) {
+        chatMessages.addEventListener("click", async (e) => {
+            const btn = e.target.closest(".copy-bubble-btn");
+            if (!btn) return;
+
+            const messageDiv = btn.closest(".message");
+            if (!messageDiv) return;
+
+            const textToCopy = messageDiv.getAttribute("data-raw-text");
+            if (!textToCopy) return;
+
+            try {
+                await copyToClipboard(textToCopy);
+                
+                // Visual feedback: toggle icons and add copied class
+                btn.classList.add("copied");
+                const copyIcon = btn.querySelector(".copy-icon");
+                const checkIcon = btn.querySelector(".check-icon");
+                
+                if (copyIcon && checkIcon) {
+                    copyIcon.style.display = "none";
+                    checkIcon.style.display = "block";
+                }
+                
+                setTimeout(() => {
+                    btn.classList.remove("copied");
+                    if (copyIcon && checkIcon) {
+                        copyIcon.style.display = "block";
+                        checkIcon.style.display = "none";
+                    }
+                }, 1000);
+            } catch (err) {
+                console.error("Failed to copy text: ", err);
+            }
+        });
+    }
+}
+
+async function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+    }
+    // Fallback for environments where navigator.clipboard might not be fully functional
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+        const success = document.execCommand("copy");
+        if (!success) throw new Error("copy command returned false");
+    } catch (err) {
+        console.error("Clipboard copy fallback failed", err);
+        throw err;
+    } finally {
+        document.body.removeChild(textarea);
+    }
 }
 
 function toggleSettingsDrawer(open) {
@@ -1042,7 +1139,7 @@ function toggleSettingsDrawer(open) {
 function switchTab(tab) {
     document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.remove("active"));
     document.querySelectorAll(".view-pane").forEach(pane => pane.classList.remove("active"));
-    
+
     document.getElementById(`tab-${tab}`).classList.add("active");
     document.getElementById(`pane-${tab}`).classList.add("active");
 }
@@ -1051,35 +1148,55 @@ function triggerUserMessage() {
     const input = document.getElementById("chat-input");
     const userText = input.value.trim();
     if (!userText) return;
-    
+
     addBubble("user", userText);
     input.value = "";
     input.style.height = "auto";
     document.getElementById("btn-send").disabled = true;
-    
+
     runAgenticExecutionLoop(userText);
 }
 
 function addBubble(sender, text) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
-    
+
     const wrapper = document.createElement("div");
     wrapper.id = id;
     wrapper.className = `message ${sender}`;
-    
+
     const content = document.createElement("div");
     content.className = "message-content";
     if (text.indexOf("dots-loader") !== -1) {
         content.innerHTML = text; // Bypass markdown formatting for raw loader elements
+        wrapper.setAttribute("data-raw-text", "");
     } else {
         content.innerHTML = formatMarkdown(text);
+        wrapper.setAttribute("data-raw-text", text);
     }
-    
+
     wrapper.appendChild(content);
+
+    // Add Copy Button for user prompts and agent responses
+    if (sender === "user" || sender === "ai") {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-bubble-btn";
+        copyBtn.setAttribute("title", "Copy raw text");
+        copyBtn.innerHTML = `
+            <svg class="copy-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <svg class="check-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="var(--text-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        `;
+        wrapper.appendChild(copyBtn);
+    }
+
     scroller.appendChild(wrapper);
     scroller.scrollTop = scroller.scrollHeight;
-    
+
     return id;
 }
 
@@ -1087,11 +1204,11 @@ function addSystemMessage(text) {
     const scroller = document.getElementById("chat-messages");
     const wrapper = document.createElement("div");
     wrapper.className = "message system-msg";
-    
+
     const content = document.createElement("div");
     content.className = "message-content";
     content.innerHTML = `<p>${text}</p>`;
-    
+
     wrapper.appendChild(content);
     scroller.appendChild(wrapper);
     scroller.scrollTop = scroller.scrollHeight;
@@ -1100,9 +1217,9 @@ function addSystemMessage(text) {
 function updateContextSizeInfo() {
     const metaElement = document.getElementById("input-meta-info");
     if (!metaElement) return;
-    
+
     const inputText = document.getElementById("chat-input").value;
-    
+
     // Calculate history size
     let historyCharCount = 0;
     for (const msg of chatHistory) {
@@ -1118,12 +1235,12 @@ function updateContextSizeInfo() {
             }
         }
     }
-    
+
     let totalChars = historyCharCount + inputText.length;
     if (attachedFrameBase64) {
         totalChars += attachedFrameBase64.length;
     }
-    
+
     const estTokens = Math.round(totalChars / 4);
     metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)`;
 }
@@ -1147,18 +1264,18 @@ function updateConsolePane(code) {
 // Premium Markdown formatting helper that supports segment-scoped code viewports
 function formatMarkdown(text) {
     if (!text) return "";
-    
+
     // First, escape HTML characters to prevent XSS
     let html = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
-        
+
     // Handle multi-line fenced code blocks: ```javascript ... ```
     html = html.replace(/```(?:javascript|js|extendscript|jsx)?\n([\s\S]*?)\n```/g, (match, code) => {
         return `<pre class="code-viewport"><code>${code}</code></pre>`;
     });
-    
+
     // Split the text into segments to apply formatting ONLY outside <pre> code blocks
     const segments = html.split(/(<pre[\s\S]*?<\/pre>)/g);
     for (let i = 0; i < segments.length; i++) {
@@ -1179,19 +1296,19 @@ function formatMarkdown(text) {
                 .replace(/\n/g, "<br>");
         }
     }
-    
+
     let result = segments.join("");
-    
+
     // Clean up empty line breaks next to block elements
     result = result.replace(/<(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)><br>/gi, "<$1>");
     result = result.replace(/<\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)><br>/gi, "</$1>");
     result = result.replace(/<br><(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)>/gi, "<$1>");
     result = result.replace(/<br><\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)>/gi, "</$1>");
-    
+
     // Parse thinking blocks into native AE collapsible details accordion
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
-        return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
+        return `<details class="reasoning-details"><summary>Reasoning / Rigging Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
-    
+
     return result;
 }
