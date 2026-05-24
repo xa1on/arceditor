@@ -15,6 +15,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
   2. The layout, timing, assets, and hierarchy adjustments necessary.
   3. Whether expression sliders/rigs or direct timeline edits (e.g. layer splicing, precomposing) are more appropriate for this specific request.
   4. Your step-by-step editing and assembly plan.
+- **ON-DEMAND CONTEXT PRINCIPLE**: You do NOT automatically receive active timeline metadata or installed effects list in the initial prompt. Whenever the user requests timeline automation, layer styling, or asset placements, you MUST first invoke the \`getTimelineContext\` or \`getInstalledEffects\` tool in a JSON block to fetch the live context before generating your reasoning and ExtendScript.
 - Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks.
 
 *** CRITICAL SYSTEM PHILOSOPHY: GENERAL VIDEO EDITING & DYNAMIC ORCHESTRATION ***
@@ -169,6 +170,28 @@ Layer Referencing (Avoid Fragile Indexes!):
         - \`parentLayerRef\`: (Optional) Parent layer ID, name, or index.
         - \`blendMode\`: (Optional) String blend mode (e.g. \`"ADD"\`, \`"SCREEN"\`, \`"MULTIPLY"\`, \`"NORMAL"\`).
 
+16. \`getTimelineContext\`
+    - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).
+    - Parameters: None.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "getTimelineContext",
+        "parameters": {}
+      }
+      \`\`\`
+
+17. \`getInstalledEffects\`
+    - Description: Retrieves the live catalog/dictionary of installed effects in the host After Effects application. Use this to lookup exact matchNames.
+    - Parameters: None.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "getInstalledEffects",
+        "parameters": {}
+      }
+      \`\`\`
+
 *** HOW TO COMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
 - Write your code blocks as direct, self-executing actions that run immediately on the active composition.
@@ -183,22 +206,6 @@ Do not write any comments inside the markdown formatting outside the code blocks
 `;
 
 async function runAgenticExecutionLoop(userText) {
-    addSystemMessage("Gathering timeline structures...");
-    const timelineData = await getTimelineContext();
-
-    // Inject current project properties as a helper context
-    let enrichedPrompt = userText;
-    if (timelineData && !timelineData.error) {
-        enrichedPrompt += `\n\n[Active Timeline Context: ${JSON.stringify(timelineData)}]`;
-    } else {
-        enrichedPrompt += `\n\n[Active Timeline Context: No composition currently open. Prompt the user to open one if the task requires a timeline].`;
-    }
-
-    // Inject live installed effects catalog (enabling the agent to recognize all custom and third-party plugins installed on the user's AE)
-    if (installedEffects && Object.keys(installedEffects).length > 0) {
-        enrichedPrompt += `\n\n[Installed Effects Catalog (Built-in & Third-Party plugins): ${JSON.stringify(installedEffects)}]`;
-    }
-
     let visualFrameInput = attachedFrameBase64;
 
     // Reset attachments
@@ -208,14 +215,15 @@ async function runAgenticExecutionLoop(userText) {
         chatHistory.push({
             role: "user",
             content: [
-                { type: "text", text: enrichedPrompt },
+                { type: "text", text: userText },
                 { type: "image_url", image_url: { url: `data:image/png;base64,${visualFrameInput}` } }
             ]
         });
     } else {
-        chatHistory.push({ role: "user", content: enrichedPrompt });
+        chatHistory.push({ role: "user", content: userText });
     }
 
+    pruneHistoryContexts();
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
@@ -386,6 +394,13 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "addAssetToTimeline") {
                 const serializedAssetRef = typeof params.assetRef === "string" ? `"${params.assetRef.replace(/"/g, '\\"')}"` : params.assetRef;
                 jsxCommand = `(function() { return ArcEditor.addAssetToTimeline(${serializedAssetRef}, ${JSON.stringify(params.properties)}); })()`;
+            } else if (toolName === "getTimelineContext") {
+                const timelineData = await getTimelineContext();
+                observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
+                continue;
+            } else if (toolName === "getInstalledEffects") {
+                observations.push(`- Tool "getInstalledEffects": ${JSON.stringify(installedEffects)}`);
+                continue;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
@@ -454,4 +469,45 @@ function formatMarkdown(text) {
     });
 
     return result;
+}
+
+function pruneHistoryContexts() {
+    // 1. Strip massive stale timeline and effects catalogs from past conversational turns
+    for (let i = 0; i < chatHistory.length - 1; i++) {
+        const msg = chatHistory[i];
+        if (msg.role === "user") {
+            if (typeof msg.content === "string") {
+                msg.content = stripEnrichedPayloads(msg.content);
+            } else if (Array.isArray(msg.content)) {
+                msg.content = msg.content.map(part => {
+                    if (part.type === "text" && part.text) {
+                        return { ...part, text: stripEnrichedPayloads(part.text) };
+                    }
+                    return part;
+                });
+            }
+        }
+    }
+
+    // 2. Sliding window turn management: Cap maximum history messages in memory.
+    const maxHistoryMessages = 12;
+    if (chatHistory.length > maxHistoryMessages) {
+        let cutIndex = chatHistory.length - maxHistoryMessages;
+        while (cutIndex < chatHistory.length && chatHistory[cutIndex].role !== "user") {
+            cutIndex++;
+        }
+        if (cutIndex < chatHistory.length) {
+            chatHistory = chatHistory.slice(cutIndex);
+        }
+    }
+}
+
+function stripEnrichedPayloads(text) {
+    if (!text) return "";
+    let clean = text;
+    // Surgically strip the massive serialized Active Timeline Context block
+    clean = clean.replace(/\n\n\[Active Timeline Context: [\s\S]*?\]/g, "");
+    // Surgically strip the massive serialized Installed Effects Catalog block
+    clean = clean.replace(/\n\n\[Installed Effects Catalog [\s\S]*?\]/g, "");
+    return clean;
 }
