@@ -13,6 +13,7 @@ let isConnected = false;
 let chatHistory = [];
 let attachedFrameBase64 = null;
 let installedEffects = {};
+let lastApiUsage = null; // { promptTokens, completionTokens, totalTokens }
 
 // Safe Node.js loading (allows mockup testing inside standalone browsers)
 let fs = null, path = null, os = null, httpsClient = null, httpClient = null;

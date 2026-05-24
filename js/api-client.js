@@ -206,6 +206,7 @@ Here is the ExtendScript to build it:
         };
 
         if (onChunkReceived) {
+            payload.stream_options = { include_usage: true };
             let accumulatedText = "";
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
                 if (line.startsWith("data: ")) {
@@ -213,10 +214,19 @@ Here is the ExtendScript to build it:
                     if (dataStr === "[DONE]") return;
                     try {
                         const parsed = JSON.parse(dataStr);
-                        const content = parsed.choices[0].delta.content;
-                        if (content) {
-                            accumulatedText += content;
-                            onChunkReceived(accumulatedText);
+                        if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                            const content = parsed.choices[0].delta.content;
+                            if (content) {
+                                accumulatedText += content;
+                                onChunkReceived(accumulatedText);
+                            }
+                        }
+                        if (parsed.usage) {
+                            lastApiUsage = {
+                                promptTokens: parsed.usage.prompt_tokens,
+                                completionTokens: parsed.usage.completion_tokens,
+                                totalTokens: parsed.usage.total_tokens
+                            };
                         }
                     } catch (e) { }
                 }
@@ -225,6 +235,13 @@ Here is the ExtendScript to build it:
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
+            if (responseData.usage) {
+                lastApiUsage = {
+                    promptTokens: responseData.usage.prompt_tokens,
+                    completionTokens: responseData.usage.completion_tokens,
+                    totalTokens: responseData.usage.total_tokens
+                };
+            }
             return responseData.choices[0].message.content;
         }
 
@@ -279,10 +296,19 @@ Here is the ExtendScript to build it:
                     const dataStr = line.substring(6).trim();
                     try {
                         const parsed = JSON.parse(dataStr);
-                        const text = parsed.candidates[0].content.parts[0].text;
-                        if (text) {
-                            accumulatedText += text;
-                            onChunkReceived(accumulatedText);
+                        if (parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0]) {
+                            const text = parsed.candidates[0].content.parts[0].text;
+                            if (text) {
+                                accumulatedText += text;
+                                onChunkReceived(accumulatedText);
+                            }
+                        }
+                        if (parsed.usageMetadata) {
+                            lastApiUsage = {
+                                promptTokens: parsed.usageMetadata.promptTokenCount,
+                                completionTokens: parsed.usageMetadata.candidatesTokenCount,
+                                totalTokens: parsed.usageMetadata.totalTokenCount
+                            };
                         }
                     } catch (e) { }
                 }
@@ -291,6 +317,13 @@ Here is the ExtendScript to build it:
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
+            if (responseData.usageMetadata) {
+                lastApiUsage = {
+                    promptTokens: responseData.usageMetadata.promptTokenCount,
+                    completionTokens: responseData.usageMetadata.candidatesTokenCount,
+                    totalTokens: responseData.usageMetadata.totalTokenCount
+                };
+            }
             return responseData.candidates[0].content.parts[0].text;
         }
 
@@ -348,6 +381,18 @@ Here is the ExtendScript to build it:
                             accumulatedText += parsed.delta.text;
                             onChunkReceived(accumulatedText);
                         }
+                        if (parsed.type === "message_start" && parsed.message && parsed.message.usage) {
+                            lastApiUsage = {
+                                promptTokens: parsed.message.usage.input_tokens || 0,
+                                completionTokens: parsed.message.usage.output_tokens || 0,
+                                totalTokens: (parsed.message.usage.input_tokens || 0) + (parsed.message.usage.output_tokens || 0)
+                            };
+                        } else if (parsed.type === "message_delta" && parsed.usage) {
+                            if (lastApiUsage) {
+                                lastApiUsage.completionTokens = parsed.usage.output_tokens || 0;
+                                lastApiUsage.totalTokens = lastApiUsage.promptTokens + lastApiUsage.completionTokens;
+                            }
+                        }
                     } catch (e) { }
                 }
             });
@@ -355,7 +400,73 @@ Here is the ExtendScript to build it:
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
+            if (responseData.usage) {
+                lastApiUsage = {
+                    promptTokens: responseData.usage.input_tokens || 0,
+                    completionTokens: responseData.usage.output_tokens || 0,
+                    totalTokens: (responseData.usage.input_tokens || 0) + (responseData.usage.output_tokens || 0)
+                };
+            }
             return responseData.content[0].text;
         }
+    }
+}
+
+async function fetchTrueTokenCount(messages) {
+    if (!httpsClient && !httpClient) {
+        return null;
+    }
+    if (currentProvider !== "gemini") {
+        return null;
+    }
+    if (!apiKey) {
+        return null;
+    }
+
+    try {
+        const targetUrl = `${apiUrl}/v1beta/models/${modelName}:countTokens?key=${apiKey}`;
+        const headers = { "Content-Type": "application/json" };
+        
+        const contents = messages.map(m => {
+            const parts = [];
+            if (typeof m.content === "string") {
+                parts.push({ text: m.content });
+            } else if (Array.isArray(m.content)) {
+                m.content.forEach(c => {
+                    if (c.type === "text") parts.push({ text: c.text });
+                    if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        parts.push({
+                            inlineData: {
+                                mimeType: "image/png",
+                                data: base64Data
+                            }
+                        });
+                    }
+                });
+            }
+            return {
+                role: m.role === "user" ? "user" : "model",
+                parts: parts
+            };
+        });
+
+        const payload = {
+            systemInstruction: {
+                parts: [{ text: SYSTEM_INSTRUCTIONS }]
+            },
+            contents: contents
+        };
+
+        const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+        const responseData = JSON.parse(responseText);
+        if (responseData && responseData.totalTokens !== undefined) {
+            return responseData.totalTokens;
+        }
+        return null;
+    } catch (e) {
+        console.error("[ArcEditor] Failed to fetch true token count from Gemini:", e);
+        return null;
     }
 }

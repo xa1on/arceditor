@@ -311,35 +311,104 @@ function addSystemMessage(text) {
     scroller.scrollTop = scroller.scrollHeight;
 }
 
+let tokenCountTimeout = null;
+let currentTrueTokens = null;
+
+function estimateTrueTokens(text) {
+    if (!text) return 0;
+    // Specialized high-fidelity estimation for mixed code/natural language text
+    const words = text.match(/[\w]+|[^\s\w]+/g) || [];
+    let count = 0;
+    for (const token of words) {
+        if (/^[^\s\w]+$/.test(token)) {
+            // Punctuation is tokenized distinctively
+            count += Math.ceil(token.length / 1.5);
+        } else {
+            // Standard words and BPE subword splitting
+            if (token.length > 8) {
+                count += Math.ceil(token.length / 4);
+            } else {
+                count += 1;
+            }
+        }
+    }
+    const newlines = (text.match(/\n/g) || []).length;
+    count += newlines;
+    return Math.round(count);
+}
+
 function updateContextSizeInfo() {
     const metaElement = document.getElementById("input-meta-info");
     if (!metaElement) return;
 
     const inputText = document.getElementById("chat-input").value;
 
-    // Calculate history size
-    let historyCharCount = 0;
-    for (const msg of chatHistory) {
+    // Reconstruct prospective messages payload (including text input and attachments)
+    const prospectiveHistory = [...chatHistory];
+    if (inputText.trim()) {
+        if (attachedFrameBase64) {
+            prospectiveHistory.push({
+                role: "user",
+                content: [
+                    { type: "text", text: inputText },
+                    { type: "image_url", image_url: { url: `data:image/png;base64,${attachedFrameBase64}` } }
+                ]
+            });
+        } else {
+            prospectiveHistory.push({ role: "user", content: inputText });
+        }
+    }
+
+    // Calculate characters and assemble text for local estimation
+    let totalChars = 0;
+    let textForEstimation = "";
+    for (const msg of prospectiveHistory) {
         if (typeof msg.content === "string") {
-            historyCharCount += msg.content.length;
+            totalChars += msg.content.length;
+            textForEstimation += msg.content + "\n";
         } else if (Array.isArray(msg.content)) {
             for (const part of msg.content) {
                 if (part.type === "text" && part.text) {
-                    historyCharCount += part.text.length;
+                    totalChars += part.text.length;
+                    textForEstimation += part.text + "\n";
                 } else if (part.type === "image_url" && part.image_url && part.image_url.url) {
-                    historyCharCount += part.image_url.url.length;
+                    totalChars += part.image_url.url.length;
                 }
             }
         }
     }
 
-    let totalChars = historyCharCount + inputText.length;
+    // High-fidelity BPE token estimation
+    let estTokens = estimateTrueTokens(textForEstimation);
     if (attachedFrameBase64) {
-        totalChars += attachedFrameBase64.length;
+        estTokens += 258; // Standard image block tokens weight
     }
 
-    const estTokens = Math.round(totalChars / 4);
-    metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)`;
+    let usageTag = "";
+    if (typeof lastApiUsage !== "undefined" && lastApiUsage) {
+        usageTag = ` | Last API Usage: ${lastApiUsage.promptTokens.toLocaleString()} prompt + ${lastApiUsage.completionTokens.toLocaleString()} completion tokens`;
+    }
+
+    // Initial render with high-fidelity BPE estimation
+    metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)${usageTag}`;
+
+    // Asynchronous dynamic true token counting for Gemini
+    if (typeof currentProvider !== "undefined" && currentProvider === "gemini" && apiKey && typeof fetchTrueTokenCount === "function") {
+        clearTimeout(tokenCountTimeout);
+        tokenCountTimeout = setTimeout(async () => {
+            let prunedContext = JSON.parse(JSON.stringify(prospectiveHistory));
+            if (typeof pruneHistoryContexts === "function") {
+                prunedContext = await pruneHistoryContexts(prunedContext);
+            }
+            const trueTokens = await fetchTrueTokenCount(prunedContext);
+            if (trueTokens !== null) {
+                currentTrueTokens = trueTokens;
+                if (document.getElementById("chat-input").value === inputText) {
+                    metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (${trueTokens.toLocaleString()} true tokens)${usageTag}`;
+                }
+            }
+        }, 400);
+    }
 }
 
 function clearAttachmentDock() {
