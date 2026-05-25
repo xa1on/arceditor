@@ -441,6 +441,7 @@ async function runAgenticExecutionLoop(userText) {
             const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
                 aiBubble.setAttribute("data-raw-text", chunkText);
+                if (typeof scrollToBottom === "function") scrollToBottom();
             });
             aiBubble.setAttribute("data-raw-text", llmResponse);
             activeContext.push({ role: "assistant", content: llmResponse });
@@ -462,6 +463,7 @@ async function runAgenticExecutionLoop(userText) {
                 updateConsolePane(jsxBlock);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
+                if (typeof scrollToBottom === "function") scrollToBottom();
 
                 writeToDebugLog("ExtendScript Extracted", jsxBlock);
 
@@ -494,6 +496,7 @@ async function runAgenticExecutionLoop(userText) {
                     loopRetries++;
                     aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
+                    if (typeof scrollToBottom === "function") scrollToBottom();
 
                     // Push error feedback to local context history
                     activeContext.push({
@@ -515,6 +518,7 @@ async function runAgenticExecutionLoop(userText) {
                 updateConsolePane(jsonBlock);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
+                if (typeof scrollToBottom === "function") scrollToBottom();
 
                 writeToDebugLog("Tool Calls Extracted", jsonBlock);
 
@@ -551,18 +555,21 @@ async function runAgenticExecutionLoop(userText) {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Execution Observations:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
+                if (typeof scrollToBottom === "function") scrollToBottom();
 
                 continue; // Run next loop turn immediately
             } else {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse);
+                if (typeof scrollToBottom === "function") scrollToBottom();
                 writeToDebugLog("Informational Response Completed", llmResponse);
             }
 
         } catch (err) {
             console.error("Loop iteration failed:", err);
             aiBubble.querySelector(".message-content").innerHTML = `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`;
+            if (typeof scrollToBottom === "function") scrollToBottom();
             isCompleted = true;
         }
     }
@@ -570,10 +577,12 @@ async function runAgenticExecutionLoop(userText) {
     if (loopRetries >= maxRetries) {
         aiBubble.querySelector(".message-content").innerHTML +=
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
+        if (typeof scrollToBottom === "function") scrollToBottom();
     }
     if (toolTurns >= maxToolTurns && !isCompleted) {
         aiBubble.querySelector(".message-content").innerHTML +=
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
+        if (typeof scrollToBottom === "function") scrollToBottom();
     }
 
     // Persist the entire resolved activeContext so the model retains flawless conversational memory

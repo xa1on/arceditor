@@ -260,6 +260,18 @@ function triggerUserMessage() {
     runAgenticExecutionLoop(userText);
 }
 
+function scrollToBottom(force = false) {
+    const scroller = document.getElementById("chat-messages");
+    if (!scroller) return;
+    
+    // Check if the scrollbar is currently at the bottom (within a 40px tolerance)
+    const isAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 40;
+    
+    if (force || isAtBottom) {
+        scroller.scrollTop = scroller.scrollHeight;
+    }
+}
+
 function addBubble(sender, text) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
@@ -298,7 +310,7 @@ function addBubble(sender, text) {
     }
 
     scroller.appendChild(wrapper);
-    scroller.scrollTop = scroller.scrollHeight;
+    scrollToBottom(true);
 
     return id;
 }
@@ -314,7 +326,7 @@ function addSystemMessage(text) {
 
     wrapper.appendChild(content);
     scroller.appendChild(wrapper);
-    scroller.scrollTop = scroller.scrollHeight;
+    scrollToBottom(true);
 }
 
 let tokenCountTimeout = null;
