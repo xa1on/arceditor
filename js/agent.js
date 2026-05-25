@@ -54,12 +54,13 @@ Layer Referencing (Avoid Fragile Indexes!):
   3. A 1-based layer index (e.g. 1) as a fallback if no specific ID or Name exists.
 - In your active timeline context JSON, every layer has a unique \`id\` and a \`name\`. Inspect the JSON, find the target layer, and use its unique \`id\` (or name) for the \`layerRef\` parameter.
 
-1. \`ArcEditor.createLayer(type, name, size)\`
+1. \`ArcEditor.createLayer(type, name, size, color)\`
    - Description: Creates a new layer in the active composition.
    - Parameters:
      * \`type\`: "Solid", "Text", "Shape", "Null", "Adjustment", "Camera", "Light". (CRITICAL: ALWAYS use "Adjustment" to create adjustment layers. NEVER manually set layer.adjustmentLayer = true on a solid layer, as After Effects invalidates the ExtendScript object reference upon type mutation, causing subsequent operations to crash.)
      * \`name\`: String layer name.
      * \`size\`: (Optional) [width, height] array (e.g. \`[1920, 1080]\`).
+     * \`color\`: (Optional) [R, G, B] normalized array (e.g. \`[1, 1, 1]\` for white) if type is "Solid" or "Adjustment".
    - Returns: The created Layer object.
 
 2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`
@@ -73,11 +74,14 @@ Layer Referencing (Avoid Fragile Indexes!):
    - Returns: The created Effect object.
 
 3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
-   - Description: Sets a static value or a keyframe value at a specific time.
+   - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
+     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\`, \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [e.g. \`\"ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
+     2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
+     3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
    - Parameters:
      * \`layerRef\`: Layer unique ID, name, or index.
-     * \`propPath\`: String name (e.g. "Position") or Array path (e.g. \`["Transform", "Position"]\`).
-     * \`value\`: Number or Array value (e.g. \`[960, 540]\`).
+     * \`propPath\`: String property name or Array path.
+     * \`value\`: Raw value to assign (Number, Array, String, or Boolean).
      * \`time\`: (Optional) Number time in seconds to set keyframe value.
 
 4. \`ArcEditor.setPropertyExpression(layerRef, propPath, expressionStr)\`
@@ -174,7 +178,13 @@ Layer Referencing (Avoid Fragile Indexes!):
         - \`parentLayerRef\`: (Optional) Parent layer ID, name, or index.
         - \`blendMode\`: (Optional) String blend mode (e.g. \`"ADD"\`, \`"SCREEN"\`, \`"MULTIPLY"\`, \`"NORMAL"\`).
 
-16. \`getTimelineContext\`
+16. \`ArcEditor.setSolidColor(layerRef, color)\`
+    - Description: Sets/changes the color of a Solid layer's source.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index.
+      * \`color\`: [R, G, B] normalized array (e.g. \`[1, 1, 1]\` for white).
+
+17. \`getTimelineContext\`
     - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).
     - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
@@ -185,7 +195,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-17. \`getInstalledEffects\`
+18. \`getInstalledEffects\`
     - Description: Retrieves the live catalog/dictionary of installed effects in the host After Effects application. Use this to lookup exact matchNames.
     - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
@@ -196,7 +206,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-18. \`captureActiveFrame\`
+19. \`captureActiveFrame\`
     - Description: Programmatically captures the current active frame preview of the After Effects canvas. Use this tool whenever you need to visually verify layer layout coordinates, styling, expression binding outcomes, or splicing alignment.
     - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
@@ -207,7 +217,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-19. \`undoLastAction\`
+20. \`undoLastAction\`
     - Description: Undoes the very last committed ExtendScript action block in After Effects (acting as a programmatic 'Ctrl+Z'). Use this tool if your previous script executed successfully, but upon verification (via getTimelineContext or captureActiveFrame), you realize the resulting layout, alignment, or properties are incorrect, so you can safely roll back and retry on a clean slate.
     - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
@@ -218,7 +228,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-20. \`setPlayheadTime\`
+21. \`setPlayheadTime\`
     - Description: Moves the active timeline playhead/needle to a specific time or shifts it relatively.
     - Parameters:
       * \`time\`: Number (absolute seconds, e.g. \`2.5\`) OR String relative offset (e.g. \`"+1.5"\` or \`"-0.5"\` to shift from current position).
@@ -232,7 +242,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-21. \`selectLayer\`
+22. \`selectLayer\`
     - Description: Selects a specific layer in the active composition, optionally deselecting all other layers.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name string, or index.
@@ -248,7 +258,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-22. \`switchComposition\`
+23. \`switchComposition\`
     - Description: Switches the active composition by opening a target composition from the project bin in the viewer, and returns its new structural context.
     - Parameters:
       * \`compRef\`: Composition unique ID, name string, or index in the project bin.
@@ -262,7 +272,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-23. \`addMarker\`
+24. \`addMarker\`
     - Description: Adds a marker to the active composition timeline or a specific layer.
     - Parameters:
       * \`type\`: "comp" (for composition marker) or "layer" (for layer marker).
@@ -283,7 +293,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
-24. \`deleteMarker\`
+25. \`deleteMarker\`
     - Description: Deletes a marker from the active composition or a specific layer.
     - Parameters:
       * \`type\`: "comp" or "layer".
@@ -299,6 +309,39 @@ Layer Referencing (Avoid Fragile Indexes!):
         }
       }
       \`\`\`
+
+26. \`getLayerProperties\`
+    - Description: Recursively inspects a layer's properties, shapes, and applied effects, returning their exact display names, matchNames, values, and array property paths (e.g. \`["Effects", "Fast Box Blur", "Blur Radius"]\`). Use this tool immediately whenever you need to edit an effect parameter or shape property, or if you receive a "Property path segment not found" error, to discover the correct paths and matchNames with 100% precision.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name string, or index.
+      * \`groupFilter\`: (Optional) String. Target a specific group branch to inspect (e.g., \`"Effects"\` or \`"Transform"\` or \`"Contents"\`) to keep context payloads very focused and small. If omitted, defaults to crawling the Transform and Effects groups.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "getLayerProperties",
+        "parameters": {
+          "layerRef": 14,
+          "groupFilter": "Effects"
+        }
+      }
+      \`\`\`
+
+27. \`setSolidColor\`
+    - Description: Sets or changes the color of a Solid layer's source.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name string, or index.
+      * \`color\`: [R, G, B] normalized array of floats (e.g. \`[1.0, 1.0, 1.0]\` for white, \`[0.0, 0.0, 0.0]\` for black).
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "setSolidColor",
+        "parameters": {
+          "layerRef": 15,
+          "color": [1.0, 1.0, 1.0]
+        }
+      }
+      \`\`\`
+
 
 
 *** HOW TO COMUNICATE EXECUTION CODE ***
@@ -518,7 +561,8 @@ async function executeToolCalls(jsonStr) {
 
             let jsxCommand = "";
             if (toolName === "createLayer") {
-                jsxCommand = `(function() { var l = ArcEditor.createLayer("${params.type}", "${params.name || 'Layer'}", ${params.size ? JSON.stringify(params.size) : 'null'}); return "Success: Created layer '" + l.name + "' at index " + l.index; })()`;
+                const colorVal = params.color ? JSON.stringify(params.color) : 'null';
+                jsxCommand = `(function() { var l = ArcEditor.createLayer("${params.type}", "${params.name || 'Layer'}", ${params.size ? JSON.stringify(params.size) : 'null'}, ${colorVal}); return "Success: Created layer '" + l.name + "' at index " + l.index; })()`;
             } else if (toolName === "applyEffect") {
                 jsxCommand = `(function() { var fx = ArcEditor.applyEffect(${serializedRef}, "${params.effectMatchName}", "${params.effectDisplayName || ''}"); return "Success: Applied effect '" + fx.name + "' to layer " + ${serializedRef}; })()`;
             } else if (toolName === "setPropertyValue") {
@@ -580,6 +624,11 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "switchComposition") {
                 const serializedCompRef = typeof params.compRef === "string" ? `"${params.compRef.replace(/"/g, '\\"')}"` : params.compRef;
                 jsxCommand = `(function() { return ArcEditor.switchComposition(${serializedCompRef}); })()`;
+            } else if (toolName === "getLayerProperties") {
+                const groupFilterVal = params.groupFilter ? `"${params.groupFilter.replace(/"/g, '\\"')}"` : "null";
+                jsxCommand = `ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
+            } else if (toolName === "setSolidColor") {
+                jsxCommand = `(function() { return ArcEditor.setSolidColor(${serializedRef}, ${JSON.stringify(params.color)}); })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }

@@ -407,7 +407,7 @@ var ArcEditor = {
      * @param {string} name Custom name for the new layer.
      * @param {Array} size Optional [width, height] array. Defaults to comp size.
      */
-    createLayer: function (type, name, size) {
+    createLayer: function (type, name, size, color) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
@@ -424,7 +424,11 @@ var ArcEditor = {
             layer = comp.layers.addShape();
             layer.name = name;
         } else if (type === "Solid") {
-            layer = comp.layers.addSolid([0.1, 0.1, 0.1], name, w, h, 1.0, comp.duration);
+            var solidColor = [0.1, 0.1, 0.1];
+            if (color && color.length >= 3) {
+                solidColor = [Number(color[0]), Number(color[1]), Number(color[2])];
+            }
+            layer = comp.layers.addSolid(solidColor, name, w, h, 1.0, comp.duration);
         } else if (type === "Adjustment") {
             layer = comp.layers.addSolid([1, 1, 1], name, w, h, 1.0, comp.duration);
             layer.adjustmentLayer = true;
@@ -528,8 +532,98 @@ var ArcEditor = {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
-        var prop = this.resolveProperty(layer, propPath);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
 
+        // Normalize propPath to a string if it's a single-element array or basic string
+        var pathStr = "";
+        if (typeof propPath === "string") {
+            pathStr = propPath;
+        } else if (propPath instanceof Array && propPath.length === 1) {
+            pathStr = propPath[0];
+        }
+
+        if (pathStr) {
+            var lowerPath = pathStr.toLowerCase();
+            
+            // 1. Intercept Solid Color updates
+            if (lowerPath === "color" || lowerPath === "solidcolor" || lowerPath === "sourcecolor") {
+                if (layer.source && layer.source.mainSource && typeof layer.source.mainSource.color !== "undefined") {
+                    var rgb = [Number(value[0]), Number(value[1]), Number(value[2])];
+                    layer.source.mainSource.color = rgb;
+                    return true;
+                }
+            }
+
+            // 2. Intercept Native Layer JavaScript fields
+            if (lowerPath === "name") {
+                layer.name = String(value);
+                return true;
+            }
+            if (lowerPath === "enabled") {
+                layer.enabled = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "locked") {
+                layer.locked = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "selected") {
+                layer.selected = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "inpoint" || lowerPath === "in_point") {
+                layer.inPoint = Number(value);
+                return true;
+            }
+            if (lowerPath === "outpoint" || lowerPath === "out_point") {
+                layer.outPoint = Number(value);
+                return true;
+            }
+            if (lowerPath === "starttime" || lowerPath === "start_time") {
+                layer.startTime = Number(value);
+                return true;
+            }
+            if (lowerPath === "stretch") {
+                layer.stretch = Number(value);
+                return true;
+            }
+            if (lowerPath === "comment") {
+                layer.comment = String(value);
+                return true;
+            }
+            if (lowerPath === "threedlayer" || lowerPath === "3d" || lowerPath === "threed") {
+                layer.threeDLayer = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "guidelayer" || lowerPath === "guide") {
+                layer.guideLayer = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "motionblur" || lowerPath === "blur") {
+                layer.motionBlur = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "adjustmentlayer" || lowerPath === "adjustment") {
+                layer.adjustmentLayer = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                return true;
+            }
+            if (lowerPath === "parent") {
+                if (value === null || value === "") {
+                    layer.parent = null;
+                } else {
+                    var pLayer = this.resolveLayer(value);
+                    if (pLayer) layer.parent = pLayer;
+                }
+                return true;
+            }
+            if (lowerPath === "blendmode" || lowerPath === "blend_mode") {
+                this.setLayerBlendMode(layer, String(value));
+                return true;
+            }
+        }
+
+        // Standard timeline property fallback
+        var prop = this.resolveProperty(layer, propPath);
         if (time !== undefined && time !== null) {
             prop.setValueAtTime(time, value);
         } else {
@@ -1077,6 +1171,88 @@ var ArcEditor = {
             numLayers: targetComp.numLayers
         };
         return "Success: Switched active composition to '" + targetComp.name + "'. Context: " + ArcJSON.stringify(activeData);
+    },
+
+    /**
+     * Recursively inspects layer properties and effects, returning exact paths and matchNames.
+     */
+    inspectLayerProperties: function (layerRef, groupFilter) {
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) return ArcJSON.stringify({ error: "Layer not found for reference: " + layerRef });
+
+        var result = {
+            layerName: layer.name,
+            layerId: layer.id,
+            properties: []
+        };
+
+        function crawl(propGroup, currentPath, depth) {
+            if (depth > 4) return;
+            if (!propGroup) return;
+
+            for (var i = 1; i <= propGroup.numProperties; i++) {
+                var prop = propGroup.property(i);
+                if (!prop) continue;
+
+                var newPath = currentPath.concat([prop.name]);
+                var propInfo = {
+                    name: prop.name,
+                    matchName: prop.matchName,
+                    path: newPath
+                };
+
+                if (prop.propertyType === PropertyType.PROPERTY) {
+                    propInfo.type = "PROPERTY";
+                    try {
+                        propInfo.value = prop.value;
+                    } catch (e) {
+                        propInfo.value = "(unreadable)";
+                    }
+                    result.properties.push(propInfo);
+                } else if (prop.propertyType === PropertyType.NAMED_GROUP || prop.propertyType === PropertyType.INDEXED_GROUP) {
+                    propInfo.type = "GROUP";
+                    result.properties.push(propInfo);
+                    crawl(prop, newPath, depth + 1);
+                }
+            }
+        }
+
+        try {
+            if (groupFilter) {
+                var startGroup = layer.property(groupFilter);
+                if (startGroup) {
+                    crawl(startGroup, [groupFilter], 1);
+                } else {
+                    return ArcJSON.stringify({ error: "Property group '" + groupFilter + "' not found on layer." });
+                }
+            } else {
+                // Default to crawling primary editing groups: Effects and Transform
+                var fxGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
+                if (fxGroup) crawl(fxGroup, ["Effects"], 1);
+                
+                var tfGroup = layer.property("Transform") || layer.property("ADBE Transform Group");
+                if (tfGroup) crawl(tfGroup, ["Transform"], 1);
+            }
+            return ArcJSON.stringify(result);
+        } catch (err) {
+            return ArcJSON.stringify({ error: "Failed to crawl properties: " + err.toString() });
+        }
+    },
+
+    /**
+     * Sets the color of a Solid layer's source.
+     * @param {string|number} layerRef Layer reference.
+     * @param {Array} color [R, G, B] or [R, G, B, A] normalized color.
+     */
+    setSolidColor: function (layerRef, color) {
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
+        if (!layer.source || !layer.source.mainSource || typeof layer.source.mainSource.color === "undefined") {
+            throw new Error("Layer '" + layer.name + "' is not a Solid layer (solids hold their color under layer.source.mainSource.color).");
+        }
+        var rgb = [Number(color[0]), Number(color[1]), Number(color[2])];
+        layer.source.mainSource.color = rgb;
+        return "Success: Set color of Solid layer '" + layer.name + "' to [" + rgb.join(", ") + "].";
     }
 };
 
