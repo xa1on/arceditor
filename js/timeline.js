@@ -86,7 +86,7 @@ function evalScriptAsync(script) {
 }
 
 async function captureCompositionFrame() {
-    if (!csInterface && !fs) {
+    if (!csInterface) {
         addSystemMessage("Visual capture not supported outside After Effects.");
         return null;
     }
@@ -94,15 +94,14 @@ async function captureCompositionFrame() {
     const previewContainer = document.getElementById("frame-attachment-preview");
     const previewImg = document.getElementById("attached-preview-img");
 
+    addSystemMessage("Capturing current timeline frame...");
+
+    // 1. Prioritize File-based Capture (Using new Asynchronous file-write polling to guarantee saveFrameToPng success)
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : (process.env.TEMP || process.env.TMP || '/tmp');
     const tempPngPath = path.join(saveDir, 'arc_preview.png');
-
-    // Replace backslashes for safe ExtendScript evaluation on Windows paths
     const safePath = tempPngPath.replace(/\\/g, '/');
 
     const jsxCommand = `ArcCanvas.saveCurrentFrame("${safePath}")`;
-    addSystemMessage("Rendering current timeline frame...");
-
     const result = await evalScriptAsync(jsxCommand);
 
     if (result.indexOf("Success:") === 0) {
@@ -110,41 +109,73 @@ async function captureCompositionFrame() {
             const returnedPath = result.substring(8).trim();
             let actualPath = returnedPath;
 
-            if (!fs.existsSync(actualPath)) {
-                throw new Error("Could not find rendered preview file on disk at: " + returnedPath);
+            // Poll for up to 1500ms (30 attempts at 50ms) to allow After Effects' asynchronous write to complete
+            let fileFound = false;
+            for (let attempt = 0; attempt < 30; attempt++) {
+                if (fs.existsSync(actualPath) && fs.statSync(actualPath).size > 100) {
+                    fileFound = true;
+                    break;
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
 
-            const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });
-            attachedFrameBase64 = base64Data;
+            if (fileFound) {
+                const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });
+                attachedFrameBase64 = base64Data;
 
-            // Dynamically resolve MIME type based on output extension (for JPG fallbacks)
-            const extName = path.extname(actualPath).toLowerCase();
-            let mimeType = 'image/png';
-            if (extName === '.jpg' || extName === '.jpeg') {
-                mimeType = 'image/jpeg';
+                const extName = path.extname(actualPath).toLowerCase();
+                let mimeType = 'image/png';
+                if (extName === '.jpg' || extName === '.jpeg') {
+                    mimeType = 'image/jpeg';
+                }
+
+                if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
+                if (previewContainer) previewContainer.classList.remove("hidden");
+                addSystemMessage("Canvas frame captured successfully.");
+
+                try {
+                    fs.unlinkSync(actualPath);
+                } catch (e) { }
+
+                return base64Data;
+            } else {
+                console.warn("[ArcEditor] Direct save file did not appear in time. Trying clipboard fallback.");
             }
-
-            // Show visual attachment badge in UI
-            if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
-            if (previewContainer) previewContainer.classList.remove("hidden");
-            addSystemMessage("Canvas frame attached successfully.");
-
-            // Clean up the temporary preview file from disk
-            try {
-                fs.unlinkSync(actualPath);
-            } catch (e) { }
-
-            return base64Data;
-
         } catch (err) {
-            console.error("Failed to read captured PNG frame from disk:", err);
-            addSystemMessage("Error reading captured frame: " + err.message);
-            return null;
+            console.warn("[ArcEditor] Asynchronous file read failed. Trying clipboard fallback:", err);
         }
-    } else {
-        addSystemMessage(result);
-        return null;
     }
+
+    // 2. Clipboard-based Fallback (Used strictly as an absolute last resort to protect active user clipboard)
+    try {
+        const clipResult = await evalScriptAsync("ArcCanvas.copyFrameToClipboard()");
+        if (clipResult.indexOf("Success:") === 0) {
+            const child_process = require('child_process');
+            const platform = (os && typeof os.platform === 'function') ? os.platform() : process.platform;
+            
+            let base64Data = "";
+            if (platform === 'win32') {
+                const psCmd = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [System.Convert]::ToBase64String($ms.ToArray()) }`;
+                const stdout = child_process.execSync(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true });
+                base64Data = stdout.toString().trim();
+            } else if (platform === 'darwin') {
+                const stdout = child_process.execSync(`osascript -e "write (the clipboard as «class PNGf») to (open for access \\"/tmp/arc_clip.png\\" with write permission)" && base64 -i /tmp/arc_clip.png && rm /tmp/arc_clip.png`);
+                base64Data = stdout.toString().trim();
+            }
+
+            if (base64Data && base64Data.length > 100) {
+                attachedFrameBase64 = base64Data;
+                if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
+                if (previewContainer) previewContainer.classList.remove("hidden");
+                addSystemMessage("Canvas frame captured from fallback clipboard successfully.");
+                return base64Data;
+            }
+        }
+    } catch (clipErr) {
+        console.error("[ArcEditor] Frame capture completely failed:", clipErr);
+        addSystemMessage("Error capturing frame: " + clipErr.message);
+    }
+    return null;
 }
 
 async function getTimelineContext() {

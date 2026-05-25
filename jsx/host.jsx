@@ -273,6 +273,31 @@ var ArcInspector = {
 // --- SECTION 2: VISUAL CANVAS RENDERER & PNG EXPORTER ---
 var ArcCanvas = {
     /**
+     * Copies the current active viewer frame directly to the OS clipboard.
+     */
+    copyFrameToClipboard: function () {
+        try {
+            var cmdId = app.findMenuCommandId("Copy Frame to Clipboard");
+            if (cmdId && cmdId !== 0) {
+                app.executeCommand(cmdId);
+                return "Success: Clipboard";
+            }
+            
+            // Standard fallback IDs for Copy Frame in various AE builds
+            var fallbackIds = [10340, 10341, 10342, 10339];
+            for (var i = 0; i < fallbackIds.length; i++) {
+                try {
+                    app.executeCommand(fallbackIds[i]);
+                    return "Success: Clipboard";
+                } catch(e) {}
+            }
+            return "Error: Copy Frame command not found.";
+        } catch (err) {
+            return "Error: " + err.toString();
+        }
+    },
+
+    /**
      * Saves the current frame of the active composition to a temporary PNG file.
      * 
      * @param {string} tempPath Absolute file path to save the preview PNG to.
@@ -291,22 +316,23 @@ var ArcCanvas = {
                 file.parent.create();
             }
 
-            var saveFn = comp.saveFrameToPng || comp.saveFrameToPNG;
-            if (typeof saveFn === "function") {
+            if (typeof comp.saveFrameToPng === "function") {
                 if (file.exists) {
                     file.remove();
                 }
-                saveFn.call(comp, comp.time, file);
-
-                if (file.exists) {
-                    return "Success: " + file.fsName;
-                } else {
-                    // Direct save failed or silent skip, try Render Queue
-                    return this.renderQueueFallback(comp, file);
-                }
-            } else {
-                return this.renderQueueFallback(comp, file);
+                comp.saveFrameToPng(comp.time, file);
+                return "Success: " + file.fsName;
             }
+            if (typeof comp.saveFrameToPNG === "function") {
+                if (file.exists) {
+                    file.remove();
+                }
+                comp.saveFrameToPNG(comp.time, file);
+                return "Success: " + file.fsName;
+            }
+            
+            // Direct save unsupported; fall back to Render Queue
+            return this.renderQueueFallback(comp, file);
         } catch (err) {
             return "Error rendering frame: " + err.toString();
         }
