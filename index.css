@@ -861,3 +861,26 @@ select.form-input {
     opacity: 1;
     color: var(--text-error);
 }
+
+/* User image attachments inside chat bubbles */
+.bubble-image-wrap {
+    margin-top: 6px;
+    max-width: 220px;
+    max-height: 140px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    overflow: hidden;
+    display: flex;
+}
+
+.bubble-image-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background-color: #242424;
+    background-image: 
+        linear-gradient(45deg, #1e1e1e 25%, transparent 25%, transparent 75%, #1e1e1e 75%, #1e1e1e),
+        linear-gradient(45deg, #1e1e1e 25%, transparent 25%, transparent 75%, #1e1e1e 75%, #1e1e1e);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
+}

@@ -273,7 +273,7 @@ function triggerUserMessage() {
     const userText = input.value.trim();
     if (!userText || isExecuting) return;
 
-    addBubble("user", userText);
+    addBubble("user", userText, attachedFrames);
     input.value = "";
     input.style.height = "auto";
     
@@ -295,7 +295,7 @@ function scrollToBottom(force = false) {
     }
 }
 
-function addBubble(sender, text) {
+function addBubble(sender, text, base64Images = null) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
 
@@ -311,6 +311,27 @@ function addBubble(sender, text) {
     } else {
         content.innerHTML = formatMarkdown(text);
         wrapper.setAttribute("data-raw-text", text);
+    }
+
+    if (base64Images) {
+        const imagesArray = Array.isArray(base64Images) ? base64Images : [base64Images];
+        if (imagesArray.length > 0) {
+            const containerWrap = document.createElement("div");
+            containerWrap.className = "bubble-images-container";
+            containerWrap.style.display = "flex";
+            containerWrap.style.flexWrap = "wrap";
+            containerWrap.style.gap = "6px";
+            containerWrap.style.marginTop = "6px";
+
+            imagesArray.forEach((imgData, index) => {
+                const imgWrap = document.createElement("div");
+                imgWrap.className = "bubble-image-wrap";
+                imgWrap.style.marginTop = "0"; // Reset margin since container has gap
+                imgWrap.innerHTML = `<img src="data:image/png;base64,${imgData}" alt="User attachment ${index + 1}" />`;
+                containerWrap.appendChild(imgWrap);
+            });
+            content.appendChild(containerWrap);
+        }
     }
 
     wrapper.appendChild(content);
@@ -387,13 +408,14 @@ function updateContextSizeInfo() {
     // Reconstruct prospective messages payload (including text input and attachments)
     const prospectiveHistory = [...chatHistory];
     if (inputText.trim()) {
-        if (attachedFrameBase64) {
+        if (attachedFrames && attachedFrames.length > 0) {
+            const contentParts = [{ type: "text", text: inputText }];
+            attachedFrames.forEach(img => {
+                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+            });
             prospectiveHistory.push({
                 role: "user",
-                content: [
-                    { type: "text", text: inputText },
-                    { type: "image_url", image_url: { url: `data:image/png;base64,${attachedFrameBase64}` } }
-                ]
+                content: contentParts
             });
         } else {
             prospectiveHistory.push({ role: "user", content: inputText });
@@ -458,9 +480,48 @@ function updateContextSizeInfo() {
     }
 }
 
+function renderAttachmentDock() {
+    const previewContainer = document.getElementById("frame-attachment-preview");
+    const dockThumbnails = document.getElementById("dock-thumbnails");
+    if (!dockThumbnails || !previewContainer) return;
+
+    dockThumbnails.innerHTML = "";
+    if (!attachedFrames || attachedFrames.length === 0) {
+        previewContainer.classList.add("hidden");
+        return;
+    }
+
+    attachedFrames.forEach((base64Data, idx) => {
+        const wrap = document.createElement("div");
+        wrap.className = "dock-img-wrap";
+        
+        const img = document.createElement("img");
+        img.src = `data:image/png;base64,${base64Data}`;
+        img.alt = `Frame ${idx + 1}`;
+        
+        const btn = document.createElement("button");
+        btn.className = "close-badge";
+        btn.innerHTML = "&times;";
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            attachedFrames.splice(idx, 1);
+            renderAttachmentDock();
+            updateContextSizeInfo();
+        });
+        
+        wrap.appendChild(img);
+        wrap.appendChild(btn);
+        dockThumbnails.appendChild(wrap);
+    });
+
+    previewContainer.classList.remove("hidden");
+    updateContextSizeInfo();
+}
+
 function clearAttachmentDock() {
-    attachedFrameBase64 = null;
-    document.getElementById("attached-preview-img").src = "";
+    attachedFrames = [];
+    const dockThumbnails = document.getElementById("dock-thumbnails");
+    if (dockThumbnails) dockThumbnails.innerHTML = "";
     document.getElementById("frame-attachment-preview").classList.add("hidden");
     updateContextSizeInfo();
 }

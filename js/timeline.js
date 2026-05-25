@@ -128,16 +128,19 @@ async function captureCompositionFrame() {
 
             if (fileFound) {
                 const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
-                attachedFrameBase64 = base64Data;
+                attachedFrames.push(base64Data);
 
-                const extName = path.extname(actualPath).toLowerCase();
-                let mimeType = 'image/png';
-                if (extName === '.jpg' || extName === '.jpeg') {
-                    mimeType = 'image/jpeg';
+                if (typeof renderAttachmentDock === "function") {
+                    renderAttachmentDock();
+                } else {
+                    const extName = path.extname(actualPath).toLowerCase();
+                    let mimeType = 'image/png';
+                    if (extName === '.jpg' || extName === '.jpeg') {
+                        mimeType = 'image/jpeg';
+                    }
+                    if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
+                    if (previewContainer) previewContainer.classList.remove("hidden");
                 }
-
-                if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
-                if (previewContainer) previewContainer.classList.remove("hidden");
                 addSystemMessage("Canvas frame captured successfully.");
 
                 try {
@@ -189,9 +192,13 @@ async function captureCompositionFrame() {
             }
 
             if (base64Data && base64Data.length > 100) {
-                attachedFrameBase64 = base64Data;
-                if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
-                if (previewContainer) previewContainer.classList.remove("hidden");
+                attachedFrames.push(base64Data);
+                if (typeof renderAttachmentDock === "function") {
+                    renderAttachmentDock();
+                } else {
+                    if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
+                    if (previewContainer) previewContainer.classList.remove("hidden");
+                }
                 addSystemMessage("Canvas frame captured from fallback clipboard successfully.");
                 return base64Data;
             }

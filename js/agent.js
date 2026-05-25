@@ -17,6 +17,9 @@ You are helping the user automate compositions, edit/splice video assets, manage
   3. Whether expression sliders/rigs or direct timeline edits (e.g. layer splicing, precomposing) are more appropriate for this specific request.
   4. Your step-by-step editing and assembly plan.
 - **ON-DEMAND CONTEXT PRINCIPLE**: You do NOT automatically receive active timeline metadata or installed effects list in the initial prompt. Whenever the user requests timeline automation, layer styling, or asset placements, you MUST first invoke the \`getTimelineContext\` or \`getInstalledEffects\` tool in a JSON block to fetch the live context before generating your reasoning and ExtendScript.
+- **CONVERSATIONAL, INVESTIGATIVE, & NON-MODIFYING CLAUSE**: If the user's message is conversational, asks an explanatory/investigative question, or points out a factual/spelling correction without explicitly requesting timeline modifications:
+  1. You ARE fully allowed and encouraged to run read-only investigative tools (\`getTimelineContext\`, \`captureActiveFrame\`, \`getLayerProperties\`, \`getInstalledEffects\`) to inspect the project state and answer their question accurately.
+  2. However, you MUST NOT run any state-modifying ExtendScript blocks or layout-altering tool calls (such as creating solid/shape layers, applying effects, altering keyframes, or shifting layer properties) unless the user has explicitly requested you to edit or animate the composition. Keep your output purely analytical, explanatory, and read-only.
 - **VERIFY EFFECT MATCH NAMES**: Always retrieve the active match name from the \`getInstalledEffects\` catalog first before applying an effect (e.g., standard AE Glow is "ADBE Glo2", not "ADBE Glow").
 - **THE MULTI-SCRIPT REACT SYSTEM**: Rather than trying to combine everything into a single massive script, you are highly encouraged to use a step-by-step ReAct strategy. You can execute an ExtendScript code block, inspect the outcome returned in the next turn's Observation, and then write subsequent scripts or correction loops.
 - **DYNAMIC PROPERTY & BLEND MODE DISCOVERY**: You can dynamically discover valid properties, values, or blending modes at runtime:
@@ -416,18 +419,19 @@ Do not write any comments inside the markdown formatting outside the code blocks
 
 async function runAgenticExecutionLoop(userText) {
     try {
-        let visualFrameInput = attachedFrameBase64;
+        let visualFrameInputs = [...attachedFrames];
 
     // Reset attachments
     clearAttachmentDock();
 
-    if (visualFrameInput) {
+    if (visualFrameInputs && visualFrameInputs.length > 0) {
+        const contentParts = [{ type: "text", text: userText }];
+        visualFrameInputs.forEach(img => {
+            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+        });
         chatHistory.push({
             role: "user",
-            content: [
-                { type: "text", text: userText },
-                { type: "image_url", image_url: { url: `data:image/png;base64,${visualFrameInput}` } }
-            ]
+            content: contentParts
         });
     } else {
         chatHistory.push({ role: "user", content: userText });
@@ -643,6 +647,10 @@ async function runAgenticExecutionLoop(userText) {
         } catch (e) { }
     } finally {
         isExecuting = false;
+        attachedFrames = [];
+        if (typeof updateContextSizeInfo === "function") {
+            updateContextSizeInfo();
+        }
         if (typeof setUIReadyState === "function") {
             setUIReadyState(true);
         }

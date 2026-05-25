@@ -92,11 +92,11 @@
 
         <!-- PERSISTED DOCK PREVIEW (IF ATTACHED) -->
         <div id="frame-attachment-preview" class="attachment-dock hidden">
-            <div class="dock-img-wrap">
-                <img id="attached-preview-img" src="" alt="Active frame preview">
-                <button id="btn-remove-attachment" class="close-badge">&times;</button>
+            <div id="dock-thumbnails" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <!-- Thumbnails will be injected dynamically -->
             </div>
-            <span class="dock-label">Current frame captured for analysis</span>
+            <button id="btn-remove-attachment" class="close-badge" style="position: static; margin-left: auto; width: auto; height: auto; padding: 2px 6px; border-radius: var(--border-radius-sm); font-size: 9px; line-height: 1.2;">Clear All</button>
+            <span class="dock-label" style="margin-left: 8px;">Current frames captured for analysis</span>
         </div>
 
         <!-- QUICK CHIPS & UTILITIES -->

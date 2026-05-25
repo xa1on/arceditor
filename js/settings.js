@@ -204,13 +204,23 @@ function loadSessionHistory(sessionId) {
             }
             if (msg.role === "user") {
                 let textContent = "";
+                let base64Images = [];
                 if (typeof msg.content === "string") {
                     textContent = msg.content;
                 } else if (Array.isArray(msg.content)) {
                     const textPart = msg.content.find(p => p.type === "text");
                     if (textPart) textContent = textPart.text;
+                    const imgParts = msg.content.filter(p => p.type === "image_url");
+                    imgParts.forEach(imgPart => {
+                        if (imgPart.image_url && imgPart.image_url.url) {
+                            const urlStr = imgPart.image_url.url;
+                            if (urlStr.indexOf("base64,") !== -1) {
+                                base64Images.push(urlStr.substring(urlStr.indexOf("base64,") + 7));
+                            }
+                        }
+                    });
                 }
-                addBubble("user", textContent);
+                addBubble("user", textContent, base64Images);
             } else if (msg.role === "assistant" && msg.content) {
                 addBubble("ai", msg.content);
             }

@@ -11,7 +11,7 @@ let apiKey = "";
 let isConnected = false;
 
 let chatHistory = [];
-let attachedFrameBase64 = null;
+let attachedFrames = [];
 let installedEffects = {};
 let lastApiUsage = null; // { promptTokens, completionTokens, totalTokens }
 
