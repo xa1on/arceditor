@@ -4,7 +4,8 @@
  */
 
 async function loadSettings() {
-    if (fs && fs.existsSync(configPath)) {
+    let loaded = false;
+    if (fs) {
         try {
             const dataStr = await fs.promises.readFile(configPath, 'utf8');
             const data = JSON.parse(dataStr);
@@ -12,14 +13,20 @@ async function loadSettings() {
             apiUrl = data.url || getDefaultUrl(currentProvider);
             modelName = data.model || getDefaultModel(currentProvider);
             apiKey = data.key || "";
+            loaded = true;
         } catch (e) {
-            console.error("Failed to load saved config:", e);
+            if (e.code !== 'ENOENT') {
+                console.error("Failed to load saved config:", e);
+            }
         }
-    } else {
+    }
+
+    if (!loaded) {
         // Apply defaults
         currentProvider = "lemonade";
         apiUrl = getDefaultUrl(currentProvider);
         modelName = getDefaultModel(currentProvider);
+        apiKey = "";
     }
 
     // Sync into settings DOM
@@ -78,15 +85,20 @@ function getDefaultModel(provider) {
 
 // --- PROJECT SPECIFIC CHATS AND PERSISTENT HISTORIES ---
 async function loadChats() {
-    if (fs && fs.existsSync(chatsConfigPath)) {
+    let loaded = false;
+    if (fs) {
         try {
             const dataStr = await fs.promises.readFile(chatsConfigPath, 'utf8');
             allProjectChats = JSON.parse(dataStr);
+            loaded = true;
         } catch (e) {
-            console.error("Failed to load chats database:", e);
-            allProjectChats = {};
+            if (e.code !== 'ENOENT') {
+                console.error("Failed to load chats database:", e);
+            }
         }
-    } else {
+    }
+
+    if (!loaded) {
         allProjectChats = {};
     }
 }
@@ -185,16 +197,31 @@ function loadSessionHistory(sessionId) {
             </div>
         `;
         
-        // Re-render chat bubbles from history!
+        // Re-render chat bubbles from history, filtering out intermediate technical turns!
         chatHistory.forEach(msg => {
-            if (msg.role === "user" && msg.content && typeof msg.content === "string") {
-                let cleanText = msg.content;
-                const contextIndex = cleanText.indexOf("\n\n[Active Timeline Context:");
-                if (contextIndex !== -1) {
-                    cleanText = cleanText.substring(0, contextIndex);
+            if (msg.role === "user") {
+                let textContent = "";
+                if (typeof msg.content === "string") {
+                    textContent = msg.content;
+                } else if (Array.isArray(msg.content)) {
+                    const textPart = msg.content.find(p => p.type === "text");
+                    if (textPart) textContent = textPart.text;
                 }
-                addBubble("user", cleanText);
+                
+                // Filter out intermediate observation or error turns
+                if (textContent.indexOf("Observation:") === 0 || textContent.indexOf("System execution failed with error:") === 0) {
+                    return;
+                }
+                addBubble("user", textContent);
             } else if (msg.role === "assistant" && msg.content) {
+                // Filter out intermediate technical scripts or tool calls
+                const contentStr = String(msg.content);
+                const hasJsx = contentStr.indexOf("```javascript") !== -1 || contentStr.indexOf("```js") !== -1;
+                const hasJson = contentStr.indexOf("```json") !== -1 || (contentStr.indexOf("{") === 0 && contentStr.indexOf("tool") !== -1);
+                
+                if (hasJsx || hasJson) {
+                    return;
+                }
                 addBubble("ai", msg.content);
             }
         });
@@ -216,10 +243,14 @@ function updateCurrentSessionHistory() {
         // Auto-generate title from the first user prompt if the title is still "New Chat"
         if (session.title === "New Chat" && chatHistory.length > 0) {
             const firstUserMsg = chatHistory.find(m => m.role === "user");
-            if (firstUserMsg && typeof firstUserMsg.content === "string") {
-                let rawPrompt = firstUserMsg.content;
-                const contextIndex = rawPrompt.indexOf("\n\n[Active Timeline Context:");
-                if (contextIndex !== -1) rawPrompt = rawPrompt.substring(0, contextIndex);
+            if (firstUserMsg) {
+                let rawPrompt = "";
+                if (typeof firstUserMsg.content === "string") {
+                    rawPrompt = firstUserMsg.content;
+                } else if (Array.isArray(firstUserMsg.content)) {
+                    const textPart = firstUserMsg.content.find(p => p.type === "text");
+                    if (textPart) rawPrompt = textPart.text;
+                }
                 
                 let summary = rawPrompt.trim().substring(0, 20);
                 if (rawPrompt.length > 20) summary += "...";

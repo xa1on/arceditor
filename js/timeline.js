@@ -98,7 +98,8 @@ async function captureCompositionFrame() {
 
     // 1. Prioritize File-based Capture (Using new Asynchronous file-write polling to guarantee saveFrameToPng success)
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : (process.env.TEMP || process.env.TMP || '/tmp');
-    const tempPngPath = path.join(saveDir, 'arc_preview.png');
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const tempPngPath = path.join(saveDir, `arc_preview_${uniqueSuffix}.png`);
     const safePath = tempPngPath.replace(/\\/g, '/');
 
     const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
@@ -112,15 +113,20 @@ async function captureCompositionFrame() {
             // Poll for up to 1500ms (30 attempts at 50ms) to allow After Effects' asynchronous write to complete
             let fileFound = false;
             for (let attempt = 0; attempt < 30; attempt++) {
-                if (fs.existsSync(actualPath) && fs.statSync(actualPath).size > 100) {
-                    fileFound = true;
-                    break;
+                try {
+                    const stats = await fs.promises.stat(actualPath);
+                    if (stats.size > 100) {
+                        fileFound = true;
+                        break;
+                    }
+                } catch (e) {
+                    // File not ready or does not exist yet
                 }
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
 
             if (fileFound) {
-                const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });
+                const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
                 attachedFrameBase64 = base64Data;
 
                 const extName = path.extname(actualPath).toLowerCase();
@@ -134,7 +140,7 @@ async function captureCompositionFrame() {
                 addSystemMessage("Canvas frame captured successfully.");
 
                 try {
-                    fs.unlinkSync(actualPath);
+                    await fs.promises.unlink(actualPath);
                 } catch (e) { }
 
                 return base64Data;

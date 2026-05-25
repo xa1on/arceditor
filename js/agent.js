@@ -576,10 +576,8 @@ async function runAgenticExecutionLoop(userText) {
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
     }
 
-    // Persist strictly the final, resolved assistant message in visual chatHistory (keeps UI 100% clean of JSON tool observations)
-    if (finalLlmResponse) {
-        chatHistory.push({ role: "assistant", content: finalLlmResponse });
-    }
+    // Persist the entire resolved activeContext so the model retains flawless conversational memory
+    chatHistory = activeContext;
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
@@ -721,42 +719,71 @@ async function executeToolCalls(jsonStr) {
 function formatMarkdown(text) {
     if (!text) return "";
 
+    // Escape HTML special characters safely
     let html = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
 
-    html = html.replace(/```(?:javascript|js|extendscript|jsx)?\n([\s\S]*?)\n```/g, (match, code) => {
-        return `<pre class="code-viewport"><code>${code}</code></pre>`;
+    // Extract pre/code blocks upfront to prevent formatting inside them
+    const preBlocks = [];
+    html = html.replace(/```(?:javascript|js|extendscript|jsx|json)?\n([\s\S]*?)\n```/g, (match, code) => {
+        preBlocks.push(`<pre class="code-viewport"><code>${code}</code></pre>`);
+        return `__PRE_BLOCK_${preBlocks.length - 1}__`;
     });
 
-    const segments = html.split(/(<pre[\s\S]*?<\/pre>)/g);
+    // Process the text paragraph by paragraph
+    const paragraphs = html.split(/\n\n+/);
+    const processedParagraphs = paragraphs.map(p => {
+        let trimmed = p.trim();
+        if (!trimmed) return "";
 
-    for (let i = 0; i < segments.length; i++) {
-        if (!segments[i].startsWith("<pre")) {
-            segments[i] = segments[i]
+        // Check if it's a pre-extracted block
+        if (trimmed.indexOf("__PRE_BLOCK_") === 0) {
+            return trimmed;
+        }
+
+        // Process headings
+        if (trimmed.startsWith("#")) {
+            return trimmed
                 .replace(/^###### (.*?)$/gm, "<h6>$1</h6>")
                 .replace(/^##### (.*?)$/gm, "<h5>$1</h5>")
                 .replace(/^#### (.*?)$/gm, "<h4>$1</h4>")
                 .replace(/^### (.*?)$/gm, "<h3>$1</h3>")
                 .replace(/^## (.*?)$/gm, "<h2>$1</h2>")
-                .replace(/^# (.*?)$/gm, "<h1>$1</h1>")
-                .replace(/^\s*[-*+]\s+(.*?)$/gm, "<div class='bullet-item'>• $1</div>")
-                .replace(/^\s*(\d+)\.\s+(.*?)$/gm, "<div class='bullet-item'>$1. $2</div>")
-                .replace(/`([^`]+)`/g, "<code>$1</code>")
-                .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
-                .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
-                .replace(/\n/g, "<br>");
+                .replace(/^# (.*?)$/gm, "<h1>$1</h1>");
         }
-    }
 
-    let result = segments.join("");
+        // Process list items
+        if (/^\s*[-*+]\s+/.test(trimmed) || /^\s*\d+\.\s+/.test(trimmed)) {
+            return trimmed
+                .replace(/^\s*[-*+]\s+(.*?)$/gm, "<div class='bullet-item'>• $1</div>")
+                .replace(/^\s*(\d+)\.\s+(.*?)$/gm, "<div class='bullet-item'>$1. $2</div>");
+        }
 
-    result = result.replace(/<(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)><br>/gi, "<$1>");
-    result = result.replace(/<\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)><br>/gi, "</$1>");
-    result = result.replace(/<br><(h[1-6]|div[^>]*|details[^>]*|summary[^>]*|pre[^>]*|table[^>]*|tr[^>]*|td[^>]*|th[^>]*|ul[^>]*|li[^>]*)>/gi, "<$1>");
-    result = result.replace(/<br><\/(h[1-6]|div|details|summary|pre|table|tr|td|th|ul|li)>/gi, "</$1>");
+        // Standard text paragraph
+        // Replace single newlines with <br> for soft breaks
+        let pText = trimmed.replace(/\n/g, "<br>");
+        return `<p>${pText}</p>`;
+    });
 
+    let result = processedParagraphs.join("\n");
+
+    // Restore pre blocks
+    result = result.replace(/__PRE_BLOCK_(\d+)__/g, (match, index) => {
+        return preBlocks[parseInt(index, 10)];
+    });
+
+    // Inline formatting: Bold, Italic, Code
+    result = result
+        .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
+        .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+    // Clean up empty paragraphs
+    result = result.replace(/<p><\/p>/g, "");
+
+    // Process agent reasoning thinking blocks
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
         return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
