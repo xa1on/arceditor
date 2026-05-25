@@ -396,7 +396,7 @@ async function runAgenticExecutionLoop(userText) {
     let loopRetries = 0;
     const maxRetries = 3;
     let toolTurns = 0;
-    const maxToolTurns = 5;
+    const maxToolTurns = 15;
     let finalLlmResponse = "";
 
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
@@ -415,7 +415,57 @@ async function runAgenticExecutionLoop(userText) {
             const jsonBlock = extractJSONToolCalls(llmResponse);
             const jsxBlock = extractJSXCode(llmResponse);
 
-            if (jsonBlock) {
+            var observations = "";
+            var executedAnything = false;
+            var scriptFailed = false;
+
+            if (jsxBlock) {
+                executedAnything = true;
+                toolTurns++;
+                updateConsolePane(jsxBlock);
+                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
+
+                writeToDebugLog("ExtendScript Extracted", jsxBlock);
+
+                // Wrap in try-catch to ensure we capture all ExtendScript runtime and reference errors
+                const wrappedJSX = `(function() {
+                    try {
+                        ${jsxBlock}
+                        return "Success";
+                    } catch (err) {
+                        return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+                    }
+                })()`;
+
+                // Execute ExtendScript via CEP evalScript
+                const execResult = await evalScriptAsync(wrappedJSX);
+                console.log("[ArcEditor JSX Executed Result]:", execResult);
+
+                writeToDebugLog("ExtendScript Execution Result", execResult);
+
+                if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
+                    scriptFailed = true;
+                    loopRetries++;
+                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
+
+                    // Push error feedback to local context history
+                    activeContext.push({
+                        role: "user",
+                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`
+                    });
+
+                    // Don't send the base64 image again to save bandwidth
+                    visualFrameInput = null;
+                } else {
+                    observations += `ExtendScript executed successfully with result: "${execResult}"\n`;
+                }
+            }
+
+            // Only execute JSON tool calls if the ExtendScript succeeded (or if there was no script to begin with)
+            if (jsonBlock && !scriptFailed) {
+                executedAnything = true;
                 toolTurns++;
                 updateConsolePane(jsonBlock);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
@@ -423,10 +473,17 @@ async function runAgenticExecutionLoop(userText) {
 
                 writeToDebugLog("Tool Calls Extracted", jsonBlock);
 
-                const observations = await executeToolCalls(jsonBlock);
-                console.log("[ArcEditor Tool Calls Observations]:", observations);
+                const toolObservations = await executeToolCalls(jsonBlock);
+                console.log("[ArcEditor Tool Calls Observations]:", toolObservations);
 
-                writeToDebugLog("Tool Execution Observations", observations);
+                writeToDebugLog("Tool Execution Observations", toolObservations);
+                observations += (observations ? "\n" : "") + `Tool execution observation:\n${toolObservations}`;
+            }
+
+            if (executedAnything) {
+                if (scriptFailed) {
+                    continue; // Skip rest of execution and let loop retry self-correction
+                }
 
                 // Append observations to local context history (handling multi-modal visual observations!)
                 if (capturedFrameDataDuringLoop) {
@@ -447,50 +504,10 @@ async function runAgenticExecutionLoop(userText) {
 
                 // Show feedback in UI and prepare next turn
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Tools Executed:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
+                    `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Execution Observations:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
 
                 continue; // Run next loop turn immediately
-
-            } else if (jsxBlock) {
-                toolTurns++;
-                updateConsolePane(jsxBlock);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
-
-                writeToDebugLog("ExtendScript Extracted", jsxBlock);
-
-                // Execute ExtendScript via CEP evalScript
-                const execResult = await evalScriptAsync(jsxBlock);
-                console.log("[ArcEditor JSX Executed Result]:", execResult);
-
-                writeToDebugLog("ExtendScript Execution Result", execResult);
-
-                if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
-                    loopRetries++;
-                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
-
-                    // Push error feedback to local context history
-                    activeContext.push({
-                        role: "user",
-                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`
-                    });
-
-                    // Don't send the base64 image again to save bandwidth
-                    visualFrameInput = null;
-                } else {
-                    // Success! Feed back as an observation and continue the loop for further actions or verification
-                    activeContext.push({
-                        role: "user",
-                        content: `Observation:\nExtendScript executed successfully with result: "${execResult}"\n\nPlease verify if the work is complete, or proceed with your next planned steps.`
-                    });
-
-                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                        `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>ExtendScript Executed:</strong><br>${execResult}</div>` +
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
-                }
-                continue; // Run next turn in ReAct loop to let LLM choose next step or conclude
             } else {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
