@@ -1208,6 +1208,12 @@ var ArcEditor = {
                     } catch (e) {
                         propInfo.value = "(unreadable)";
                     }
+                    try {
+                        propInfo.hasExpression = prop.expressionEnabled;
+                        if (prop.expressionEnabled) {
+                            propInfo.expression = prop.expression;
+                        }
+                    } catch (exprErr) { }
                     result.properties.push(propInfo);
                 } else if (prop.propertyType === PropertyType.NAMED_GROUP || prop.propertyType === PropertyType.INDEXED_GROUP) {
                     propInfo.type = "GROUP";
