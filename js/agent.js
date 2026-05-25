@@ -119,7 +119,7 @@ Layer Referencing (Avoid Fragile Indexes!):
      * \`moveAllAttributes\`: (Optional) Boolean. Defaults to true.
 
 9. \`ArcEditor.setLayerBlendMode(layerRef, blendModeName)\`
-   - Description: Changes layer blend mode. Supported modes are resolved dynamically at runtime (case-insensitive and punctuation-insensitive, covering all 38 AE blend modes such as \`"ADD\"\`, \`"ALPHA_ADD\"\`, \`"SCREEN\"\`, \`"MULTIPLY\"\`, \`"NORMAL\"\`). If a mode is invalid, the script throws an error listing all available native modes.
+   - Description: Changes layer blend mode. Supported modes are resolved dynamically at runtime (case-insensitive and punctuation-insensitive, covering all AE blend modes such as \`"ADD\"\`, \`"ALPHA_ADD\"\`, \`"SCREEN\"\`, \`"MULTIPLY\"\`, \`"NORMAL\"\`). If a mode is invalid, the script throws an error listing all available native modes.
    - Parameters:
      * \`blendModeName\`: Any native After Effects blend mode string (e.g. \`"SUBTRACT\"\`, \`\"ADD\"\`, \`\"SCREEN\"\`, etc.).
 

@@ -138,6 +138,21 @@ var ArcInspector = {
                 layerType = "Null";
             }
 
+            // Dynamically query the layer's active blending mode string representation
+            var bmName = "NORMAL";
+            try {
+                if (typeof layer.blendingMode !== "undefined") {
+                    for (var key in BlendingMode) {
+                        if (BlendingMode.hasOwnProperty(key)) {
+                            if (BlendingMode[key] === layer.blendingMode) {
+                                bmName = key;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (e) { }
+
             var layerData = {
                 index: layer.index,
                 id: layer.id,
@@ -148,7 +163,8 @@ var ArcInspector = {
                 startTime: layer.startTime,
                 inPoint: layer.inPoint,
                 outPoint: layer.outPoint,
-                hasParent: layer.parent !== null
+                hasParent: layer.parent !== null,
+                blendMode: bmName
             };
 
             // Retrieve layer markers
@@ -770,7 +786,7 @@ var ArcEditor = {
             throw new Error("Unsupported or invalid layer blend mode: '" + blendModeName + "'. Supported modes on this system: " + availableModes.join(", "));
         }
 
-        layer.blendMode = mode;
+        layer.blendingMode = mode;
         return true;
     },
 
