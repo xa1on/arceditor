@@ -100,6 +100,22 @@ ${code}`;
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
 
     chipCapture.addEventListener("click", captureCompositionFrame);
+    
+    const chipInspect = document.getElementById("chip-inspect");
+    if (chipInspect) {
+        chipInspect.addEventListener("click", async () => {
+            if (isExecuting) return;
+            addBubble("user", "Test Timeline Connection");
+            addSystemMessage("Loading active timeline context...");
+            const context = await getTimelineContext();
+            if (context.error) {
+                addBubble("ai", `Timeline Inspector failed:\n\n${context.error}`);
+            } else {
+                addBubble("ai", `Successfully connected to After Effects! Active Comp: **${context.name}** (${context.width}x${context.height}, ${context.frameRate} fps). Layers: **${context.numLayers}**.`);
+            }
+        });
+    }
+
     const btnInspectComp = document.getElementById("btn-inspect-comp");
     if (btnInspectComp) {
         btnInspectComp.addEventListener("click", async () => {
@@ -196,11 +212,16 @@ async function copyToClipboard(text) {
             const os = require("os");
             const platform = os.platform();
             
-            if (platform === "win32") {
-                child_process.execSync("clip", { input: text });
-                return;
-            } else if (platform === "darwin") {
-                child_process.execSync("pbcopy", { input: text });
+            if (platform === "win32" || platform === "darwin") {
+                const cmd = platform === "win32" ? "clip" : "pbcopy";
+                await new Promise((resolve, reject) => {
+                    const proc = child_process.exec(cmd, (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                    proc.stdin.write(text);
+                    proc.stdin.end();
+                });
                 return;
             }
         } catch (err) {
@@ -250,12 +271,14 @@ function switchTab(tab) {
 function triggerUserMessage() {
     const input = document.getElementById("chat-input");
     const userText = input.value.trim();
-    if (!userText) return;
+    if (!userText || isExecuting) return;
 
     addBubble("user", userText);
     input.value = "";
     input.style.height = "auto";
-    document.getElementById("btn-send").disabled = true;
+    
+    isExecuting = true;
+    setUIReadyState(false);
 
     runAgenticExecutionLoop(userText);
 }
@@ -398,9 +421,19 @@ function updateContextSizeInfo() {
 
     // High-fidelity BPE token estimation
     let estTokens = estimateTrueTokens(textForEstimation);
-    if (attachedFrameBase64) {
-        estTokens += 258; // Standard image block tokens weight
+    
+    // Scan entire prospective history to add standard 258 tokens for every single image block found
+    let imageBlocksCount = 0;
+    for (const msg of prospectiveHistory) {
+        if (Array.isArray(msg.content)) {
+            for (const part of msg.content) {
+                if (part.type === "image_url") {
+                    imageBlocksCount++;
+                }
+            }
+        }
     }
+    estTokens += imageBlocksCount * 258;
 
     let usageTag = "";
     if (typeof lastApiUsage !== "undefined" && lastApiUsage) {
@@ -438,5 +471,44 @@ function updateConsolePane(code) {
         output.value = code;
     } else if (output.querySelector("code")) {
         output.querySelector("code").innerText = code;
+    }
+}
+
+function setUIReadyState(ready) {
+    const chatInput = document.getElementById("chat-input");
+    const btnSend = document.getElementById("btn-send");
+    const selectSession = document.getElementById("select-chat-session");
+    const btnDeleteSession = document.getElementById("btn-delete-session");
+    const chipCapture = document.getElementById("chip-capture");
+    const chipInspect = document.getElementById("chip-inspect");
+    const btnSettings = document.getElementById("btn-settings");
+    const btnInspectComp = document.getElementById("btn-inspect-comp");
+
+    if (chatInput) {
+        chatInput.disabled = !ready;
+        if (!ready) {
+            chatInput.placeholder = "Agent is active... please wait";
+        } else {
+            chatInput.placeholder = "Ask Arc to edit, splice, or animate...";
+        }
+    }
+    if (btnSend) btnSend.disabled = !ready || !chatInput.value.trim();
+    if (selectSession) selectSession.disabled = !ready;
+    if (btnDeleteSession) btnDeleteSession.disabled = !ready;
+    if (chipCapture) chipCapture.disabled = !ready;
+    if (chipInspect) chipInspect.disabled = !ready;
+    if (btnSettings) btnSettings.disabled = !ready;
+    if (btnInspectComp) btnInspectComp.disabled = !ready;
+
+    // Apply transient style classes for visual execution lock feedback
+    const quickUtilities = document.querySelector(".quick-utilities");
+    if (quickUtilities) {
+        if (!ready) {
+            quickUtilities.style.opacity = "0.5";
+            quickUtilities.style.pointerEvents = "none";
+        } else {
+            quickUtilities.style.opacity = "1";
+            quickUtilities.style.pointerEvents = "auto";
+        }
     }
 }

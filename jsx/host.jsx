@@ -363,6 +363,18 @@ var ArcCanvas = {
         }
 
         var rq = app.project.renderQueue;
+        
+        // Temporarily disable rendering for all other items in the Render Queue to prevent rendering heavy user comps
+        var originalRenderStatuses = [];
+        for (var r = 1; r <= rq.numItems; r++) {
+            try {
+                originalRenderStatuses.push(rq.item(r).render);
+                rq.item(r).render = false;
+            } catch (e) {
+                originalRenderStatuses.push(true);
+            }
+        }
+
         var item = rq.items.add(comp);
         item.timeSpanStart = comp.time;
         item.timeSpanDuration = comp.frameDuration;
@@ -389,9 +401,23 @@ var ArcCanvas = {
         
         om.file = file;
 
-        // Run render
-        rq.render();
-        item.remove(); // Clean up Render Queue item
+        // Ensure our temporary item is set to render
+        item.render = true;
+
+        try {
+            // Run render
+            rq.render();
+        } finally {
+            // Restore original render statuses
+            for (var r = 1; r <= originalRenderStatuses.length; r++) {
+                try {
+                    rq.item(r).render = originalRenderStatuses[r - 1];
+                } catch (e) {}
+            }
+            try {
+                item.remove(); // Clean up Render Queue item
+            } catch (e) {}
+        }
 
         if (file.exists) {
             return "Success: " + file.fsName;

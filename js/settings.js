@@ -199,6 +199,9 @@ function loadSessionHistory(sessionId) {
         
         // Re-render chat bubbles from history, filtering out intermediate technical turns!
         chatHistory.forEach(msg => {
+            if (msg.isIntermediate) {
+                return;
+            }
             if (msg.role === "user") {
                 let textContent = "";
                 if (typeof msg.content === "string") {
@@ -207,21 +210,8 @@ function loadSessionHistory(sessionId) {
                     const textPart = msg.content.find(p => p.type === "text");
                     if (textPart) textContent = textPart.text;
                 }
-                
-                // Filter out intermediate observation or error turns
-                if (textContent.indexOf("Observation:") === 0 || textContent.indexOf("System execution failed with error:") === 0) {
-                    return;
-                }
                 addBubble("user", textContent);
             } else if (msg.role === "assistant" && msg.content) {
-                // Filter out intermediate technical scripts or tool calls
-                const contentStr = String(msg.content);
-                const hasJsx = contentStr.indexOf("```javascript") !== -1 || contentStr.indexOf("```js") !== -1;
-                const hasJson = contentStr.indexOf("```json") !== -1 || (contentStr.indexOf("{") === 0 && contentStr.indexOf("tool") !== -1);
-                
-                if (hasJsx || hasJson) {
-                    return;
-                }
                 addBubble("ai", msg.content);
             }
         });

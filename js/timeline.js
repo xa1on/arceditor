@@ -24,7 +24,8 @@ async function validateConnection() {
     try {
         if (currentProvider === "lemonade") {
             // Check local Lemonade status
-            const checkUrl = apiUrl.endsWith("/v1") ? `${apiUrl}/models` : `${apiUrl}/v1/models`;
+            const baseUrl = apiUrl.replace(/\/$/, "");
+            const checkUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
             await makeRequest(checkUrl, 'GET', {}, "");
         } else {
             // For cloud APIs, check if we have a key input
@@ -162,11 +163,29 @@ async function captureCompositionFrame() {
             let base64Data = "";
             if (platform === 'win32') {
                 const psCmd = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [System.Convert]::ToBase64String($ms.ToArray()) }`;
-                const stdout = child_process.execSync(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true });
-                base64Data = stdout.toString().trim();
+                try {
+                    const stdout = await new Promise((resolve, reject) => {
+                        child_process.exec(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true }, (err, stdout) => {
+                            if (err) reject(err);
+                            else resolve(stdout);
+                        });
+                    });
+                    base64Data = stdout.toString().trim();
+                } catch (err) {
+                    console.error("[ArcEditor] Windows fallback clipboard copy process failed: ", err);
+                }
             } else if (platform === 'darwin') {
-                const stdout = child_process.execSync(`osascript -e "write (the clipboard as «class PNGf») to (open for access \\"/tmp/arc_clip.png\\" with write permission)" && base64 -i /tmp/arc_clip.png && rm /tmp/arc_clip.png`);
-                base64Data = stdout.toString().trim();
+                try {
+                    const stdout = await new Promise((resolve, reject) => {
+                        child_process.exec(`osascript -e "write (the clipboard as «class PNGf») to (open for access \\"/tmp/arc_clip.png\\" with write permission)" && base64 -i /tmp/arc_clip.png && rm /tmp/arc_clip.png`, (err, stdout) => {
+                            if (err) reject(err);
+                            else resolve(stdout);
+                        });
+                    });
+                    base64Data = stdout.toString().trim();
+                } catch (err) {
+                    console.error("[ArcEditor] macOS fallback clipboard copy process failed: ", err);
+                }
             }
 
             if (base64Data && base64Data.length > 100) {

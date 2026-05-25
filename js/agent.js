@@ -415,7 +415,8 @@ Do not write any comments inside the markdown formatting outside the code blocks
 `;
 
 async function runAgenticExecutionLoop(userText) {
-    let visualFrameInput = attachedFrameBase64;
+    try {
+        let visualFrameInput = attachedFrameBase64;
 
     // Reset attachments
     clearAttachmentDock();
@@ -460,7 +461,8 @@ async function runAgenticExecutionLoop(userText) {
                 if (typeof scrollToBottom === "function") scrollToBottom();
             });
             aiBubble.setAttribute("data-raw-text", llmResponse);
-            activeContext.push({ role: "assistant", content: llmResponse });
+            const assistantMsg = { role: "assistant", content: llmResponse };
+            activeContext.push(assistantMsg);
             finalLlmResponse = llmResponse;
 
             writeToDebugLog("LLM Raw Response", llmResponse);
@@ -470,7 +472,9 @@ async function runAgenticExecutionLoop(userText) {
             const jsxBlock = extractJSXCode(llmResponse);
 
             if (jsxBlock || jsonBlock) {
-                const actionKey = (jsxBlock ? `jsx:${jsxBlock.trim()}` : "") + (jsonBlock ? `|json:${JSON.stringify(jsonBlock)}` : "");
+                assistantMsg.isIntermediate = true;
+                const significantJson = getSignificantJsonActionKey(jsonBlock);
+                const actionKey = (jsxBlock ? `jsx:${jsxBlock.trim()}` : "") + (significantJson ? `|json:${significantJson}` : "");
                 if (actionKey) {
                     if (executedActions.indexOf(actionKey) !== -1) {
                         console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
@@ -535,7 +539,8 @@ async function runAgenticExecutionLoop(userText) {
                     // Push error feedback to local context history
                     activeContext.push({
                         role: "user",
-                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`
+                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`,
+                        isIntermediate: true
                     });
 
                     // Don't send the base64 image again to save bandwidth
@@ -575,13 +580,15 @@ async function runAgenticExecutionLoop(userText) {
                         content: [
                             { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` },
                             { type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } }
-                        ]
+                        ],
+                        isIntermediate: true
                     });
                     capturedFrameDataDuringLoop = null; // Reset for next potential capture
                 } else {
                     activeContext.push({
                         role: "user",
-                        content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`
+                        content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
+                        isIntermediate: true
                     });
                 }
 
@@ -631,9 +638,15 @@ async function runAgenticExecutionLoop(userText) {
     } else if (typeof global !== "undefined") {
         global.lastActiveContext = activeContext;
     }
-    try {
-        lastActiveContext = activeContext;
-    } catch (e) { }
+        try {
+            lastActiveContext = activeContext;
+        } catch (e) { }
+    } finally {
+        isExecuting = false;
+        if (typeof setUIReadyState === "function") {
+            setUIReadyState(true);
+        }
+    }
 }
 
 function extractJSXCode(text) {
@@ -644,6 +657,34 @@ function extractJSXCode(text) {
 function extractJSONToolCalls(text) {
     const match = text.match(/```json\n([\s\S]*?)\n```/);
     return match ? match[1].trim() : null;
+}
+
+function getSignificantJsonActionKey(jsonStr) {
+    if (!jsonStr) return "";
+    try {
+        const parsed = JSON.parse(jsonStr);
+        const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+        const stateModifying = toolCalls.filter(tc => {
+            const toolName = tc.tool;
+            const isReadOnly = [
+                "captureActiveFrame",
+                "getTimelineContext",
+                "getInstalledEffects",
+                "getLayerProperties",
+                "selectLayer",
+                "switchComposition",
+                "setPlayheadTime"
+            ].indexOf(toolName) !== -1;
+            return !isReadOnly;
+        });
+        if (stateModifying.length === 0) {
+            return ""; // No state-modifying actions
+        }
+        return JSON.stringify(stateModifying);
+    } catch (e) {
+        // Fallback to the raw string if parsing fails, so we still track repeats of syntax errors or raw text
+        return jsonStr.trim();
+    }
 }
 
 async function executeToolCalls(jsonStr) {
@@ -934,9 +975,13 @@ function writeToDebugLog(category, text) {
             const lastSeparator = Math.max(currentProjectPath.lastIndexOf('/'), currentProjectPath.lastIndexOf('\\'));
             const projectDir = currentProjectPath.substring(0, lastSeparator);
             const debugLogPath = path.join(projectDir, "arceditor_debug.log");
-            fs.appendFileSync(debugLogPath, logEntry, 'utf8');
+            fs.appendFile(debugLogPath, logEntry, 'utf8', (err) => {
+                if (err) {
+                    console.error("Failed to write to arceditor_debug.log asynchronously: ", err);
+                }
+            });
         } catch (e) {
-            console.error("Failed to write to arceditor_debug.log: ", e);
+            console.error("Failed to initiate write to arceditor_debug.log: ", e);
         }
     }
 }

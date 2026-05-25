@@ -20,6 +20,7 @@ let fs = null, path = null, os = null, httpsClient = null, httpClient = null;
 let csInterface = null;
 let extensionPath = "./";
 let configPath = "./config.json";
+let chatsConfigPath = "./chats.json";
 
 try {
     if (typeof require !== "undefined") {
@@ -56,3 +57,4 @@ if (os && path) {
 let allProjectChats = {};
 let activeSessionId = null;
 let currentProjectPath = "Unsaved Project";
+let isExecuting = false;

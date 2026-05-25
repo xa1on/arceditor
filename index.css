@@ -21,8 +21,8 @@
     --text-error: #ff4444;
     --text-success: #00c851;    /* Vibrant success green */
     
-    --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
-    --font-mono: Consolas, "Courier New", monospace;
+    --font-sans: "Outfit", "Segoe UI", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", Consolas, monospace;
     --border-radius-sm: 2px;    /* Boxy native feel */
     --border-radius-md: 3px;
 }

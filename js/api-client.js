@@ -15,15 +15,17 @@ function makeRequest(url, method, headers, payload) {
             const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
             const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
 
+            const reqHeaders = { ...headers };
+            if (method !== 'GET' && method !== 'HEAD' && postData !== undefined && postData !== null) {
+                reqHeaders['Content-Length'] = Buffer.byteLength(postData);
+            }
+
             const options = {
                 hostname: urlObj.hostname,
                 port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
                 path: urlObj.pathname + urlObj.search,
                 method: method,
-                headers: {
-                    ...headers,
-                    'Content-Length': Buffer.byteLength(postData)
-                }
+                headers: reqHeaders
             };
 
             const req = client.request(options, (res) => {
@@ -67,15 +69,17 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
             const client = urlObj.protocol === 'https:' ? httpsClient : httpClient;
             const postData = typeof payload === "string" ? payload : JSON.stringify(payload);
 
+            const reqHeaders = { ...headers };
+            if (method !== 'GET' && method !== 'HEAD' && postData !== undefined && postData !== null) {
+                reqHeaders['Content-Length'] = Buffer.byteLength(postData);
+            }
+
             const options = {
                 hostname: urlObj.hostname,
                 port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
                 path: urlObj.pathname + urlObj.search,
                 method: method,
-                headers: {
-                    ...headers,
-                    'Content-Length': Buffer.byteLength(postData)
-                }
+                headers: reqHeaders
             };
 
             const req = client.request(options, (res) => {
@@ -187,7 +191,7 @@ Here is the ExtendScript to build it:
 
     const headers = { "Content-Type": "application/json" };
     let payload = {};
-    let targetUrl = apiUrl;
+    let targetUrl = apiUrl.replace(/\/$/, "");
 
     if (currentProvider === "lemonade" || currentProvider === "openai") {
         targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
@@ -248,7 +252,8 @@ Here is the ExtendScript to build it:
     } else if (currentProvider === "gemini") {
         // Target Gemini generateContent API
         let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
-        targetUrl = `${apiUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
+        const cleanBaseUrl = apiUrl.replace(/\/$/, "");
+        targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
         if (onChunkReceived) {
             targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
         }
@@ -331,7 +336,8 @@ Here is the ExtendScript to build it:
 
     } else if (currentProvider === "anthropic") {
         // Target Claude API
-        targetUrl = targetUrl.endsWith("/messages") ? targetUrl : `${targetUrl}/v1/messages`;
+        const cleanBaseUrl = targetUrl.replace(/\/$/, "");
+        targetUrl = cleanBaseUrl.endsWith("/messages") ? cleanBaseUrl : `${cleanBaseUrl}/v1/messages`;
         headers["x-api-key"] = apiKey;
         headers["anthropic-version"] = "2023-06-01";
 
@@ -428,7 +434,8 @@ async function fetchTrueTokenCount(messages) {
     }
 
     try {
-        const targetUrl = `${apiUrl}/v1beta/models/${modelName}:countTokens?key=${apiKey}`;
+        const cleanBaseUrl = apiUrl.replace(/\/$/, "");
+        const targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:countTokens?key=${apiKey}`;
         const headers = { "Content-Type": "application/json" };
         
         const contents = messages.map(m => {
