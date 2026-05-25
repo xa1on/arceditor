@@ -94,7 +94,7 @@ async function captureCompositionFrame() {
     const previewContainer = document.getElementById("frame-attachment-preview");
     const previewImg = document.getElementById("attached-preview-img");
 
-    const saveDir = (os && typeof os.homedir === "function") ? os.homedir() : (process.env.TEMP || process.env.TMP || '/tmp');
+    const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : (process.env.TEMP || process.env.TMP || '/tmp');
     const tempPngPath = path.join(saveDir, 'arc_preview.png');
 
     // Replace backslashes for safe ExtendScript evaluation on Windows paths
@@ -117,8 +117,15 @@ async function captureCompositionFrame() {
             const base64Data = fs.readFileSync(actualPath, { encoding: 'base64' });
             attachedFrameBase64 = base64Data;
 
+            // Dynamically resolve MIME type based on output extension (for JPG fallbacks)
+            const extName = path.extname(actualPath).toLowerCase();
+            let mimeType = 'image/png';
+            if (extName === '.jpg' || extName === '.jpeg') {
+                mimeType = 'image/jpeg';
+            }
+
             // Show visual attachment badge in UI
-            if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
+            if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
             if (previewContainer) previewContainer.classList.remove("hidden");
             addSystemMessage("Canvas frame attached successfully.");
 

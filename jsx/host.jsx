@@ -293,6 +293,9 @@ var ArcCanvas = {
 
             var saveFn = comp.saveFrameToPng || comp.saveFrameToPNG;
             if (typeof saveFn === "function") {
+                if (file.exists) {
+                    file.remove();
+                }
                 saveFn.call(comp, comp.time, file);
 
                 if (file.exists) {
@@ -313,21 +316,52 @@ var ArcCanvas = {
      * Fallback frame exporter utilizing Render Queue (100% universal across all AE versions)
      */
     renderQueueFallback: function (comp, file) {
+        // Safe Pre-render Clean: Delete target file and any matching pattern suffix files
+        if (file.exists) {
+            file.remove();
+        }
+        var dir = file.parent;
+        var baseName = file.name.substring(0, file.name.lastIndexOf("."));
+        var ext = file.name.substring(file.name.lastIndexOf("."));
+        
+        // Remove matching pattern files to prevent After Effects from prompting for overwrite
+        var oldMatches = dir.getFiles(baseName + "*");
+        if (oldMatches) {
+            for (var f = 0; f < oldMatches.length; f++) {
+                try {
+                    oldMatches[f].remove();
+                } catch(e) {}
+            }
+        }
+
         var rq = app.project.renderQueue;
         var item = rq.items.add(comp);
         item.timeSpanStart = comp.time;
         item.timeSpanDuration = comp.frameDuration;
 
         var om = item.outputModule(1);
-        try {
-            om.applyTemplate("PNG Sequence");
-        } catch (e) {
+        
+        // Try multiple standard single-frame image sequence templates in sequence.
+        // This avoids falling back to a heavy lossless .avi/QuickTime video.
+        var templateApplied = false;
+        var templates = ["PNG Sequence", "Photoshop Sequence", "TIFF Sequence", "JPEG Sequence"];
+        for (var t = 0; t < templates.length; t++) {
+            try {
+                om.applyTemplate(templates[t]);
+                templateApplied = true;
+                break;
+            } catch (tplErr) {}
+        }
+        
+        if (!templateApplied) {
             try {
                 om.applyTemplate("Lossless");
-            } catch (e2) { }
+            } catch (e5) {}
         }
+        
         om.file = file;
 
+        // Run render
         rq.render();
         item.remove(); // Clean up Render Queue item
 
