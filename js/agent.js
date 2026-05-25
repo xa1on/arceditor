@@ -19,6 +19,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - **ON-DEMAND CONTEXT PRINCIPLE**: You do NOT automatically receive active timeline metadata or installed effects list in the initial prompt. Whenever the user requests timeline automation, layer styling, or asset placements, you MUST first invoke the \`getTimelineContext\` or \`getInstalledEffects\` tool in a JSON block to fetch the live context before generating your reasoning and ExtendScript.
 - **NEVER GUESS EFFECT MATCH NAMES**: You must NEVER guess, assume, or hardcode match names for effects or plugins (e.g., do NOT assume Glow is "ADBE Glow"). If a request involves applying an effect, you MUST first invoke the \`getInstalledEffects\` tool, search the returned JSON catalog for the user's requested display name, and retrieve its exact, active \`matchName\` (e.g., searching 'Glow' will yield 'ADBE Glo2'). Always write the exact retrieved matchName in your generated scripts.
 - **THE MULTI-SCRIPT REACT SYSTEM**: Rather than trying to combine everything into a single massive script, you are highly encouraged to use a step-by-step ReAct strategy. You can execute an ExtendScript code block, inspect the outcome returned in the next turn's Observation, and then write subsequent scripts or correction loops.
+- **DYNAMIC PROPERTY & BLEND MODE DISCOVERY**: You can dynamically discover valid properties, values, or blending modes at runtime:
+  1. Use the \`getLayerProperties\` tool to fetch absolute property paths, matchNames, display names, and values.
+  2. Blending modes are resolved dynamically at runtime on the host system (completely case-, space-, and punctuation-insensitive, supporting all 38 AE modes like \`"SUBTRACT"\`, \`"ADD"\`, \`"ALPHA_ADD"\`, etc.).
+  3. If you ever supply an invalid or misspelled blend mode, the host throws a detailed ExtendScript error showing the complete list of supported blend modes on that specific system. This observation is returned directly to your ReAct loop, allowing you to self-correct in the next turn.
+  4. You can also write a brief 3-line exploratory script in one turn (e.g., iterating keys of BlendingMode) to inspect After Effects API globals, and then use the returned results in subsequent turns.
 - **EXPLICIT WORK VERIFICATION**: Always write verification scripts or use getTimelineContext to actively double-check that your modifications did exactly what was requested (e.g., verify that a layer exists, has the correct parent, has the correct blending mode, or that expressions are properly bound) before concluding. Never say you are finished until you have verified your results!
 - Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks or JSON tool calls.
 
@@ -75,7 +80,7 @@ Layer Referencing (Avoid Fragile Indexes!):
 
 3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
    - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
-     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\`, \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [e.g. \`\"ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
+     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\`, \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
      2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
      3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
    - Parameters:
@@ -114,9 +119,9 @@ Layer Referencing (Avoid Fragile Indexes!):
      * \`moveAllAttributes\`: (Optional) Boolean. Defaults to true.
 
 9. \`ArcEditor.setLayerBlendMode(layerRef, blendModeName)\`
-   - Description: Changes layer blend mode.
+   - Description: Changes layer blend mode. Supported modes are resolved dynamically at runtime (case-insensitive and punctuation-insensitive, covering all 38 AE blend modes such as \`"ADD\"\`, \`"ALPHA_ADD\"\`, \`"SCREEN\"\`, \`"MULTIPLY\"\`, \`"NORMAL\"\`). If a mode is invalid, the script throws an error listing all available native modes.
    - Parameters:
-     * \`blendModeName\`: "ADD", "SCREEN", "MULTIPLY", "OVERLAY", "DARKEN", "LIGHTEN", "DIFFERENCE", "NORMAL".
+     * \`blendModeName\`: Any native After Effects blend mode string (e.g. \`"SUBTRACT\"\`, \`\"ADD\"\`, \`\"SCREEN\"\`, etc.).
 
 10. \`ArcEditor.resolveLayer(layerRef)\`
     - Description: Safely resolves any layer ID, name, or index into a native After Effects Layer object.
@@ -378,7 +383,7 @@ async function runAgenticExecutionLoop(userText) {
     // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
     let activeContext = JSON.parse(JSON.stringify(chatHistory));
     activeContext = await pruneHistoryContexts(activeContext);
-    
+
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
@@ -524,7 +529,7 @@ async function runAgenticExecutionLoop(userText) {
     }
     try {
         lastActiveContext = activeContext;
-    } catch (e) {}
+    } catch (e) { }
 }
 
 function extractJSXCode(text) {
@@ -701,50 +706,50 @@ function formatMarkdown(text) {
 
 async function pruneHistoryContexts(contextArray) {
     if (!contextArray) return [];
-    
+
     // 1. If history length is greater than 10 messages (5 turns), trigger memory condensation
     const maxThreshold = 10;
     if (contextArray.length > maxThreshold) {
         // Keep the last 6 messages (3 turns) completely raw as active transactional context
         const rawTurnsCount = 6;
         const cutIndex = contextArray.length - rawTurnsCount;
-        
+
         // Retrieve the older turns to be compressed
         const olderMessages = contextArray.slice(0, cutIndex);
         const youngerMessages = contextArray.slice(cutIndex);
-        
+
         // Filter out any older system compression messages to avoid bloat and infinite loops
         const messagesToCondense = olderMessages.filter(msg => {
             return !(msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0);
         });
-        
+
         // Find if there is an existing summary block in the older history that we can carry forward or merge
         const existingSummaryBlock = olderMessages.find(msg => {
             return msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0;
         });
         const existingSummaryText = existingSummaryBlock ? existingSummaryBlock.content : "";
-        
+
         if (messagesToCondense.length > 0) {
             try {
                 console.log("[ArcEditor] Initiating background memory condensation...");
-                
+
                 // Formulate the condensation request prompt
                 const systemPrompt = "You are a memory compressor. Summarize the following video editing dialog history into a single-paragraph log of creative intents, assets added, and controller rigs configured. Keep it extremely concise (under 60 words). " +
-                                     (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
-                                     "\nDo NOT output any technical ExtendScript JSX code or observation JSON logs; summarize only the high-level accomplishments.";
-                                     
+                    (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
+                    "\nDo NOT output any technical ExtendScript JSX code or observation JSON logs; summarize only the high-level accomplishments.";
+
                 const compressionMessages = [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: JSON.stringify(messagesToCondense) }
                 ];
-                
+
                 // Call LLM API (non-streaming, direct response)
                 const summaryText = await callLLMApi(compressionMessages);
                 const condensedBlock = {
                     role: "system",
                     content: `[Condensed Session History: ${summaryText.trim()}]`
                 };
-                
+
                 // Reconstruct and return the chat history
                 const resultHistory = [condensedBlock, ...youngerMessages];
                 console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", resultHistory.length);

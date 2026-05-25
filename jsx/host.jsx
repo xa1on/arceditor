@@ -746,19 +746,29 @@ var ArcEditor = {
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
 
-        var mode = BlendingMode.NORMAL;
-        var m = blendModeName.toUpperCase();
-        if (m === "ADD") mode = BlendingMode.ADD;
-        else if (m === "SCREEN") mode = BlendingMode.SCREEN;
-        else if (m === "MULTIPLY") mode = BlendingMode.MULTIPLY;
-        else if (m === "OVERLAY") mode = BlendingMode.OVERLAY;
-        else if (m === "DARKEN") mode = BlendingMode.DARKEN;
-        else if (m === "LIGHTEN") mode = BlendingMode.LIGHTEN;
-        else if (m === "DIFFERENCE") mode = BlendingMode.DIFFERENCE;
-        else if (m === "HUE") mode = BlendingMode.HUE;
-        else if (m === "SATURATION") mode = BlendingMode.SATURATION;
-        else if (m === "COLOR") mode = BlendingMode.COLOR;
-        else if (m === "LUMINOSITY") mode = BlendingMode.LUMINOSITY;
+        var mode = null;
+        var inputClean = String(blendModeName).toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+        // Dynamically discover and match against global BlendingMode keys
+        for (var key in BlendingMode) {
+            if (BlendingMode.hasOwnProperty(key)) {
+                var keyClean = key.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (keyClean === inputClean) {
+                    mode = BlendingMode[key];
+                    break;
+                }
+            }
+        }
+
+        if (mode === null) {
+            var availableModes = [];
+            for (var k in BlendingMode) {
+                if (BlendingMode.hasOwnProperty(k)) {
+                    availableModes.push(k);
+                }
+            }
+            throw new Error("Unsupported or invalid layer blend mode: '" + blendModeName + "'. Supported modes on this system: " + availableModes.join(", "));
+        }
 
         layer.blendMode = mode;
         return true;
