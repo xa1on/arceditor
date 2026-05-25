@@ -384,6 +384,21 @@ Layer Referencing (Avoid Fragile Indexes!):
       }
       \`\`\`
 
+29. \`undoLastAction\`
+    - Description: Rolls back the very last ExtendScript transaction executed inside After Effects. Use this tool immediately whenever the user requests to undo, cancel, or revert a change, or when you realize your previous script output did something incorrect on the composition timeline.
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "undoLastAction"
+      }
+      \`\`\`
+
+
+
+*** RESILIENT UNDO & CORRECTIVE BEHAVIOR ***
+- HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool (or output \`app.undo()\` in ExtendScript) on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
+- SELF-CORRECTION UNDO: If you run an ExtendScript code block and realize it has a layout bug or configuration mistake, perform an undo step first before generating the corrected script block. Always ensure the canvas is clean before applying revised designs.
+
 
 
 *** HOW TO COMUNICATE EXECUTION CODE ***
@@ -435,6 +450,7 @@ async function runAgenticExecutionLoop(userText) {
     let toolTurns = 0;
     const maxToolTurns = 15;
     let finalLlmResponse = "";
+    const executedActions = [];
 
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
@@ -452,6 +468,21 @@ async function runAgenticExecutionLoop(userText) {
             // Check for JSON tool calls first, then JSX code blocks
             const jsonBlock = extractJSONToolCalls(llmResponse);
             const jsxBlock = extractJSXCode(llmResponse);
+
+            if (jsxBlock || jsonBlock) {
+                const actionKey = (jsxBlock ? `jsx:${jsxBlock.trim()}` : "") + (jsonBlock ? `|json:${JSON.stringify(jsonBlock)}` : "");
+                if (actionKey) {
+                    if (executedActions.indexOf(actionKey) !== -1) {
+                        console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
+                        aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
+                            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
+                        if (typeof scrollToBottom === "function") scrollToBottom();
+                        isCompleted = true;
+                        break;
+                    }
+                    executedActions.push(actionKey);
+                }
+            }
 
             var observations = "";
             var executedAnything = false;
@@ -474,12 +505,15 @@ async function runAgenticExecutionLoop(userText) {
                     var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
                     var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
                     var JSON = ArcJSON;
+                    app.beginUndoGroup("ArcEditor Action");
                     try {
                         ${jsxBlock}
+                        app.endUndoGroup();
                         return "Success";
                     } catch (err) {
+                        app.endUndoGroup();
                         try {
-                            app.undo(); // Auto-rollback partial changes on script failure
+                            app.undo(); // Auto-rollback the ENTIRE transaction on script failure!
                         } catch (e) {}
                         return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
@@ -552,9 +586,10 @@ async function runAgenticExecutionLoop(userText) {
                 }
 
                 // Show feedback in UI and prepare next turn
+                const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
                     `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Execution Observations:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>`;
+                    (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
                 if (typeof scrollToBottom === "function") scrollToBottom();
 
                 continue; // Run next loop turn immediately
