@@ -146,7 +146,7 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
     });
 }
 
-async function callLLMApi(messages, onChunkReceived) {
+async function callLLMApi(messages, onChunkReceived, skipSystemInstructions = false) {
     if (!httpsClient && !httpClient) {
         // Fallback mock mode ONLY inside standalone browsers
         return new Promise((resolve) => {
@@ -197,7 +197,7 @@ Here is the ExtendScript to build it:
 
         payload = {
             model: modelName,
-            messages: [
+            messages: skipSystemInstructions ? messages : [
                 { role: "system", content: SYSTEM_INSTRUCTIONS },
                 ...messages
             ],
@@ -280,14 +280,16 @@ Here is the ExtendScript to build it:
         });
 
         payload = {
-            systemInstruction: {
-                parts: [{ text: SYSTEM_INSTRUCTIONS }]
-            },
             contents: contents,
             generationConfig: {
                 temperature: 0.2
             }
         };
+        if (!skipSystemInstructions) {
+            payload.systemInstruction = {
+                parts: [{ text: SYSTEM_INSTRUCTIONS }]
+            };
+        }
 
         if (onChunkReceived) {
             let accumulatedText = "";
@@ -363,12 +365,14 @@ Here is the ExtendScript to build it:
 
         payload = {
             model: modelName,
-            system: SYSTEM_INSTRUCTIONS,
             messages: anthropicMessages,
             max_tokens: 4096,
             temperature: 0.2,
             stream: !!onChunkReceived
         };
+        if (!skipSystemInstructions) {
+            payload.system = SYSTEM_INSTRUCTIONS;
+        }
 
         if (onChunkReceived) {
             let accumulatedText = "";

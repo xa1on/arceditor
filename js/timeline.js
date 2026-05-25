@@ -62,7 +62,7 @@ async function loadInstalledEffects() {
         return;
     }
 
-    const result = await evalScriptAsync("ArcInspector.getInstalledEffects()");
+    const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getInstalledEffects()");
     try {
         installedEffects = JSON.parse(result);
         console.log("[ArcEditor] Loaded installed effects catalog:", Object.keys(installedEffects).length, "categories");
@@ -101,7 +101,7 @@ async function captureCompositionFrame() {
     const tempPngPath = path.join(saveDir, 'arc_preview.png');
     const safePath = tempPngPath.replace(/\\/g, '/');
 
-    const jsxCommand = `ArcCanvas.saveCurrentFrame("${safePath}")`;
+    const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
     const result = await evalScriptAsync(jsxCommand);
 
     if (result.indexOf("Success:") === 0) {
@@ -148,7 +148,7 @@ async function captureCompositionFrame() {
 
     // 2. Clipboard-based Fallback (Used strictly as an absolute last resort to protect active user clipboard)
     try {
-        const clipResult = await evalScriptAsync("ArcCanvas.copyFrameToClipboard()");
+        const clipResult = await evalScriptAsync("$._com_arceditor_.ArcCanvas.copyFrameToClipboard()");
         if (clipResult.indexOf("Success:") === 0) {
             const child_process = require('child_process');
             const platform = (os && typeof os.platform === 'function') ? os.platform() : process.platform;
@@ -179,7 +179,7 @@ async function captureCompositionFrame() {
 }
 
 async function getTimelineContext() {
-    const jsxCommand = `ArcInspector.getActiveCompositionData()`;
+    const jsxCommand = `$._com_arceditor_.ArcInspector.getActiveCompositionData()`;
     const jsonResult = await evalScriptAsync(jsxCommand);
 
     try {

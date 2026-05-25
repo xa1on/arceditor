@@ -3,10 +3,11 @@
  * Handles local user configurations, provider presets, and disk settings serialization.
  */
 
-function loadSettings() {
+async function loadSettings() {
     if (fs && fs.existsSync(configPath)) {
         try {
-            const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const dataStr = await fs.promises.readFile(configPath, 'utf8');
+            const data = JSON.parse(dataStr);
             currentProvider = data.provider || "lemonade";
             apiUrl = data.url || getDefaultUrl(currentProvider);
             modelName = data.model || getDefaultModel(currentProvider);
@@ -28,7 +29,7 @@ function loadSettings() {
     document.getElementById("setting-key").value = apiKey;
 }
 
-function saveSettings(e) {
+async function saveSettings(e) {
     if (e) e.preventDefault();
 
     currentProvider = document.getElementById("setting-provider").value;
@@ -45,7 +46,7 @@ function saveSettings(e) {
 
     if (fs) {
         try {
-            fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+            await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
             addSystemMessage("Settings saved successfully.");
         } catch (err) {
             console.error("Failed to save settings to disk:", err);
@@ -76,10 +77,11 @@ function getDefaultModel(provider) {
 }
 
 // --- PROJECT SPECIFIC CHATS AND PERSISTENT HISTORIES ---
-function loadChats() {
+async function loadChats() {
     if (fs && fs.existsSync(chatsConfigPath)) {
         try {
-            allProjectChats = JSON.parse(fs.readFileSync(chatsConfigPath, 'utf8'));
+            const dataStr = await fs.promises.readFile(chatsConfigPath, 'utf8');
+            allProjectChats = JSON.parse(dataStr);
         } catch (e) {
             console.error("Failed to load chats database:", e);
             allProjectChats = {};
@@ -89,10 +91,10 @@ function loadChats() {
     }
 }
 
-function saveChats() {
+async function saveChats() {
     if (fs) {
         try {
-            fs.writeFileSync(chatsConfigPath, JSON.stringify(allProjectChats, null, 2), 'utf8');
+            await fs.promises.writeFile(chatsConfigPath, JSON.stringify(allProjectChats, null, 2), 'utf8');
         } catch (err) {
             console.error("Failed to save chats database to disk:", err);
         }
@@ -102,7 +104,7 @@ function saveChats() {
 async function syncProjectPath() {
     let path = "Unsaved Project";
     if (csInterface) {
-        const result = await evalScriptAsync("ArcInspector.getProjectPath()");
+        const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getProjectPath()");
         if (result && result.indexOf("Error") !== 0) {
             path = result.trim();
         }

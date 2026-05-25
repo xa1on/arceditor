@@ -4,9 +4,9 @@
  * event delegator listeners, settings drawers, and tab navigation.
  */
 
-document.addEventListener("DOMContentLoaded", () => {
-    loadSettings();
-    loadChats();
+document.addEventListener("DOMContentLoaded", async () => {
+    await loadSettings();
+    await loadChats();
     initUI();
     validateConnection();
     syncProjectPath();
@@ -86,7 +86,13 @@ function initUI() {
                 return;
             }
             addSystemMessage("Executing custom ExtendScript...");
-            const result = await evalScriptAsync(code);
+            const prependedCode = `var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+var JSON = ArcJSON;
+${code}`;
+            const result = await evalScriptAsync(prependedCode);
             addSystemMessage(`Console Exec Result: ${result}`);
         });
     }
@@ -396,11 +402,7 @@ function updateContextSizeInfo() {
     if (typeof currentProvider !== "undefined" && currentProvider === "gemini" && apiKey && typeof fetchTrueTokenCount === "function") {
         clearTimeout(tokenCountTimeout);
         tokenCountTimeout = setTimeout(async () => {
-            let prunedContext = JSON.parse(JSON.stringify(prospectiveHistory));
-            if (typeof pruneHistoryContexts === "function") {
-                prunedContext = await pruneHistoryContexts(prunedContext);
-            }
-            const trueTokens = await fetchTrueTokenCount(prunedContext);
+            const trueTokens = await fetchTrueTokenCount(prospectiveHistory);
             if (trueTokens !== null) {
                 currentTrueTokens = trueTokens;
                 if (document.getElementById("chat-input").value === inputText) {

@@ -467,6 +467,11 @@ async function runAgenticExecutionLoop(userText) {
 
                 // Wrap in try-catch to ensure we capture all ExtendScript runtime and reference errors
                 const wrappedJSX = `(function() {
+                    var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+                    var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+                    var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+                    var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+                    var JSON = ArcJSON;
                     try {
                         ${jsxBlock}
                         return "Success";
@@ -802,8 +807,8 @@ async function pruneHistoryContexts(contextArray) {
                     { role: "user", content: JSON.stringify(messagesToCondense) }
                 ];
 
-                // Call LLM API (non-streaming, direct response)
-                const summaryText = await callLLMApi(compressionMessages);
+                // Call LLM API (non-streaming, direct response, skip system instructions)
+                const summaryText = await callLLMApi(compressionMessages, null, true);
                 const condensedBlock = {
                     role: "system",
                     content: `[Condensed Session History: ${summaryText.trim()}]`

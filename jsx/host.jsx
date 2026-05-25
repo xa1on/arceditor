@@ -5,6 +5,8 @@
  * Compatible with After Effects 2020+ (ES3 Engine).
  */
 
+$._com_arceditor_ = $._com_arceditor_ || {};
+(function(ns) {
 // Custom lightweight JSON stringifier (since ExtendScript lacks native JSON)
 var ArcJSON = {
     stringify: function (obj) {
@@ -1471,4 +1473,12 @@ var ArcEditor = {
         return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "'";
     }
 };
+
+// Export to namespace
+ns.ArcJSON = ArcJSON;
+ns.ArcInspector = ArcInspector;
+ns.ArcCanvas = ArcCanvas;
+ns.ArcEditor = ArcEditor;
+
+})($._com_arceditor_);
 
