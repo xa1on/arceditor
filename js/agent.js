@@ -41,8 +41,10 @@ You are helping the user automate compositions, edit/splice video assets, manage
 *** EXTENDSCRIPT SYNTAX & AE DOM RULES ***
 - ExtendScript is based on an old JavaScript ES3 engine. NEVER use modern ES6 features like 'const', 'let', '=>' arrow functions, 'Promise', or default parameters inside the JSX code blocks. Use standard 'var' and standard ES3/ES5 syntax.
 - AE Collections are 1-indexed. The first item in an array or collection is index 1 (e.g., app.project.item(1)).
-- **NEVER use After Effects' native \`comp.layer(id)\` directly with a numeric layer ID** (e.g. \`comp.layer(26)\`). Native AE scripting only accepts indices or names in \`comp.layer()\`, so passing an ID will retrieve the wrong index or crash.
-- **ALWAYS use \`ArcEditor.resolveLayer(layerRef)\`** to retrieve a layer safely from its ID, name, or index in loops (e.g., \`var layer = ArcEditor.resolveLayer(layerIds[i]);\`).
+- **NEVER use After Effects' native 'comp.layer(id)' directly with a numeric layer ID** (e.g. 'comp.layer(26)'). Native AE scripting only accepts indices or names in 'comp.layer()', so passing an ID will retrieve the wrong index or crash.
+- **ALWAYS use 'ArcEditor.resolveLayer(layerRef)'** to retrieve a layer safely from its ID, name, or index (e.g., 'var layer = ArcEditor.resolveLayer(layerRef);').
+- **SOLID OVER SHAPE FOR SIMPLE GEOMETRY**: Shape layers in After Effects are highly complex vector hierarchies that start out completely empty. When creating simple colored blocks, squares, circles, or backgrounds, ALWAYS prefer creating "Solid" layers (using 'ArcEditor.createLayer("Solid", name, size, color)'). Only create Shape layers if the user explicitly requests vector path adjustments, strokes, or complex shape contents.
+- **CLEANEST LAYER DELETION BY ID**: If you ever need to delete a redundant or leftover layer, never write complex name-matching loops. Simply retrieve its unique persistent 'id' from the composition layers context and remove it directly: 'var layer = ArcEditor.resolveLayer(ID); if (layer) layer.remove();'
 - Property Match Names must be handled carefully. Colors are represented as an array of 4 floats: [R, G, B, A] normalized between 0.0 and 1.0 (e.g. red is [1, 0, 0, 1]).
 - If a layer is parented, its Position is in local coordinates relative to the parent.
 - Always wrap scripts in a clean try-catch block and return meaningful error messages.
@@ -434,6 +436,9 @@ async function runAgenticExecutionLoop(userText) {
                         ${jsxBlock}
                         return "Success";
                     } catch (err) {
+                        try {
+                            app.undo(); // Auto-rollback partial changes on script failure
+                        } catch (e) {}
                         return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
                 })()`;
