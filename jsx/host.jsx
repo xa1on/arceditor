@@ -439,6 +439,32 @@ var ArcEditor = {
         } else if (type === "Shape") {
             layer = comp.layers.addShape();
             layer.name = name;
+            try {
+                var contents = layer.property("Contents") || layer.property("ADBE Root Vectors Group");
+                if (contents) {
+                    var group = contents.addProperty("ADBE Vector Group");
+                    if (group) {
+                        group.name = "Rectangle Group";
+                        var groupContents = group.property("Contents") || group.property("ADBE Vectors Group");
+                        if (groupContents) {
+                            var rect = groupContents.addProperty("ADBE Vector Shape - Rect");
+                            var fill = groupContents.addProperty("ADBE Vector Graphic - Fill");
+                            if (rect) {
+                                rect.property("Size").setValue([100, 100]); // 100x100 default size
+                            }
+                            if (fill) {
+                                var fillColor = [1, 1, 1, 1]; // R, G, B, A
+                                if (color && color.length >= 3) {
+                                    fillColor = [Number(color[0]), Number(color[1]), Number(color[2]), 1.0];
+                                }
+                                fill.property("Color").setValue(fillColor);
+                            }
+                        }
+                    }
+                }
+            } catch (shapeErr) {
+                // If it fails (e.g. in test mock environments), degrade gracefully
+            }
         } else if (type === "Solid") {
             var solidColor = [0.1, 0.1, 0.1];
             if (color && color.length >= 3) {
@@ -469,15 +495,7 @@ var ArcEditor = {
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
 
-        // Auto-correct common LLM prefix typo "ABDE" -> "ADBE" (short for Adobe)
-        if (effectMatchName && typeof effectMatchName === "string" && effectMatchName.indexOf("ABDE") === 0) {
-            effectMatchName = "ADBE" + effectMatchName.substring(4);
-        }
 
-        // Auto-correct Glow Match Name: "ADBE Glow" -> "ADBE Glo2"
-        if (effectMatchName === "ADBE Glow" || effectMatchName === "ADBE GLOW") {
-            effectMatchName = "ADBE Glo2";
-        }
 
         var effectGroup = layer.property("Effects") || layer.property("ADBE Effect Parade");
         if (!effectGroup) throw new Error("Effects parameter not supported on this layer.");
@@ -1285,6 +1303,18 @@ var ArcEditor = {
         var rgb = [Number(color[0]), Number(color[1]), Number(color[2])];
         layer.source.mainSource.color = rgb;
         return "Success: Set color of Solid layer '" + layer.name + "' to [" + rgb.join(", ") + "].";
+    },
+
+    /**
+     * Safely deletes a layer from the composition.
+     * @param {string|number} layerRef Layer reference.
+     */
+    deleteLayer: function (layerRef) {
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found: " + layerRef);
+        var name = layer.name;
+        layer.remove();
+        return "Success: Deleted layer '" + name + "'";
     }
 };
 
