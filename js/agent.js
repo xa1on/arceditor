@@ -49,6 +49,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - Always wrap scripts in a clean try-catch block and return meaningful error messages.
 - Wrap all property additions in an app.beginUndoGroup("Editing Action") and app.endUndoGroup() to allow easy rollbacks.
 
+*** PROCEDURAL SHAPE & LAYOUT RULES ***
+- Shape Layers are completely empty container layers when created via createLayer("Shape", name). You MUST procedurally add styled shape groups (using ADBE Vector Shape, Fills, and Strokes) to draw paths and make them visible on the canvas. Always use 'ArcEditor.addShapeToLayer' to create visible geometry.
+- Always check the composition dimensions (width and height) from 'getTimelineContext'. Adjust your shape sizes, solid layers, and offset coordinates proportionally (e.g. for a 1920x1080 composition, standard shapes should be 100-300px; for a 4K 3840x2160 composition, scale shapes up by 2x).
+- Avoid calling setPropertyValue() on properties that already have keyframes (e.g., animated Position, Scale, etc.). If you must modify an animated parameter statically, rely on our built-in keyframe protection inside setPropertyValue which updates the value at 'comp.time', or overwrite the entire keyframe sequence using 'setKeyframes'.
+
 *** AVAILABLE HIGH-LEVEL TOOL CALLS & EDITING API (ArcEditor) ***
 To make editing, composition, and timeline automation simple and bulletproof, you have access to a pre-compiled high-level global API object named \`ArcEditor\` inside the host ExtendScript environment. Use these functions in your generated scripts to perform complex editing tasks reliably:
 
@@ -193,6 +198,19 @@ Layer Referencing (Avoid Fragile Indexes!):
     - Description: Safely deletes a layer from the composition.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
+
+18. \`ArcEditor.addShapeToLayer(layerRef, shapeType, groupName, properties)\`
+    - Description: Procedurally draws a styled shape group (with optional vector sizes, position offsets, color fills, and strokes) inside an existing Shape Layer, enforcing sensible visible defaults if styling parameters are omitted.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index of the target Shape Layer.
+      * \`shapeType\`: String. "Ellipse" (or "Circle") or "Rect" (or "Rectangle").
+      * \`groupName\`: (Optional) String custom name for the shape vector group (e.g., "Wheel Front").
+      * \`properties\`: (Optional) Configuration JSON object supporting:
+        - \`size\`: (Optional) [width, height] array (e.g. \`[150, 150]\` for wheel, \`[400, 100]\` for frame).
+        - \`position\`: (Optional) [X, Y] local position offset array relative to the layer's center.
+        - \`fillColor\`: (Optional) String hex color code (e.g. \`"#FF3366"\`) or \`[R, G, B]\` normalized array. Enforces light gray if omitted (pass \`false\` to disable fill).
+        - \`strokeColor\`: (Optional) String hex color code or \`[R, G, B]\` normalized array. Defaults to black.
+        - \`strokeWidth\`: (Optional) Number stroke width in pixels. Defaults to 2 (pass \`0\` to disable stroke).
 
 17. \`getTimelineContext\`
     - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).

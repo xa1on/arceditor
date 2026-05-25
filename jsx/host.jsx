@@ -661,7 +661,15 @@ var ArcEditor = {
         if (time !== undefined && time !== null) {
             prop.setValueAtTime(time, value);
         } else {
-            prop.setValue(value);
+            try {
+                if (prop.numKeys > 0) {
+                    prop.setValueAtTime(comp.time, value);
+                } else {
+                    prop.setValue(value);
+                }
+            } catch (setValueErr) {
+                prop.setValue(value);
+            }
         }
         return true;
     },
@@ -1315,6 +1323,92 @@ var ArcEditor = {
         var name = layer.name;
         layer.remove();
         return "Success: Deleted layer '" + name + "'";
+    },
+
+    /**
+     * Converts a Hex color string (e.g. "#FF3366") to a normalized RGB array.
+     */
+    hexToRgb: function (hex) {
+        var s = String(hex).replace("#", "");
+        if (s.length === 3) {
+            s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+        }
+        if (s.length !== 6) return [0.8, 0.8, 0.8]; // Fallback to gray
+        var r = parseInt(s.substring(0, 2), 16) / 255;
+        var g = parseInt(s.substring(2, 4), 16) / 255;
+        var b = parseInt(s.substring(4, 6), 16) / 255;
+        return [Math.round(r * 100) / 100, Math.round(g * 100) / 100, Math.round(b * 100) / 100];
+    },
+
+    /**
+     * Procedurally adds a styled shape group to an existing Shape Layer.
+     * Enforces visual defaults (solid gray fill and thin black stroke) if styling is omitted.
+     */
+    addShapeToLayer: function (layerRef, shapeType, groupName, properties) {
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer not found for reference: " + layerRef);
+        
+        if (typeof ShapeLayer !== "undefined" && !(layer instanceof ShapeLayer)) {
+            throw new Error("Layer '" + layer.name + "' is not a ShapeLayer. Shapes can only be added to Shape Layers.");
+        }
+
+        var props = properties || {};
+        var contents = layer.property("Contents") || layer.property("ADBE Root Vectors Group");
+        if (!contents) throw new Error("Could not access shape layer contents.");
+
+        // 1. Create a Named Vector Group
+        var group = contents.addProperty("ADBE Vector Group");
+        group.name = groupName || "Shape Group";
+        var groupContents = group.property("Contents") || group.property("ADBE Vectors Group");
+        if (!groupContents) throw new Error("Could not access shape group contents.");
+
+        // 2. Add Shape Primitive
+        var shape = null;
+        var typeLower = String(shapeType).toLowerCase();
+        if (typeLower === "ellipse" || typeLower === "circle") {
+            shape = groupContents.addProperty("ADBE Vector Shape - Ellipse");
+            if (props.size) shape.property("Size").setValue(props.size);
+        } else if (typeLower === "rect" || typeLower === "rectangle") {
+            shape = groupContents.addProperty("ADBE Vector Shape - Rect");
+            if (props.size) shape.property("Size").setValue(props.size);
+        } else if (typeLower === "star" || typeLower === "polystar") {
+            shape = groupContents.addProperty("ADBE Vector Shape - Star");
+        } else {
+            throw new Error("Unsupported shape type primitive: " + shapeType + ". Supported: Ellipse, Rectangle.");
+        }
+
+        // 3. Add Fill with high-fidelity defaults (White/light gray if unspecified)
+        if (props.fillColor !== false) {
+            var fill = groupContents.addProperty("ADBE Vector Graphic - Fill");
+            var fillRGB = [0.8, 0.8, 0.8]; // Sensible default gray
+            if (props.fillColor) {
+                fillRGB = typeof props.fillColor === "string" ? this.hexToRgb(props.fillColor) : props.fillColor;
+            }
+            if (fill) fill.property("Color").setValue(fillRGB);
+        }
+
+        // 4. Add Stroke with default thin black outline if specified or by default
+        var hasStroke = props.strokeWidth !== undefined && props.strokeWidth !== null ? (props.strokeWidth > 0) : true;
+        if (hasStroke) {
+            var stroke = groupContents.addProperty("ADBE Vector Graphic - Stroke");
+            var strokeRGB = [0, 0, 0]; // Default black stroke
+            if (props.strokeColor) {
+                strokeRGB = typeof props.strokeColor === "string" ? this.hexToRgb(props.strokeColor) : props.strokeColor;
+            }
+            var sWidth = props.strokeWidth !== undefined && props.strokeWidth !== null ? Number(props.strokeWidth) : 2;
+            if (stroke) {
+                stroke.property("Color").setValue(strokeRGB);
+                stroke.property("Stroke Width").setValue(sWidth);
+            }
+        }
+
+        // 5. Set local position offsets if defined
+        if (props.position) {
+            var tf = group.property("Transform");
+            if (tf) tf.property("Position").setValue(props.position);
+        }
+
+        return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "'";
     }
 };
 
