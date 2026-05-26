@@ -320,11 +320,6 @@ function createNewSession() {
 
 function deleteSession() {
     const sessions = allProjectChats[currentProjectPath] || [];
-    if (sessions.length <= 1) {
-        addSystemMessage("Cannot delete the only chat session. Create a new one first.");
-        return;
-    }
-    
     const idx = sessions.findIndex(s => s.id === activeSessionId);
     if (idx !== -1) {
         sessions.splice(idx, 1);
