@@ -848,9 +848,7 @@ async function executeToolCalls(jsonStr) {
     }
 
     let observations = [];
-
-    // Begin AE Undo Group for atomic operations
-    await evalScriptAsync(`app.beginUndoGroup("ArcEditor Agent Tools")`);
+    let undoGroupActive = false;
 
     try {
         for (let i = 0; i < toolCalls.length; i++) {
@@ -859,6 +857,24 @@ async function executeToolCalls(jsonStr) {
             const params = tc.parameters || {};
             const ref = params.layerRef !== undefined ? params.layerRef : params.layerIndex;
             const serializedRef = typeof ref === "string" ? `"${ref.replace(/"/g, '\\"')}"` : (ref !== undefined ? ref : 'null');
+
+            // Centralized classification: determine if the tool modifies the AE comp state
+            const isReadOnly = [
+                "captureActiveFrame",
+                "getTimelineContext",
+                "getInstalledEffects",
+                "getLayerProperties",
+                "selectLayer",
+                "switchComposition",
+                "setPlayheadTime",
+                "undoLastAction"
+            ].indexOf(toolName) !== -1;
+
+            // Lazily open the AE Undo Group only for state-modifying tools
+            if (!isReadOnly && !undoGroupActive) {
+                await evalScriptAsync(`app.beginUndoGroup("ArcEditor Agent Tools")`);
+                undoGroupActive = true;
+            }
 
             let jsxCommand = "";
             if (toolName === "createLayer") {
@@ -914,6 +930,10 @@ async function executeToolCalls(jsonStr) {
                 }
                 continue;
             } else if (toolName === "undoLastAction") {
+                if (undoGroupActive) {
+                    await evalScriptAsync(`app.endUndoGroup()`);
+                    undoGroupActive = false;
+                }
                 await evalScriptAsync("app.undo()");
                 observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
@@ -943,9 +963,15 @@ async function executeToolCalls(jsonStr) {
                 break;
             }
         }
-        await evalScriptAsync(`app.endUndoGroup()`);
+        if (undoGroupActive) {
+            await evalScriptAsync(`app.endUndoGroup()`);
+        }
     } catch (err) {
-        await evalScriptAsync(`app.endUndoGroup()`);
+        if (undoGroupActive) {
+            try {
+                await evalScriptAsync(`app.endUndoGroup()`);
+            } catch (e) {}
+        }
         observations.push(`- Tool execution exception: ${err.message}`);
     }
 
