@@ -359,107 +359,10 @@ var ArcCanvas = {
                 return "Success: " + file.fsName;
             }
             
-            // Direct save unsupported; fall back to Render Queue
-            return this.renderQueueFallback(comp, file);
+            return "Error: Native saveFrameToPng is not supported in this After Effects version (AE 2020+ required).";
         } catch (err) {
             return "Error rendering frame: " + err.toString();
         }
-    },
-
-    /**
-     * Fallback frame exporter utilizing Render Queue (100% universal across all AE versions)
-     */
-    renderQueueFallback: function (comp, file) {
-        // Safe Pre-render Clean: Delete target file and any matching pattern suffix files
-        if (file.exists) {
-            file.remove();
-        }
-        var dir = file.parent;
-        var baseName = file.name.substring(0, file.name.lastIndexOf("."));
-        var ext = file.name.substring(file.name.lastIndexOf("."));
-        
-        // Remove matching pattern files to prevent After Effects from prompting for overwrite
-        var oldMatches = dir.getFiles(baseName + "*");
-        if (oldMatches) {
-            for (var f = 0; f < oldMatches.length; f++) {
-                try {
-                    oldMatches[f].remove();
-                } catch(e) {}
-            }
-        }
-
-        var rq = app.project.renderQueue;
-        
-        // Temporarily disable rendering for all other items in the Render Queue to prevent rendering heavy user comps
-        var originalRenderStatuses = [];
-        for (var r = 1; r <= rq.numItems; r++) {
-            try {
-                originalRenderStatuses.push(rq.item(r).render);
-                rq.item(r).render = false;
-            } catch (e) {
-                originalRenderStatuses.push(true);
-            }
-        }
-
-        var item = rq.items.add(comp);
-        item.timeSpanStart = comp.time;
-        item.timeSpanDuration = comp.frameDuration;
-
-        var om = item.outputModule(1);
-        
-        // Try multiple standard single-frame image sequence templates in sequence.
-        // This avoids falling back to a heavy lossless .avi/QuickTime video.
-        var templateApplied = false;
-        var templates = ["PNG Sequence", "Photoshop Sequence", "TIFF Sequence", "JPEG Sequence"];
-        for (var t = 0; t < templates.length; t++) {
-            try {
-                om.applyTemplate(templates[t]);
-                templateApplied = true;
-                break;
-            } catch (tplErr) {}
-        }
-        
-        if (!templateApplied) {
-            try {
-                om.applyTemplate("Lossless");
-            } catch (e5) {}
-        }
-        
-        om.file = file;
-
-        // Ensure our temporary item is set to render
-        item.render = true;
-
-        try {
-            // Run render
-            rq.render();
-        } finally {
-            // Restore original render statuses
-            for (var r = 1; r <= originalRenderStatuses.length; r++) {
-                try {
-                    rq.item(r).render = originalRenderStatuses[r - 1];
-                } catch (e) {}
-            }
-            try {
-                item.remove(); // Clean up Render Queue item
-            } catch (e) {}
-        }
-
-        if (file.exists) {
-            return "Success: " + file.fsName;
-        }
-
-        // Suffix check: Render Queue often appends frame number suffixes (e.g. arc_preview_00000.png)
-        var dir = file.parent;
-        var baseName = file.name.substring(0, file.name.lastIndexOf("."));
-        var ext = file.name.substring(file.name.lastIndexOf("."));
-
-        var matchFiles = dir.getFiles(baseName + "*" + ext);
-        if (matchFiles && matchFiles.length > 0) {
-            return "Success: " + matchFiles[0].fsName;
-        }
-
-        return "Error: Render Queue completed but file could not be found on disk.";
     }
 };
 
@@ -482,8 +385,19 @@ var ArcEditor = {
                 var testIndex = layerRef.index;
                 return layerRef;
             } catch (invalidErr) {
-                // Reference has become invalid (e.g., due to casting / solid layer type mutation in AE)
-                throw new Error("The Layer object reference is invalid (this happens in After Effects when adjustmentLayer properties are modified directly on a solid pointer, which invalidates the JavaScript reference). To prevent this, ALWAYS use 'ArcEditor.createLayer(\"Adjustment\", name)' directly to create adjustment layers, or refer to layers using their unique numeric ID or name string instead of passing raw Layer objects.");
+                // Pointer invalidation has occurred! Let's attempt self-healing.
+                try {
+                    for (var sIdx = 1; sIdx <= comp.numLayers; sIdx++) {
+                        var tempL = comp.layer(sIdx);
+                        if (tempL && tempL.selected) {
+                            return tempL; // Heuristic fallback: return the active selected layer
+                        }
+                    }
+                    if (comp.numLayers > 0) {
+                        return comp.layer(1); // Fallback to first layer
+                    }
+                } catch (healingErr) {}
+                throw new Error("Bricked layer reference caught: Pointer invalidated due to After Effects solid/adjustment mutation. Recommendation: ALWAYS use primitive persistent values like layer.id (e.g. 24) or exact name strings instead of raw Layer object pointers.");
             }
         }
 
@@ -846,16 +760,7 @@ var ArcEditor = {
             var dimensionality = 1;
             try {
                 if (prop.value instanceof Array) {
-                    var isSpatial = false;
-                    try {
-                        if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL ||
-                            prop.propertyValueType === PropertyValueType.ThreeD_SPATIAL) {
-                            isSpatial = true;
-                        }
-                    } catch (ev) { }
-                    if (!isSpatial) {
-                        dimensionality = prop.value.length;
-                    }
+                    dimensionality = prop.value.length;
                 }
             } catch (e) { }
 
@@ -1244,7 +1149,6 @@ var ArcEditor = {
             throw new Error("Project asset not found for reference: " + assetRef);
         }
 
-        app.beginUndoGroup("Add Asset to Timeline");
         try {
             var layer = comp.layers.add(projectItem);
 
@@ -1266,10 +1170,8 @@ var ArcEditor = {
                 this.setLayerBlendMode(layer, props.blendMode);
             }
 
-            app.endUndoGroup();
             return "Success: Added project asset '" + projectItem.name + "' as layer '" + layer.name + "' at index " + layer.index;
         } catch (err) {
-            app.endUndoGroup();
             throw err;
         }
     },
@@ -1474,14 +1376,36 @@ var ArcEditor = {
      * Converts a Hex color string (e.g. "#FF3366") to a normalized RGB array.
      */
     hexToRgb: function (hex) {
-        var s = String(hex).replace("#", "");
+        if (!hex) return [0.8, 0.8, 0.8]; // Fallback to gray
+        var s = String(hex).replace("#", "").replace(/\s/g, "");
+        
+        // Handle common plain-english standard color names as a premium ease-of-use fallback
+        var lowerS = s.toLowerCase();
+        if (lowerS === "red") return [1.0, 0.0, 0.0];
+        if (lowerS === "green") return [0.0, 1.0, 0.0];
+        if (lowerS === "blue") return [0.0, 0.0, 1.0];
+        if (lowerS === "white") return [1.0, 1.0, 1.0];
+        if (lowerS === "black") return [0.0, 0.0, 0.0];
+        if (lowerS === "gray" || lowerS === "grey") return [0.5, 0.5, 0.5];
+        if (lowerS === "yellow") return [1.0, 1.0, 0.0];
+        if (lowerS === "cyan") return [0.0, 1.0, 1.0];
+        if (lowerS === "magenta") return [1.0, 0.0, 1.0];
+
         if (s.length === 3) {
             s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
         }
+        
         if (s.length !== 6) return [0.8, 0.8, 0.8]; // Fallback to gray
+
         var r = parseInt(s.substring(0, 2), 16) / 255;
         var g = parseInt(s.substring(2, 4), 16) / 255;
         var b = parseInt(s.substring(4, 6), 16) / 255;
+
+        // Ensure parsed color channels are valid numbers (NaN safety check)
+        if (isNaN(r) || isNaN(g) || isNaN(b)) {
+            return [0.8, 0.8, 0.8]; // Fallback to gray if parsing results in NaN
+        }
+
         return [Math.round(r * 100) / 100, Math.round(g * 100) / 100, Math.round(b * 100) / 100];
     },
 

@@ -46,6 +46,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - AE Collections are 1-indexed. The first item in an array or collection is index 1 (e.g., app.project.item(1)).
 - **NEVER use After Effects' native 'comp.layer(id)' directly with a numeric layer ID** (e.g. 'comp.layer(26)'). Native AE scripting only accepts indices or names in 'comp.layer()', so passing an ID will retrieve the wrong index or crash.
 - **ALWAYS use 'ArcEditor.resolveLayer(layerRef)'** to retrieve a layer safely from its ID, name, or index (e.g., 'var layer = ArcEditor.resolveLayer(layerRef);').
+- **ALWAYS reference layers using primitive values (layer.id as an integer or layer.name as a string) when invoking ArcEditor APIs.** Never store or pass raw Layer JavaScript objects across multiple tool calls or mutations, as After Effects mutates and invalidates internal object pointers when solid properties or adjustment options are changed, causing subsequent scripting calls to fail.
 
 - Property Match Names must be handled carefully. Colors are represented as an array of 4 floats: [R, G, B, A] normalized between 0.0 and 1.0 (e.g. red is [1, 0, 0, 1]).
 - If a layer is parented, its Position is in local coordinates relative to the parent.
@@ -493,6 +494,7 @@ async function runAgenticExecutionLoop(userText) {
                     executedActions.push(actionKey);
                 }
             }
+            chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
 
             var observations = "";
             var executedAnything = false;
@@ -542,12 +544,14 @@ async function runAgenticExecutionLoop(userText) {
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
-                    // Push error feedback to local context history
-                    activeContext.push({
+                    // Push error feedback to local context history and master history
+                    const errFeedbackMsg = {
                         role: "user",
                         content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`,
                         isIntermediate: true
-                    });
+                    };
+                    activeContext.push(errFeedbackMsg);
+                    chatHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
 
                     // Don't send the base64 image again to save bandwidth
                     visualFrameInputs = null;
@@ -579,23 +583,27 @@ async function runAgenticExecutionLoop(userText) {
                     continue; // Skip rest of execution and let loop retry self-correction
                 }
 
-                // Append observations to local context history (handling multi-modal visual observations!)
+                // Append observations to local context history and master history (handling multi-modal visual observations!)
                 if (capturedFrameDataDuringLoop) {
-                    activeContext.push({
+                    const obsMsg = {
                         role: "user",
                         content: [
                             { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` },
                             { type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } }
                         ],
                         isIntermediate: true
-                    });
+                    };
+                    activeContext.push(obsMsg);
+                    chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                     capturedFrameDataDuringLoop = null; // Reset for next potential capture
                 } else {
-                    activeContext.push({
+                    const obsMsg = {
                         role: "user",
                         content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
                         isIntermediate: true
-                    });
+                    };
+                    activeContext.push(obsMsg);
+                    chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                 }
 
                 // Show feedback in UI and prepare next turn
@@ -633,8 +641,7 @@ async function runAgenticExecutionLoop(userText) {
         if (typeof scrollToBottom === "function") scrollToBottom();
     }
 
-    // Persist the entire resolved activeContext so the model retains flawless conversational memory
-    chatHistory = activeContext;
+    // Update persistent history size information
     updateCurrentSessionHistory();
     updateContextSizeInfo();
 
@@ -958,16 +965,16 @@ async function pruneHistoryContexts(contextArray) {
         const olderMessages = contextArray.slice(0, cutIndex);
         const youngerMessages = contextArray.slice(cutIndex);
 
-        // Filter out any older system compression messages to avoid bloat and infinite loops
+        // Collect and merge all older system compression summaries, filtering them out of raw messages to condense
+        const existingSummaries = [];
         const messagesToCondense = olderMessages.filter(msg => {
-            return !(msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0);
+            if (msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0) {
+                existingSummaries.push(msg.content);
+                return false;
+            }
+            return true;
         });
-
-        // Find if there is an existing summary block in the older history that we can carry forward or merge
-        const existingSummaryBlock = olderMessages.find(msg => {
-            return msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0;
-        });
-        const existingSummaryText = existingSummaryBlock ? existingSummaryBlock.content : "";
+        const existingSummaryText = existingSummaries.join("\n");
 
         if (messagesToCondense.length > 0) {
             try {

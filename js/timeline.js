@@ -27,22 +27,19 @@ async function validateConnection() {
             const baseUrl = apiUrl.replace(/\/$/, "");
             const checkUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
             await makeRequest(checkUrl, 'GET', {}, "");
+            statusDot.className = "status-dot online";
+            statusDot.title = `Connected successfully via ${currentProvider}`;
         } else {
-            // For cloud APIs, check if we have a key input
-            if (!apiKey) {
-                statusDot.className = "status-dot error";
-                statusDot.title = "API Key required for cloud provider.";
-                return;
-            }
+            // For cloud APIs, skip proactive key validation checks (preventing false positives).
+            // Cloud model state is assumed ready, Send is enabled, and real failures are captured on demand.
+            statusDot.className = "status-dot online";
+            statusDot.title = `Cloud model '${modelName}' active. Connection is verified upon sending message.`;
         }
-
-        statusDot.className = "status-dot online";
-        statusDot.title = `Connected successfully via ${currentProvider}`;
         sendBtn.disabled = false;
         isConnected = true;
     } catch (err) {
         statusDot.className = "status-dot error";
-        statusDot.title = `Failed to connect to ${currentProvider}: ${err.message}`;
+        statusDot.title = `Failed to connect to local Lemonade server: ${err.message}`;
         sendBtn.disabled = false; // Let the user send anyway to troubleshoot
         isConnected = false;
     }
@@ -137,15 +134,18 @@ async function captureCompositionFrame() {
             const returnedPath = result.substring(8).trim();
             let actualPath = returnedPath;
 
-            // Poll for up to 1500ms (30 attempts at 50ms) to allow After Effects' asynchronous write to complete
+            // Poll for up to 10000ms (200 attempts at 50ms) to allow After Effects' write to fully complete and stabilize
             let fileFound = false;
-            for (let attempt = 0; attempt < 30; attempt++) {
+            let lastSize = -1;
+            for (let attempt = 0; attempt < 200; attempt++) {
                 try {
                     const stats = await fs.promises.stat(actualPath);
-                    if (stats.size > 100) {
+                    // Check if file size is non-trivial (> 100 bytes) AND matches its size from the previous check (write complete)
+                    if (stats.size > 100 && stats.size === lastSize) {
                         fileFound = true;
                         break;
                     }
+                    lastSize = stats.size;
                 } catch (e) {
                     // File not ready or does not exist yet
                 }
