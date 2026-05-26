@@ -20,7 +20,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
   1. For complex, context-dependent, or coordinate-sensitive tasks, first invoke the \`getTimelineContext\` or \`getInstalledEffects\` tool to inspect the live project state.
   2. For simple or self-contained tasks (e.g., adding a background solid, creating standard shape layers, or applying standard effects), you are highly encouraged to write robust, self-contained ExtendScript that dynamically queries properties at runtime directly in After Effects (e.g. \`app.project.activeItem.width\` / \`app.project.activeItem.height\`) and execute it immediately in the first turn to minimize latency.
 - **CONVERSATIONAL, INVESTIGATIVE, & NON-MODIFYING CLAUSE**: If the user's message is conversational, asks an explanatory/investigative question, or points out a factual/spelling correction without explicitly requesting timeline modifications:
-  1. You ARE fully allowed and encouraged to run read-only investigative tools (\`getTimelineContext\`, \`captureActiveFrame\`, \`getLayerProperties\`, \`getInstalledEffects\`) to inspect the project state and answer their question accurately.
+  1. You ARE fully allowed and encouraged to run read-only investigative tools (\`getTimelineContext\`, \`captureActiveFrame\`, \`captureCompositionSequence\`, \`getLayerProperties\`, \`getInstalledEffects\`) to inspect the project state and answer their question accurately.
   2. However, you MUST NOT run any state-modifying ExtendScript blocks or layout-altering tool calls (such as creating solid/shape layers, applying effects, altering keyframes, or shifting layer properties) unless the user has explicitly requested you to edit or animate the composition. Keep your output purely analytical, explanatory, and read-only.
 - **VERIFY EFFECT MATCH NAMES**: Always retrieve the active match name from the \`getInstalledEffects\` catalog first before applying an effect (e.g., standard AE Glow is "ADBE Glo2", not "ADBE Glow").
 - **THE MULTI-SCRIPT REACT SYSTEM**: Rather than trying to combine everything into a single massive script, you are highly encouraged to use a step-by-step ReAct strategy. You can execute an ExtendScript code block, inspect the outcome returned in the next turn's Observation, and then write subsequent scripts or correction loops.
@@ -251,6 +251,24 @@ Layer Referencing (Avoid Fragile Indexes!):
       {
         "tool": "captureActiveFrame",
         "parameters": {}
+      }
+      \`\`\`
+
+19a. \`captureCompositionSequence\`
+    - Description: Programmatically captures a sequence of N frames of the composition timeline between startTime and endTime. Use this tool when the user asks to analyze visual transitions, check animations across time, verify splicing alignment across multiple scenes, or understand timing and movement.
+    - Parameters:
+      * \`startTime\`: (Optional) Number. The start time in seconds (defaults to 0).
+      * \`endTime\`: (Optional) Number. The end time in seconds (defaults to composition duration).
+      * \`numFrames\`: (Optional) Integer. The number of frames to capture (e.g. 5, max 10, defaults to 5).
+    - JSON Call Format: Output a JSON code block like this:
+      \`\`\`json
+      {
+        "tool": "captureCompositionSequence",
+        "parameters": {
+          "startTime": 0.0,
+          "endTime": 5.0,
+          "numFrames": 5
+        }
       }
       \`\`\`
 
@@ -620,12 +638,19 @@ async function runAgenticExecutionLoop(userText) {
 
                 // Append observations to local context history and master history (handling multi-modal visual observations!)
                 if (capturedFrameDataDuringLoop) {
+                    const contentParts = [
+                        { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
+                    ];
+                    if (Array.isArray(capturedFrameDataDuringLoop)) {
+                        capturedFrameDataDuringLoop.forEach(img => {
+                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+                        });
+                    } else {
+                        contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
+                    }
                     const obsMsg = {
                         role: "user",
-                        content: [
-                            { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` },
-                            { type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } }
-                        ],
+                        content: contentParts,
                         isIntermediate: true
                     };
                     activeContext.push(obsMsg);
@@ -819,6 +844,7 @@ function getSignificantJsonActionKey(jsonStr) {
             const toolName = tc.tool;
             const isReadOnly = [
                 "captureActiveFrame",
+                "captureCompositionSequence",
                 "getTimelineContext",
                 "getInstalledEffects",
                 "getLayerProperties",
@@ -861,6 +887,7 @@ async function executeToolCalls(jsonStr) {
             // Centralized classification: determine if the tool modifies the AE comp state
             const isReadOnly = [
                 "captureActiveFrame",
+                "captureCompositionSequence",
                 "getTimelineContext",
                 "getInstalledEffects",
                 "getLayerProperties",
@@ -927,6 +954,15 @@ async function executeToolCalls(jsonStr) {
                     capturedFrameDataDuringLoop = base64Data;
                 } else {
                     observations.push(`- Tool "captureActiveFrame": Error: Failed to capture active frame preview.`);
+                }
+                continue;
+            } else if (toolName === "captureCompositionSequence") {
+                const base64List = await captureCompositionSequence(params.startTime, params.endTime, params.numFrames, true);
+                if (base64List && base64List.length > 0) {
+                    observations.push(`- Tool "captureCompositionSequence": Success: Captured and visually attached a sequence of ${base64List.length} frames.`);
+                    capturedFrameDataDuringLoop = base64List;
+                } else {
+                    observations.push(`- Tool "captureCompositionSequence": Error: Failed to capture composition sequence.`);
                 }
                 continue;
             } else if (toolName === "undoLastAction") {

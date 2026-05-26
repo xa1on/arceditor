@@ -216,3 +216,117 @@ async function getTimelineContext() {
         return { error: "Failed to parse timeline inspector data: " + jsonResult };
     }
 }
+
+async function captureFrameAtTime(time, tempPath) {
+    const safePath = tempPath.replace(/\\/g, '/');
+    const jsxCommand = `(function() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) return "Error: No active composition";
+        var originalTime = comp.time;
+        try {
+            comp.time = Math.max(0, Math.min(comp.duration, ${time}));
+            var file = new File("${safePath}");
+            if (!file.parent.exists) file.parent.create();
+            if (file.exists) file.remove();
+            if (typeof comp.saveFrameToPng === "function") {
+                comp.saveFrameToPng(comp.time, file);
+            } else if (typeof comp.saveFrameToPNG === "function") {
+                comp.saveFrameToPNG(comp.time, file);
+            } else {
+                return "Error: saveFrameToPng not supported";
+            }
+            comp.time = originalTime; // restore playhead
+            return "Success: " + file.fsName;
+        } catch(e) {
+            comp.time = originalTime; // restore playhead
+            return "Error: " + e.toString();
+        }
+    })()`;
+    return await evalScriptAsync(jsxCommand);
+}
+
+async function captureCompositionSequence(startTime, endTime, numFrames, isAgentCall) {
+    if (!csInterface) {
+        if (isAgentCall !== true) {
+            addSystemMessage("Visual capture not supported outside After Effects.");
+        }
+        return null;
+    }
+
+    if (isAgentCall !== true) {
+        addSystemMessage("Capturing composition sequence...");
+    }
+
+    const n = Math.max(1, Math.min(10, numFrames || 5)); // Cap at 10 to keep it lightweight and fast
+    let actualStart = typeof startTime === "number" ? startTime : 0;
+    let actualEnd = typeof endTime === "number" ? endTime : null;
+
+    if (actualEnd === null) {
+        try {
+            const compData = await getTimelineContext();
+            actualEnd = compData.duration || 5;
+        } catch (e) {
+            actualEnd = 5;
+        }
+    }
+
+    const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
+    const base64List = [];
+
+    for (let i = 0; i < n; i++) {
+        let t = actualStart;
+        if (n > 1) {
+            t = actualStart + i * (actualEnd - actualStart) / (n - 1);
+        }
+
+        const uniqueSuffix = `${Date.now()}_seq_${i}_${Math.random().toString(36).substring(2, 8)}`;
+        const tempPngPath = path.join(saveDir, `arc_preview_${uniqueSuffix}.png`);
+        const safePath = tempPngPath.replace(/\\/g, '/');
+
+        const result = await captureFrameAtTime(t, safePath);
+
+        if (result.indexOf("Success:") === 0) {
+            try {
+                const returnedPath = result.substring(8).trim();
+                let actualPath = returnedPath;
+
+                let fileFound = false;
+                let lastSize = -1;
+                for (let attempt = 0; attempt < 200; attempt++) {
+                    try {
+                        const stats = await fs.promises.stat(actualPath);
+                        if (stats.size > 100 && stats.size === lastSize) {
+                            fileFound = true;
+                            break;
+                        }
+                        lastSize = stats.size;
+                    } catch (e) {}
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                if (fileFound) {
+                    const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
+                    base64List.push(base64Data);
+                    try {
+                        await fs.promises.unlink(actualPath);
+                    } catch (e) {}
+                }
+            } catch (err) {
+                console.error("[ArcEditor] Error processing frame at time " + t, err);
+            }
+        }
+    }
+
+    if (isAgentCall !== true) {
+        base64List.forEach(data => {
+            attachedFrames.push(data);
+        });
+        if (typeof renderAttachmentDock === "function") {
+            renderAttachmentDock();
+        }
+        addSystemMessage(`Captured sequence of ${base64List.length} frames successfully.`);
+    }
+
+    return base64List;
+}
+
