@@ -756,13 +756,58 @@ async function runAgenticExecutionLoop(userText) {
 }
 
 function extractJSXCode(text) {
-    const match = text.match(/```(?:javascript|js|extendscript|jsx)?\n([\s\S]*?)\n```/);
-    return match ? match[1].trim() : null;
+    if (!text) return null;
+    const parts = text.split("```");
+    for (let i = 1; i < parts.length; i += 2) {
+        let block = parts[i];
+        let lines = block.split("\n");
+        if (lines.length > 0) {
+            const lang = lines[0].trim().toLowerCase();
+            if (lang === "json") {
+                continue;
+            }
+            if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx" || lang === "") {
+                const code = lines.slice(1).join("\n").trim();
+                if (code) {
+                    return code;
+                }
+            } else {
+                const nonJsLangs = ["python", "py", "html", "css", "bash", "sh", "txt", "markdown", "md"];
+                if (nonJsLangs.indexOf(lang) === -1) {
+                    const code = block.trim();
+                    if (code) {
+                        if (code.startsWith("{") && code.endsWith("}")) {
+                            try {
+                                JSON.parse(code);
+                                continue;
+                            } catch (e) {}
+                        }
+                        return code;
+                    }
+                }
+            }
+        }
+    }
+    return null;
 }
 
 function extractJSONToolCalls(text) {
-    const match = text.match(/```json\n([\s\S]*?)\n```/);
-    return match ? match[1].trim() : null;
+    if (!text) return null;
+    const parts = text.split("```");
+    for (let i = 1; i < parts.length; i += 2) {
+        let block = parts[i];
+        let lines = block.split("\n");
+        if (lines.length > 0) {
+            const lang = lines[0].trim().toLowerCase();
+            if (lang === "json") {
+                const code = lines.slice(1).join("\n").trim();
+                if (code) {
+                    return code;
+                }
+            }
+        }
+    }
+    return null;
 }
 
 function getSignificantJsonActionKey(jsonStr) {
