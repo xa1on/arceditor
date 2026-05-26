@@ -150,6 +150,88 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
     });
 }
 
+function prepareGeminiPayload(messages, skipSystemInstructions) {
+    const chatParts = [];
+
+    messages.forEach(m => {
+        if (m.role === "system") {
+            // Transform system messages to user role with "[System Log]: " prefix
+            let textContent = "";
+            if (typeof m.content === "string") {
+                textContent = m.content;
+            } else if (Array.isArray(m.content)) {
+                textContent = m.content.map(c => c.type === "text" ? c.text : "").join(" ");
+            }
+            chatParts.push({
+                role: "user",
+                parts: [{ text: `[System Log]: ${textContent}` }]
+            });
+        } else {
+            const parts = [];
+            if (typeof m.content === "string") {
+                parts.push({ text: m.content });
+            } else if (Array.isArray(m.content)) {
+                m.content.forEach(c => {
+                    if (c.type === "text") parts.push({ text: c.text });
+                    if (c.type === "image_url") {
+                        const partsOfUrl = c.image_url.url.split(',');
+                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        parts.push({
+                            inlineData: {
+                                mimeType: "image/png",
+                                data: base64Data
+                            }
+                        });
+                    }
+                });
+            }
+            chatParts.push({
+                role: m.role === "user" ? "user" : "model",
+                parts: parts
+            });
+        }
+    });
+
+    // 1. Merge consecutive messages with the same role sequentially in chronological order
+    const contents = [];
+    chatParts.forEach(msg => {
+        if (contents.length > 0 && contents[contents.length - 1].role === msg.role) {
+            contents[contents.length - 1].parts.push(...msg.parts);
+        } else {
+            contents.push(msg);
+        }
+    });
+
+    // 2. Ensure the first message has the "user" role
+    if (contents.length > 0 && contents[0].role === "model") {
+        contents.unshift({
+            role: "user",
+            parts: [{ text: "[System State: Continuing session]" }]
+        });
+    }
+
+    // 3. Ensure contents is not empty
+    if (contents.length === 0) {
+        contents.push({
+            role: "user",
+            parts: [{ text: "Hello" }]
+        });
+    }
+
+    // 4. Build the base payload structure
+    const payload = {
+        contents: contents
+    };
+
+    if (!skipSystemInstructions) {
+        payload.systemInstruction = {
+            parts: [{ text: SYSTEM_INSTRUCTIONS }]
+        };
+    }
+
+    return payload;
+}
+
 async function callLLMApi(messages, onChunkReceived, skipSystemInstructions = false) {
     if (!httpsClient && !httpClient) {
         // Fallback mock mode ONLY inside standalone browsers
@@ -176,7 +258,7 @@ Here is the ExtendScript to build it:
                     let interval = setInterval(() => {
                         if (i < chars.length) {
                             onChunkReceived(chars.slice(0, i + 1).join(""));
-                            i += 5; // Stream fast in mock
+                            i += 5; // Stream fast in mockup
                         } else {
                             clearInterval(interval);
                             resolve(text);
@@ -258,43 +340,11 @@ Here is the ExtendScript to build it:
             targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
         }
 
-        // Convert messages to Gemini format
-        const contents = messages.map(m => {
-            const parts = [];
-            if (typeof m.content === "string") {
-                parts.push({ text: m.content });
-            } else if (Array.isArray(m.content)) {
-                m.content.forEach(c => {
-                    if (c.type === "text") parts.push({ text: c.text });
-                    if (c.type === "image_url") {
-                        const partsOfUrl = c.image_url.url.split(',');
-                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
-                        parts.push({
-                            inlineData: {
-                                mimeType: "image/png",
-                                data: base64Data
-                            }
-                        });
-                    }
-                });
-            }
-            return {
-                role: m.role === "user" ? "user" : "model",
-                parts: parts
-            };
-        });
-
-        payload = {
-            contents: contents,
-            generationConfig: {
-                temperature: 0.2
-            }
+        payload = prepareGeminiPayload(messages, skipSystemInstructions);
+        payload.generationConfig = {
+            temperature: 0.2
         };
-        if (!skipSystemInstructions) {
-            payload.systemInstruction = {
-                parts: [{ text: SYSTEM_INSTRUCTIONS }]
-            };
-        }
+
 
         if (onChunkReceived) {
             let accumulatedText = "";
@@ -438,37 +488,7 @@ async function fetchTrueTokenCount(messages) {
         const targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:countTokens?key=${apiKey}`;
         const headers = { "Content-Type": "application/json" };
         
-        const contents = messages.map(m => {
-            const parts = [];
-            if (typeof m.content === "string") {
-                parts.push({ text: m.content });
-            } else if (Array.isArray(m.content)) {
-                m.content.forEach(c => {
-                    if (c.type === "text") parts.push({ text: c.text });
-                    if (c.type === "image_url") {
-                        const partsOfUrl = c.image_url.url.split(',');
-                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
-                        parts.push({
-                            inlineData: {
-                                mimeType: "image/png",
-                                data: base64Data
-                            }
-                        });
-                    }
-                });
-            }
-            return {
-                role: m.role === "user" ? "user" : "model",
-                parts: parts
-            };
-        });
-
-        const payload = {
-            systemInstruction: {
-                parts: [{ text: SYSTEM_INSTRUCTIONS }]
-            },
-            contents: contents
-        };
+        const payload = prepareGeminiPayload(messages, false);
 
         const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
         const responseData = JSON.parse(responseText);
