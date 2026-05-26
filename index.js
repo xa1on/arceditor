@@ -100,7 +100,7 @@ ${code}`;
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
 
     chipCapture.addEventListener("click", captureCompositionFrame);
-    
+
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     if (chipCaptureSequence) {
         chipCaptureSequence.addEventListener("click", async () => {
@@ -115,7 +115,7 @@ ${code}`;
             }
         });
     }
-    
+
     const chipInspect = document.getElementById("chip-inspect");
     if (chipInspect) {
         chipInspect.addEventListener("click", async () => {
@@ -241,7 +241,7 @@ async function copyToClipboard(text) {
             const child_process = require("child_process");
             const os = require("os");
             const platform = os.platform();
-            
+
             if (platform === "win32" || platform === "darwin") {
                 const cmd = platform === "win32" ? "clip" : "pbcopy";
                 await new Promise((resolve, reject) => {
@@ -306,7 +306,7 @@ function triggerUserMessage() {
     addBubble("user", userText, attachedFrames);
     input.value = "";
     input.style.height = "auto";
-    
+
     isExecuting = true;
     setUIReadyState(false);
 
@@ -316,10 +316,10 @@ function triggerUserMessage() {
 function scrollToBottom(force = false) {
     const scroller = document.getElementById("chat-messages");
     if (!scroller) return;
-    
+
     // Check if the scrollbar is currently at the bottom (within a 40px tolerance)
     const isAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 40;
-    
+
     if (force || isAtBottom) {
         scroller.scrollTop = scroller.scrollHeight;
     }
@@ -486,7 +486,7 @@ function updateContextSizeInfo() {
 
     // High-fidelity BPE token estimation
     let estTokens = estimateTrueTokens(textForEstimation);
-    
+
     // Scan entire prospective history to add standard 258 tokens for every single image block found
     let imageBlocksCount = 0;
     for (const msg of prospectiveHistory) {
@@ -507,20 +507,6 @@ function updateContextSizeInfo() {
 
     // Initial render with high-fidelity BPE estimation
     metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)${usageTag}`;
-
-    // Asynchronous dynamic true token counting for Gemini
-    if (typeof currentProvider !== "undefined" && currentProvider === "gemini" && apiKey && typeof fetchTrueTokenCount === "function") {
-        clearTimeout(tokenCountTimeout);
-        tokenCountTimeout = setTimeout(async () => {
-            const trueTokens = await fetchTrueTokenCount(prospectiveHistory);
-            if (trueTokens !== null) {
-                currentTrueTokens = trueTokens;
-                if (document.getElementById("chat-input").value === inputText) {
-                    metaElement.innerText = `Context: ${totalChars.toLocaleString()} chars (${trueTokens.toLocaleString()} true tokens)${usageTag}`;
-                }
-            }
-        }, 400);
-    }
 }
 
 function renderAttachmentDock() {
@@ -537,11 +523,11 @@ function renderAttachmentDock() {
     attachedFrames.forEach((base64Data, idx) => {
         const wrap = document.createElement("div");
         wrap.className = "dock-img-wrap";
-        
+
         const img = document.createElement("img");
         img.src = `data:image/png;base64,${base64Data}`;
         img.alt = `Frame ${idx + 1}`;
-        
+
         const btn = document.createElement("button");
         btn.className = "close-badge";
         btn.innerHTML = "&times;";
@@ -551,7 +537,7 @@ function renderAttachmentDock() {
             renderAttachmentDock();
             updateContextSizeInfo();
         });
-        
+
         wrap.appendChild(img);
         wrap.appendChild(btn);
         dockThumbnails.appendChild(wrap);

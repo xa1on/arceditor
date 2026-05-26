@@ -471,33 +471,3 @@ Here is the ExtendScript to build it:
         }
     }
 }
-
-async function fetchTrueTokenCount(messages) {
-    if (!httpsClient && !httpClient) {
-        return null;
-    }
-    if (currentProvider !== "gemini") {
-        return null;
-    }
-    if (!apiKey) {
-        return null;
-    }
-
-    try {
-        const cleanBaseUrl = apiUrl.replace(/\/$/, "");
-        const targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:countTokens?key=${apiKey}`;
-        const headers = { "Content-Type": "application/json" };
-        
-        const payload = prepareGeminiPayload(messages, false);
-
-        const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-        const responseData = JSON.parse(responseText);
-        if (responseData && responseData.totalTokens !== undefined) {
-            return responseData.totalTokens;
-        }
-        return null;
-    } catch (e) {
-        console.error("[ArcEditor] Failed to fetch true token count from Gemini:", e);
-        return null;
-    }
-}
