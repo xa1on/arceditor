@@ -109,16 +109,20 @@ function evalScriptAsync(script) {
     });
 }
 
-async function captureCompositionFrame() {
+async function captureCompositionFrame(isAgentCall) {
     if (!csInterface) {
-        addSystemMessage("Visual capture not supported outside After Effects.");
+        if (isAgentCall !== true) {
+            addSystemMessage("Visual capture not supported outside After Effects.");
+        }
         return null;
     }
 
     const previewContainer = document.getElementById("frame-attachment-preview");
     const previewImg = document.getElementById("attached-preview-img");
 
-    addSystemMessage("Capturing current timeline frame...");
+    if (isAgentCall !== true) {
+        addSystemMessage("Capturing current timeline frame...");
+    }
 
     // 1. Prioritize File-based Capture (Using new Asynchronous file-write polling to guarantee saveFrameToPng success)
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
@@ -154,20 +158,23 @@ async function captureCompositionFrame() {
 
             if (fileFound) {
                 const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
-                attachedFrames.push(base64Data);
 
-                if (typeof renderAttachmentDock === "function") {
-                    renderAttachmentDock();
-                } else {
-                    const extName = path.extname(actualPath).toLowerCase();
-                    let mimeType = 'image/png';
-                    if (extName === '.jpg' || extName === '.jpeg') {
-                        mimeType = 'image/jpeg';
+                if (isAgentCall !== true) {
+                    attachedFrames.push(base64Data);
+
+                    if (typeof renderAttachmentDock === "function") {
+                        renderAttachmentDock();
+                    } else {
+                        const extName = path.extname(actualPath).toLowerCase();
+                        let mimeType = 'image/png';
+                        if (extName === '.jpg' || extName === '.jpeg') {
+                            mimeType = 'image/jpeg';
+                        }
+                        if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
+                        if (previewContainer) previewContainer.classList.remove("hidden");
                     }
-                    if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
-                    if (previewContainer) previewContainer.classList.remove("hidden");
+                    addSystemMessage("Canvas frame captured successfully.");
                 }
-                addSystemMessage("Canvas frame captured successfully.");
 
                 try {
                     await fs.promises.unlink(actualPath);
@@ -176,14 +183,20 @@ async function captureCompositionFrame() {
                 return base64Data;
             } else {
                 console.warn("[ArcEditor] Direct save file did not appear in time.");
-                addSystemMessage("Error: Frame capture file write timed out.");
+                if (isAgentCall !== true) {
+                    addSystemMessage("Error: Frame capture file write timed out.");
+                }
             }
         } catch (err) {
             console.error("[ArcEditor] Frame capture failed:", err);
-            addSystemMessage("Error capturing frame: " + err.message);
+            if (isAgentCall !== true) {
+                addSystemMessage("Error capturing frame: " + err.message);
+            }
         }
     } else {
-        addSystemMessage("Error capturing frame: Save current frame command failed. Result: " + result);
+        if (isAgentCall !== true) {
+            addSystemMessage("Error capturing frame: Save current frame command failed. Result: " + result);
+        }
     }
     return null;
 }

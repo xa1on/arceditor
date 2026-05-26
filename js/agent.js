@@ -921,7 +921,7 @@ async function executeToolCalls(jsonStr) {
                 observations.push(`- Tool "getInstalledEffects": ${JSON.stringify(installedEffects)}`);
                 continue;
             } else if (toolName === "captureActiveFrame") {
-                const base64Data = await captureCompositionFrame();
+                const base64Data = await captureCompositionFrame(true);
                 if (base64Data) {
                     observations.push(`- Tool "captureActiveFrame": Success: Active frame successfully captured and visually attached.`);
                     capturedFrameDataDuringLoop = base64Data;
