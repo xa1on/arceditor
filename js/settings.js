@@ -114,6 +114,10 @@ async function saveChats() {
 }
 
 async function syncProjectPath() {
+    if (isExecuting) {
+        // Defer syncing project path and session migration while the agent loop is actively running
+        return;
+    }
     let path = "Unsaved Project";
     if (csInterface) {
         const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getProjectPath()");

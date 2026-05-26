@@ -9,28 +9,54 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 (function(ns) {
 // Custom lightweight JSON stringifier (since ExtendScript lacks native JSON)
 var ArcJSON = {
-    stringify: function (obj) {
+    stringify: function (obj, seen) {
+        seen = seen || [];
         var t = typeof (obj);
         if (obj === null || obj === undefined) return "null";
-        if (t === "string") {
-            return '"' + obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
-        }
         if (t === "number" || t === "boolean") return String(obj);
+        if (t === "string") {
+            return '"' + obj
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"')
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r')
+                .replace(/\t/g, '\\t')
+                .replace(/\f/g, '\\f')
+                .replace(/[\b]/g, '\\b') + '"';
+        }
+        if (t === "object") {
+            for (var i = 0; i < seen.length; i++) {
+                if (seen[i] === obj) {
+                    return '"[Circular]"';
+                }
+            }
+            seen.push(obj);
 
-        var json = [];
-        var isArr = (obj instanceof Array || (obj && obj.constructor === Array));
+            var json = [];
+            var isArr = (obj instanceof Array || (obj && obj.constructor === Array));
 
-        for (var n in obj) {
-            if (obj.hasOwnProperty(n)) {
-                var v = obj[n];
-                var t2 = typeof (v);
-                if (t2 === "function" || t2 === "undefined") continue;
+            if (isArr) {
+                for (var j = 0; j < obj.length; j++) {
+                    json.push(this.stringify(obj[j], seen));
+                }
+                seen.pop();
+                return "[" + json.join(",") + "]";
+            } else {
+                for (var n in obj) {
+                    if (obj.hasOwnProperty(n)) {
+                        var v = obj[n];
+                        var t2 = typeof (v);
+                        if (t2 === "function" || t2 === "undefined") continue;
 
-                var val = this.stringify(v);
-                json.push((isArr ? "" : '"' + n + '":') + val);
+                        var val = this.stringify(v, seen);
+                        json.push('"' + n.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '":' + val);
+                    }
+                }
+                seen.pop();
+                return "{" + json.join(",") + "}";
             }
         }
-        return (isArr ? "[" : "{") + json.join(",") + (isArr ? "]" : "}");
+        return "null";
     }
 };
 
@@ -561,9 +587,15 @@ var ArcEditor = {
             layer = comp.layers.addSolid(solidColor, name, w, h, 1.0, comp.duration);
         } else if (type === "Adjustment") {
             layer = comp.layers.addSolid([1, 1, 1], name, w, h, 1.0, comp.duration);
+            var targetId = layer.id;
             layer.adjustmentLayer = true;
-            // Refresh ExtendScript DOM pointer by re-retrieving from top index 1
-            layer = comp.layer(1);
+            // Refresh ExtendScript DOM pointer by resolving via persistent immutable unique ID (not top index 1!)
+            for (var idx = 1; idx <= comp.numLayers; idx++) {
+                if (comp.layer(idx).id === targetId) {
+                    layer = comp.layer(idx);
+                    break;
+                }
+            }
         } else if (type === "Camera") {
             layer = comp.layers.addCamera(name, [w / 2, h / 2]);
         } else if (type === "Light") {

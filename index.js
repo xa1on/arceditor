@@ -378,24 +378,32 @@ let currentTrueTokens = null;
 
 function estimateTrueTokens(text) {
     if (!text) return 0;
-    // Specialized high-fidelity estimation for mixed code/natural language text
-    const words = text.match(/[\w]+|[^\s\w]+/g) || [];
-    let count = 0;
+    // Count indentation blocks (each group of 2-4 spaces is roughly 1 token in BPE tokenizers)
+    const spaces = text.match(/ {2,4}/g) || [];
+    let count = spaces.length;
+
+    // Remove the counted indentation spaces to avoid double counting
+    const cleanedText = text.replace(/ {2,4}/g, '');
+
+    // Tokenize remaining words, identifiers, and individual code delimiters
+    const words = cleanedText.match(/[\w]+|[^\s\w]/g) || [];
     for (const token of words) {
-        if (/^[^\s\w]+$/.test(token)) {
-            // Punctuation is tokenized distinctively
-            count += Math.ceil(token.length / 1.5);
+        if (/^[^\s\w]$/.test(token)) {
+            // Code punctuation symbols ({}, [], (), operators, semicolons) are usually 1 token each
+            count += 1;
         } else {
-            // Standard words and BPE subword splitting
-            if (token.length > 8) {
-                count += Math.ceil(token.length / 4);
+            // Alphanumeric words and camelCase/snake_case programming identifiers
+            if (token.length > 4) {
+                count += Math.ceil(token.length / 3.5);
             } else {
                 count += 1;
             }
         }
     }
+    // Newlines often represent distinct splits in token configurations
     const newlines = (text.match(/\n/g) || []).length;
-    count += newlines;
+    count += newlines * 0.5;
+
     return Math.round(count);
 }
 

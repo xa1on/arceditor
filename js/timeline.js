@@ -175,63 +175,15 @@ async function captureCompositionFrame() {
 
                 return base64Data;
             } else {
-                console.warn("[ArcEditor] Direct save file did not appear in time. Trying clipboard fallback.");
+                console.warn("[ArcEditor] Direct save file did not appear in time.");
+                addSystemMessage("Error: Frame capture file write timed out.");
             }
         } catch (err) {
-            console.warn("[ArcEditor] Asynchronous file read failed. Trying clipboard fallback:", err);
+            console.error("[ArcEditor] Frame capture failed:", err);
+            addSystemMessage("Error capturing frame: " + err.message);
         }
-    }
-
-    // 2. Clipboard-based Fallback (Used strictly as an absolute last resort to protect active user clipboard)
-    try {
-        const clipResult = await evalScriptAsync("$._com_arceditor_.ArcCanvas.copyFrameToClipboard()");
-        if (clipResult.indexOf("Success:") === 0) {
-            const child_process = require('child_process');
-            const platform = (os && typeof os.platform === 'function') ? os.platform() : process.platform;
-            
-            let base64Data = "";
-            if (platform === 'win32') {
-                const psCmd = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [System.Convert]::ToBase64String($ms.ToArray()) }`;
-                try {
-                    const stdout = await new Promise((resolve, reject) => {
-                        child_process.exec(`powershell -NoProfile -Command "${psCmd}"`, { windowsHide: true }, (err, stdout) => {
-                            if (err) reject(err);
-                            else resolve(stdout);
-                        });
-                    });
-                    base64Data = stdout.toString().trim();
-                } catch (err) {
-                    console.error("[ArcEditor] Windows fallback clipboard copy process failed: ", err);
-                }
-            } else if (platform === 'darwin') {
-                try {
-                    const stdout = await new Promise((resolve, reject) => {
-                        child_process.exec(`osascript -e "write (the clipboard as «class PNGf») to (open for access \\"/tmp/arc_clip.png\\" with write permission)" && base64 -i /tmp/arc_clip.png && rm /tmp/arc_clip.png`, (err, stdout) => {
-                            if (err) reject(err);
-                            else resolve(stdout);
-                        });
-                    });
-                    base64Data = stdout.toString().trim();
-                } catch (err) {
-                    console.error("[ArcEditor] macOS fallback clipboard copy process failed: ", err);
-                }
-            }
-
-            if (base64Data && base64Data.length > 100) {
-                attachedFrames.push(base64Data);
-                if (typeof renderAttachmentDock === "function") {
-                    renderAttachmentDock();
-                } else {
-                    if (previewImg) previewImg.src = `data:image/png;base64,${base64Data}`;
-                    if (previewContainer) previewContainer.classList.remove("hidden");
-                }
-                addSystemMessage("Canvas frame captured from fallback clipboard successfully.");
-                return base64Data;
-            }
-        }
-    } catch (clipErr) {
-        console.error("[ArcEditor] Frame capture completely failed:", clipErr);
-        addSystemMessage("Error capturing frame: " + clipErr.message);
+    } else {
+        addSystemMessage("Error capturing frame: Save current frame command failed. Result: " + result);
     }
     return null;
 }

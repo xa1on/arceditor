@@ -50,7 +50,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - Property Match Names must be handled carefully. Colors are represented as an array of 4 floats: [R, G, B, A] normalized between 0.0 and 1.0 (e.g. red is [1, 0, 0, 1]).
 - If a layer is parented, its Position is in local coordinates relative to the parent.
 - Always wrap scripts in a clean try-catch block and return meaningful error messages.
-- Wrap all property additions in an app.beginUndoGroup("Editing Action") and app.endUndoGroup() to allow easy rollbacks.
+- NEVER wrap your scripts or property additions in 'app.beginUndoGroup' and 'app.endUndoGroup' yourself. The host panel automatically wraps all executed scripts in a single atomic transaction. Writing your own undo groups will nest them, which breaks After Effects' undo history and prevents clean rollbacks during error self-corrections.
 
 *** PROCEDURAL SHAPE & LAYOUT RULES ***
 - Shape Layers are completely empty container layers when created via createLayer("Shape", name). You MUST procedurally add styled shape groups (using ADBE Vector Shape, Fills, and Strokes) to draw paths and make them visible on the canvas. Always use 'ArcEditor.addShapeToLayer' to create visible geometry.
@@ -439,7 +439,7 @@ async function runAgenticExecutionLoop(userText) {
 
     // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
     let activeContext = JSON.parse(JSON.stringify(chatHistory));
-    activeContext = await pruneHistoryContexts(activeContext);
+    activeContext = fallbackSlidingWindowPrune(activeContext); // Instant local pruning to protect context size
     pruneBase64Images(activeContext, 2); // Initial sliding window pruning
 
     updateCurrentSessionHistory();
@@ -637,6 +637,20 @@ async function runAgenticExecutionLoop(userText) {
     chatHistory = activeContext;
     updateCurrentSessionHistory();
     updateContextSizeInfo();
+
+    // Trigger memory condensation asynchronously in the background so the user does not wait
+    setTimeout(async () => {
+        try {
+            const condensedContext = await pruneHistoryContexts(chatHistory);
+            if (condensedContext && condensedContext.length < chatHistory.length) {
+                chatHistory = condensedContext;
+                updateCurrentSessionHistory();
+                updateContextSizeInfo();
+            }
+        } catch (e) {
+            console.error("Background memory condensation failed:", e);
+        }
+    }, 50);
 
     // Expose activeContext strictly for testing, assertion, and developer inspection
     if (typeof window !== "undefined") {
