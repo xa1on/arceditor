@@ -241,7 +241,7 @@ function loadSessionHistory(sessionId) {
                 }
                 addBubble("user", textContent, base64Images);
             } else if (msg.role === "assistant" && msg.content) {
-                addBubble("ai", msg.content);
+                addBubble("ai", msg.content, null, msg.intermediateTurnsHtml);
             }
         });
     }

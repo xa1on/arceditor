@@ -884,3 +884,235 @@ select.form-input {
     background-size: 16px 16px;
     background-position: 0 0, 8px 8px;
 }
+
+/* Collapsible Agent Turns Styling */
+.agent-turn-details {
+    background-color: #1b1b1b;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    margin-top: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.agent-turn-details[open] {
+    border-color: rgba(51, 181, 229, 0.4);
+}
+
+.agent-turn-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background-color: #212121;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    user-select: none;
+    outline: none;
+}
+
+.agent-turn-summary:hover {
+    background-color: #252526;
+    color: var(--text-primary);
+}
+
+.turn-index-badge {
+    background: #3e3e3e;
+    color: var(--text-primary);
+    padding: 1px 5px;
+    border-radius: var(--border-radius-sm);
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.turn-title {
+    flex: 1;
+    font-family: var(--font-sans);
+}
+
+.agent-turn-body {
+    padding: 10px;
+    border-top: 1px solid var(--border-color);
+    background-color: #181818;
+}
+
+.turn-observations {
+    margin-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 8px;
+}
+
+.turn-observations strong {
+    font-size: 9.5px;
+    color: var(--text-accent);
+    text-transform: uppercase;
+}
+
+.observation-pre {
+    margin-top: 4px !important;
+    background: #111 !important;
+    color: var(--text-secondary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 9.5px !important;
+    padding: 6px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-sm) !important;
+    white-space: pre-wrap !important;
+}
+
+/* Tool Calls Styling */
+.tool-calls-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    margin-bottom: 6px;
+}
+
+.tool-call-card {
+    background: #1e1e1e;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--text-accent);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+}
+
+.tool-call-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #252526;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tool-badge {
+    font-size: 9px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #1c1c1c;
+    background: var(--text-accent);
+    padding: 1px 4px;
+    border-radius: var(--border-radius-sm);
+    letter-spacing: 0.3px;
+}
+
+.tool-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.toggle-tool-view-btn {
+    margin-left: auto;
+    background: #333;
+    border: 1px solid #444;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.toggle-tool-view-btn:hover {
+    background: #444;
+    color: var(--text-primary);
+}
+
+.tool-call-body {
+    padding: 6px 8px;
+}
+
+.tool-params-table-wrap {
+    overflow-x: auto;
+}
+
+.tool-params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+}
+
+.tool-params-table tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.tool-params-table tr:last-child {
+    border-bottom: none;
+}
+
+.param-key {
+    color: #8e8e8e;
+    padding: 3px 6px 3px 0;
+    font-weight: 600;
+    width: 30%;
+    vertical-align: top;
+}
+
+.param-value {
+    color: #ce9178;
+    padding: 3px 0;
+    word-break: break-all;
+}
+
+.tool-no-params {
+    font-size: 9px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.tool-raw-json-wrap {
+    display: none;
+}
+
+.tool-raw-json-wrap pre {
+    margin: 0 !important;
+    background: #111 !important;
+    border: none !important;
+}
+
+/* Collapsible JSX Code Blocks inside intermediate turns */
+.jsx-code-details {
+    background: #111;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    margin-top: 6px;
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+
+.jsx-code-summary {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    background: #1a1a1a;
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+}
+
+.jsx-code-summary:hover {
+    color: var(--text-primary);
+    background: #222;
+}
+
+.jsx-code-details pre {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #0c0c0c !important;
+}
+
+.active-turn-container {
+    border-left: 2px solid var(--text-accent);
+    padding-left: 8px;
+    margin-bottom: 12px;
+}
+

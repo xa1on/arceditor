@@ -458,12 +458,16 @@ async function runAgenticExecutionLoop(userText) {
     const maxToolTurns = 15;
     let finalLlmResponse = "";
     const executedActions = [];
+    const completedTurnsHtml = [];
 
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
             pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
             const llmResponse = await callLLMApi(activeContext, (chunkText) => {
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
+                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + 
+                    `<div class="active-turn-container">` +
+                    formatMarkdown(chunkText) +
+                    `</div>`;
                 aiBubble.setAttribute("data-raw-text", chunkText);
                 if (typeof scrollToBottom === "function") scrollToBottom();
             });
@@ -485,7 +489,7 @@ async function runAgenticExecutionLoop(userText) {
                 if (actionKey) {
                     if (executedActions.indexOf(actionKey) !== -1) {
                         console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
-                        aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
+                        aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
                         if (typeof scrollToBottom === "function") scrollToBottom();
                         isCompleted = true;
@@ -504,8 +508,11 @@ async function runAgenticExecutionLoop(userText) {
                 executedAnything = true;
                 toolTurns++;
                 updateConsolePane(jsxBlock);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>`;
+                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    `<div class="active-turn-container">` +
+                    formatMarkdown(llmResponse) +
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>` +
+                    `</div>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
 
                 writeToDebugLog("ExtendScript Extracted", jsxBlock);
@@ -540,8 +547,28 @@ async function runAgenticExecutionLoop(userText) {
                 if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
                     scriptFailed = true;
                     loopRetries++;
-                    aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error);"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
+                    
+                    // Package failed turn
+                    const turnNum = completedTurnsHtml.length + 1;
+                    const turnHtml = `
+                    <details class="agent-turn-details" style="border-color: var(--text-error);">
+                        <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
+                            <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turnNum}</span>
+                            <span class="turn-title" style="color: var(--text-error);">Script execution failed (Retrying...)</span>
+                        </summary>
+                        <div class="agent-turn-body">
+                            ${formatMarkdown(llmResponse)}
+                            <div class="turn-observations">
+                                <strong style="color: var(--text-error);">Error Observation:</strong>
+                                <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${execResult}</pre>
+                            </div>
+                        </div>
+                    </details>
+                    `;
+                    completedTurnsHtml.push(turnHtml);
+
+                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
                     // Push error feedback to local context history and master history
@@ -565,8 +592,11 @@ async function runAgenticExecutionLoop(userText) {
                 executedAnything = true;
                 toolTurns++;
                 updateConsolePane(jsonBlock);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
+                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    `<div class="active-turn-container">` +
+                    formatMarkdown(llmResponse) +
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
+                    `</div>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
 
                 writeToDebugLog("Tool Calls Extracted", jsonBlock);
@@ -606,18 +636,49 @@ async function runAgenticExecutionLoop(userText) {
                     chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                 }
 
+                // Package successful turn
+                const turnNum = completedTurnsHtml.length + 1;
+                let turnTitle = "Analyzing composition context";
+                if (jsxBlock) {
+                    turnTitle = "Executing timeline automation script";
+                } else if (jsonBlock) {
+                    try {
+                        const parsed = JSON.parse(jsonBlock);
+                        const tools = (Array.isArray(parsed) ? parsed : [parsed]).map(t => t.tool).join(", ");
+                        turnTitle = `Running tool: ${tools}`;
+                    } catch (e) {
+                        turnTitle = "Running agent tool calls";
+                    }
+                }
+
+                const turnHtml = `
+                <details class="agent-turn-details">
+                    <summary class="agent-turn-summary">
+                        <span class="turn-index-badge">Turn ${turnNum}</span>
+                        <span class="turn-title">${turnTitle}</span>
+                    </summary>
+                    <div class="agent-turn-body">
+                        ${formatMarkdown(llmResponse)}
+                        <div class="turn-observations">
+                            <strong>Observations:</strong>
+                            <pre class="observation-pre">${observations}</pre>
+                        </div>
+                    </div>
+                </details>
+                `;
+                completedTurnsHtml.push(turnHtml);
+
                 // Show feedback in UI and prepare next turn
                 const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; border-left: 2px solid var(--text-accent); padding-left: 6px; color:var(--text-secondary);"><strong>Execution Observations:</strong><br>${observations.replace(/\n/g, '<br>')}</div>` +
-                    (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent);"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
+                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
                 if (typeof scrollToBottom === "function") scrollToBottom();
 
                 continue; // Run next loop turn immediately
             } else {
                 // LLM replied without code blocks (informational answer)
                 isCompleted = true;
-                aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(llmResponse);
+                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse);
                 if (typeof scrollToBottom === "function") scrollToBottom();
                 writeToDebugLog("Informational Response Completed", llmResponse);
             }
@@ -639,6 +700,15 @@ async function runAgenticExecutionLoop(userText) {
         aiBubble.querySelector(".message-content").innerHTML +=
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
         if (typeof scrollToBottom === "function") scrollToBottom();
+    }
+
+    // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed
+    const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
+    if (lastAssistantMsg) {
+        lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
+        if (loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
+            delete lastAssistantMsg.isIntermediate;
+        }
     }
 
     // Update persistent history size information
@@ -832,6 +902,69 @@ async function executeToolCalls(jsonStr) {
     return observations.join("\n");
 }
 
+function tryFormatToolCall(code) {
+    // Unescape HTML entities first (since formatMarkdown escapes them before processing code blocks)
+    const cleanCode = code
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">");
+    try {
+        const parsed = JSON.parse(cleanCode);
+        const calls = Array.isArray(parsed) ? parsed : [parsed];
+        
+        // Validate if this actually looks like a tool call sequence
+        const isValid = calls.every(c => c && typeof c === "object" && typeof c.tool === "string");
+        if (!isValid) return null;
+        
+        let html = `<div class="tool-calls-container">`;
+        calls.forEach((call, index) => {
+            const params = call.parameters || {};
+            let paramsHtml = "";
+            const paramKeys = Object.keys(params);
+            if (paramKeys.length > 0) {
+                paramsHtml = `<table class="tool-params-table">`;
+                paramKeys.forEach(key => {
+                    let valStr = "";
+                    if (typeof params[key] === "object" && params[key] !== null) {
+                        valStr = JSON.stringify(params[key]);
+                    } else {
+                        valStr = String(params[key]);
+                    }
+                    paramsHtml += `<tr><td class="param-key">${key}</td><td class="param-value">${valStr}</td></tr>`;
+                });
+                paramsHtml += `</table>`;
+            } else {
+                paramsHtml = `<div class="tool-no-params">No parameters</div>`;
+            }
+            
+            const cardId = "tool-card-" + Date.now() + "-" + index;
+            const rawJsonHtml = `<pre class="code-viewport"><code>${JSON.stringify(call, null, 2)}</code></pre>`;
+
+            html += `
+                <div class="tool-call-card" id="${cardId}">
+                    <div class="tool-call-header">
+                        <span class="tool-badge">Tool Call</span>
+                        <span class="tool-name">${call.tool}</span>
+                        <button class="toggle-tool-view-btn">Show JSON</button>
+                    </div>
+                    <div class="tool-call-body">
+                        <div class="tool-params-table-wrap">
+                            ${paramsHtml}
+                        </div>
+                        <div class="tool-raw-json-wrap">
+                            ${rawJsonHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+        return html;
+    } catch (e) {
+        return null;
+    }
+}
+
 function formatMarkdown(text) {
     if (!text) return "";
 
@@ -843,10 +976,28 @@ function formatMarkdown(text) {
 
     // Extract pre/code blocks upfront to prevent formatting inside them
     const preBlocks = [];
-    html = html.replace(/```(?:javascript|js|extendscript|jsx|json)?\n([\s\S]*?)\n```/g, (match, code) => {
+    html = html.replace(/```(javascript|js|extendscript|jsx|json)?\n([\s\S]*?)\n```/g, (match, lang, code) => {
+        if (lang === "json") {
+            const formatted = tryFormatToolCall(code);
+            if (formatted) {
+                preBlocks.push(formatted);
+                return `__PRE_BLOCK_${preBlocks.length - 1}__`;
+            }
+        }
+        if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
+            const collapsibleHtml = `
+            <details class="jsx-code-details">
+                <summary class="jsx-code-summary">ExtendScript JSX Code Block</summary>
+                <pre class="code-viewport"><code>${code}</code></pre>
+            </details>
+            `;
+            preBlocks.push(collapsibleHtml);
+            return `__PRE_BLOCK_${preBlocks.length - 1}__`;
+        }
         preBlocks.push(`<pre class="code-viewport"><code>${code}</code></pre>`);
         return `__PRE_BLOCK_${preBlocks.length - 1}__`;
     });
+
 
     // Process the text paragraph by paragraph
     const paragraphs = html.split(/\n\n+/);

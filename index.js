@@ -164,41 +164,56 @@ ${code}`;
         btnDeleteSession.addEventListener("click", deleteSession);
     }
 
-    // Copy Bubble Text Event Delegation
+    // Copy Bubble Text & Toggle Tool View Event Delegation
     const chatMessages = document.getElementById("chat-messages");
     if (chatMessages) {
         chatMessages.addEventListener("click", async (e) => {
+            // 1. Copy bubble content
             const btn = e.target.closest(".copy-bubble-btn");
-            if (!btn) return;
-
-            const messageDiv = btn.closest(".message");
-            if (!messageDiv) return;
-
-            const textToCopy = messageDiv.getAttribute("data-raw-text");
-            if (!textToCopy) return;
-
-            try {
-                await copyToClipboard(textToCopy);
-                
-                // Visual feedback: toggle icons and add copied class
-                btn.classList.add("copied");
-                const copyIcon = btn.querySelector(".copy-icon");
-                const checkIcon = btn.querySelector(".check-icon");
-                
-                if (copyIcon && checkIcon) {
-                    copyIcon.style.display = "none";
-                    checkIcon.style.display = "block";
-                }
-                
-                setTimeout(() => {
-                    btn.classList.remove("copied");
-                    if (copyIcon && checkIcon) {
-                        copyIcon.style.display = "block";
-                        checkIcon.style.display = "none";
+            if (btn) {
+                const messageDiv = btn.closest(".message");
+                if (messageDiv) {
+                    const textToCopy = messageDiv.getAttribute("data-raw-text");
+                    if (textToCopy) {
+                        try {
+                            await copyToClipboard(textToCopy);
+                            btn.classList.add("copied");
+                            const copyIcon = btn.querySelector(".copy-icon");
+                            const checkIcon = btn.querySelector(".check-icon");
+                            if (copyIcon && checkIcon) {
+                                copyIcon.style.display = "none";
+                                checkIcon.style.display = "block";
+                            }
+                            setTimeout(() => {
+                                btn.classList.remove("copied");
+                                if (copyIcon && checkIcon) {
+                                    copyIcon.style.display = "block";
+                                    checkIcon.style.display = "none";
+                                }
+                            }, 1000);
+                        } catch (err) {
+                            console.error("Failed to copy text: ", err);
+                        }
                     }
-                }, 1000);
-            } catch (err) {
-                console.error("Failed to copy text: ", err);
+                }
+                return;
+            }
+
+            // 2. Toggle tool view (Visual table vs Raw JSON)
+            const toggleBtn = e.target.closest(".toggle-tool-view-btn");
+            if (toggleBtn) {
+                const card = toggleBtn.closest(".tool-call-card");
+                if (card) {
+                    const tableWrap = card.querySelector(".tool-params-table-wrap");
+                    const jsonWrap = card.querySelector(".tool-raw-json-wrap");
+                    if (tableWrap && jsonWrap) {
+                        const isVisual = tableWrap.style.display !== "none";
+                        tableWrap.style.display = isVisual ? "none" : "block";
+                        jsonWrap.style.display = isVisual ? "block" : "none";
+                        toggleBtn.innerText = isVisual ? "Show Visual" : "Show JSON";
+                    }
+                }
+                return;
             }
         });
     }
@@ -295,7 +310,7 @@ function scrollToBottom(force = false) {
     }
 }
 
-function addBubble(sender, text, base64Images = null) {
+function addBubble(sender, text, base64Images = null, intermediateTurnsHtml = null) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
 
@@ -309,7 +324,12 @@ function addBubble(sender, text, base64Images = null) {
         content.innerHTML = text; // Bypass markdown formatting for raw loader elements
         wrapper.setAttribute("data-raw-text", "");
     } else {
-        content.innerHTML = formatMarkdown(text);
+        let htmlContent = "";
+        if (intermediateTurnsHtml) {
+            htmlContent += intermediateTurnsHtml;
+        }
+        htmlContent += formatMarkdown(text);
+        content.innerHTML = htmlContent;
         wrapper.setAttribute("data-raw-text", text);
     }
 
