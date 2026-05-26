@@ -319,13 +319,38 @@ function createNewSession() {
 }
 
 function deleteSession() {
-    const sessions = allProjectChats[currentProjectPath] || [];
-    const idx = sessions.findIndex(s => s.id === activeSessionId);
-    if (idx !== -1) {
-        sessions.splice(idx, 1);
-        saveChats();
-        
+    let deleted = false;
+    
+    // 1. Try to find and delete the session across ALL project keys to handle any project path desyncs
+    for (const projPath in allProjectChats) {
+        if (Object.prototype.hasOwnProperty.call(allProjectChats, projPath)) {
+            const sessions = allProjectChats[projPath] || [];
+            const idx = sessions.findIndex(s => s.id === activeSessionId);
+            if (idx !== -1) {
+                sessions.splice(idx, 1);
+                deleted = true;
+                console.log("[ArcEditor] Deleted session " + activeSessionId + " from project path: " + projPath);
+                break;
+            }
+        }
+    }
+
+    // 2. Save changes to disk
+    saveChats();
+
+    // 3. Re-initialize sessions for the current project path
+    initializeProjectSessions();
+
+    // 4. Update UI scroll & message bubbles
+    if (deleted) {
+        addSystemMessage("Chat deleted successfully. Spun up a new clean chat session.");
+    } else {
+        // Fallback: If we couldn't find the activeSessionId anywhere, force a clean reset of the current project's sessions
+        console.warn("[ArcEditor] activeSessionId (" + activeSessionId + ") not found. Forcing clean reset of current project chats.");
+        if (allProjectChats[currentProjectPath]) {
+            allProjectChats[currentProjectPath] = [];
+        }
         initializeProjectSessions();
-        addSystemMessage("Chat deleted successfully.");
+        addSystemMessage("Session state was out of sync. Active chat successfully reset.");
     }
 }

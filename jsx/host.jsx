@@ -1324,9 +1324,17 @@ var ArcEditor = {
 
         try {
             if (groupFilter) {
-                var startGroup = layer.property(groupFilter);
+                // Map standard user/agent display names directly to language-independent matchNames
+                var matchNameMap = {
+                    "transform": "ADBE Transform Group",
+                    "effects": "ADBE Effect Parade",
+                    "contents": "ADBE Root Vectors Group"
+                };
+                var targetName = matchNameMap[String(groupFilter).toLowerCase()] || groupFilter;
+                var startGroup = layer.property(targetName);
+                
                 if (startGroup) {
-                    crawl(startGroup, [groupFilter], 1);
+                    crawl(startGroup, [startGroup.name], 1);
                 } else {
                     return ArcJSON.stringify({ error: "Property group '" + groupFilter + "' not found on layer." });
                 }
