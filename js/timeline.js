@@ -81,7 +81,33 @@ function evalScriptAsync(script) {
         } else {
             // Mock runner inside general browsers
             console.log("[ArcEditor Mock Executing JSX]:", script);
-            resolve("Success: (Mocked JSX output)");
+            if (script.indexOf("getActiveCompositionData()") !== -1) {
+                resolve(JSON.stringify({
+                    id: 1234,
+                    name: "Mock Composition",
+                    width: 1920,
+                    height: 1080,
+                    duration: 10.0,
+                    frameRate: 29.97,
+                    currentTime: 0.0,
+                    numLayers: 0,
+                    layers: [],
+                    projectAssets: [],
+                    compMarkers: []
+                }));
+            } else if (script.indexOf("getInstalledEffects()") !== -1) {
+                resolve(JSON.stringify({
+                    "Blur & Sharpen": [
+                        { displayName: "Gaussian Blur", matchName: "ADBE Gaussian Blur 2" },
+                        { displayName: "Fast Box Blur", matchName: "ADBE Fast Blur" }
+                    ],
+                    "Stylize": [
+                        { displayName: "Glow", matchName: "ADBE Glow" }
+                    ]
+                }));
+            } else {
+                resolve("Success: (Mocked JSX output)");
+            }
         }
     });
 }
@@ -98,7 +124,7 @@ async function captureCompositionFrame() {
     addSystemMessage("Capturing current timeline frame...");
 
     // 1. Prioritize File-based Capture (Using new Asynchronous file-write polling to guarantee saveFrameToPng success)
-    const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : (process.env.TEMP || process.env.TMP || '/tmp');
+    const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const tempPngPath = path.join(saveDir, `arc_preview_${uniqueSuffix}.png`);
     const safePath = tempPngPath.replace(/\\/g, '/');

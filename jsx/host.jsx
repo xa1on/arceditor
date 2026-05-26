@@ -811,9 +811,34 @@ var ArcEditor = {
 
         // Easing curves
         if (easeIn || easeOut) {
-            for (var k = 1; k <= times.length; k++) {
-                var ease = new KeyframeEase(0, 33.3);
-                prop.setTemporalEaseAtKey(k, [ease], [ease]);
+            var dimensionality = 1;
+            try {
+                if (prop.value instanceof Array) {
+                    var isSpatial = false;
+                    try {
+                        if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL ||
+                            prop.propertyValueType === PropertyValueType.ThreeD_SPATIAL) {
+                            isSpatial = true;
+                        }
+                    } catch (ev) { }
+                    if (!isSpatial) {
+                        dimensionality = prop.value.length;
+                    }
+                }
+            } catch (e) { }
+
+            var easeArray = [];
+            for (var d = 0; d < dimensionality; d++) {
+                easeArray.push(new KeyframeEase(0, 33.3));
+            }
+
+            for (var i = 0; i < times.length; i++) {
+                try {
+                    var k = prop.nearestKeyIndex(times[i]);
+                    if (k > 0 && k <= prop.numKeys) {
+                        prop.setTemporalEaseAtKey(k, easeArray, easeArray);
+                    }
+                } catch (easeErr) { }
             }
         }
         return true;

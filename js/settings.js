@@ -123,6 +123,7 @@ async function syncProjectPath() {
     }
     
     if (path !== currentProjectPath) {
+        const oldProjectPath = currentProjectPath;
         currentProjectPath = path;
         
         // Update UI Label
@@ -132,6 +133,20 @@ async function syncProjectPath() {
             const baseName = path.substring(lastSeparator + 1);
             label.innerText = baseName || "Unsaved Project";
             label.title = path;
+        }
+        
+        // Auto-migration: If transitioning from "Unsaved Project" to a saved project path,
+        // move all chat sessions from "Unsaved Project" to the new project path key.
+        if (oldProjectPath === "Unsaved Project" && path !== "Unsaved Project") {
+            const unsavedSessions = allProjectChats["Unsaved Project"];
+            if (unsavedSessions && unsavedSessions.length > 0) {
+                if (!allProjectChats[path] || allProjectChats[path].length === 0) {
+                    allProjectChats[path] = unsavedSessions;
+                    delete allProjectChats["Unsaved Project"];
+                    saveChats();
+                    console.log("[ArcEditor] Migrated active chat history from Unsaved Project to: " + path);
+                }
+            }
         }
         
         // Load session list for this project

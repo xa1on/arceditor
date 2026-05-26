@@ -440,6 +440,7 @@ async function runAgenticExecutionLoop(userText) {
     // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
     let activeContext = JSON.parse(JSON.stringify(chatHistory));
     activeContext = await pruneHistoryContexts(activeContext);
+    pruneBase64Images(activeContext, 2); // Initial sliding window pruning
 
     updateCurrentSessionHistory();
     updateContextSizeInfo();
@@ -459,6 +460,7 @@ async function runAgenticExecutionLoop(userText) {
 
     while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
+            pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
             const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = formatMarkdown(chunkText);
                 aiBubble.setAttribute("data-raw-text", chunkText);
@@ -548,7 +550,7 @@ async function runAgenticExecutionLoop(userText) {
                     });
 
                     // Don't send the base64 image again to save bandwidth
-                    visualFrameInput = null;
+                    visualFrameInputs = null;
                 } else {
                     observations += `ExtendScript executed successfully with result: "${execResult}"\n`;
                 }
@@ -796,7 +798,7 @@ async function executeToolCalls(jsonStr) {
             const result = await evalScriptAsync(jsxCommand);
             observations.push(`- Tool "${toolName}": ${result}`);
 
-            if (result.indexOf("Error:") === 0) {
+            if (result.indexOf("Error:") === 0 || result.indexOf("EvalScript error") === 0) {
                 break;
             }
         }
@@ -888,6 +890,46 @@ function formatMarkdown(text) {
     return result;
 }
 
+function pruneBase64Images(context, maxKeep) {
+    if (!context) return;
+    var maxToKeep = typeof maxKeep === "number" ? maxKeep : 2;
+    var imageMessageIndices = [];
+    for (var i = 0; i < context.length; i++) {
+        var msg = context[i];
+        if (msg && Array.isArray(msg.content)) {
+            var hasImage = false;
+            for (var j = 0; j < msg.content.length; j++) {
+                if (msg.content[j] && msg.content[j].type === "image_url") {
+                    hasImage = true;
+                    break;
+                }
+            }
+            if (hasImage) {
+                imageMessageIndices.push(i);
+            }
+        }
+    }
+    if (imageMessageIndices.length > maxToKeep) {
+        var toStripCount = imageMessageIndices.length - maxToKeep;
+        for (var k = 0; k < toStripCount; k++) {
+            var msgIndex = imageMessageIndices[k];
+            var msg = context[msgIndex];
+            if (msg && Array.isArray(msg.content)) {
+                var newContent = [];
+                for (var j = 0; j < msg.content.length; j++) {
+                    var part = msg.content[j];
+                    if (part && part.type === "text") {
+                        newContent.push(part);
+                    } else if (part && part.type === "image_url") {
+                        newContent.push({ type: "text", text: "[Obsolete Intermediate Frame Capture Stripped to Save Context]" });
+                    }
+                }
+                msg.content = newContent;
+            }
+        }
+    }
+}
+
 async function pruneHistoryContexts(contextArray) {
     if (!contextArray) return [];
 
@@ -917,6 +959,19 @@ async function pruneHistoryContexts(contextArray) {
             try {
                 console.log("[ArcEditor] Initiating background memory condensation...");
 
+                // Deep clone and strip base64 payloads to save memory/tokens
+                const messagesClean = JSON.parse(JSON.stringify(messagesToCondense));
+                for (var i = 0; i < messagesClean.length; i++) {
+                    var msg = messagesClean[i];
+                    if (msg && Array.isArray(msg.content)) {
+                        for (var j = 0; j < msg.content.length; j++) {
+                            if (msg.content[j] && msg.content[j].type === "image_url") {
+                                msg.content[j] = { type: "text", text: "[Image Attachment (Base64 Payload Stripped for Condensation)]" };
+                            }
+                        }
+                    }
+                }
+
                 // Formulate the condensation request prompt
                 const systemPrompt = "You are a memory compressor. Summarize the following video editing dialog history into a single-paragraph log of creative intents, assets added, and controller rigs configured. Keep it extremely concise (under 60 words). " +
                     (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
@@ -924,7 +979,7 @@ async function pruneHistoryContexts(contextArray) {
 
                 const compressionMessages = [
                     { role: "system", content: systemPrompt },
-                    { role: "user", content: JSON.stringify(messagesToCondense) }
+                    { role: "user", content: JSON.stringify(messagesClean) }
                 ];
 
                 // Call LLM API (non-streaming, direct response, skip system instructions)
