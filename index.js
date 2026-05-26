@@ -101,6 +101,21 @@ ${code}`;
 
     chipCapture.addEventListener("click", captureCompositionFrame);
     
+    const chipCaptureSequence = document.getElementById("chip-capture-sequence");
+    if (chipCaptureSequence) {
+        chipCaptureSequence.addEventListener("click", async () => {
+            if (isExecuting) return;
+            isExecuting = true;
+            setUIReadyState(false);
+            try {
+                await captureCompositionSequence(null, null, 5, false);
+            } finally {
+                isExecuting = false;
+                setUIReadyState(true);
+            }
+        });
+    }
+    
     const chipInspect = document.getElementById("chip-inspect");
     if (chipInspect) {
         chipInspect.addEventListener("click", async () => {
@@ -569,6 +584,7 @@ function setUIReadyState(ready) {
     const selectSession = document.getElementById("select-chat-session");
     const btnDeleteSession = document.getElementById("btn-delete-session");
     const chipCapture = document.getElementById("chip-capture");
+    const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     const chipInspect = document.getElementById("chip-inspect");
     const btnSettings = document.getElementById("btn-settings");
     const btnInspectComp = document.getElementById("btn-inspect-comp");
@@ -585,6 +601,7 @@ function setUIReadyState(ready) {
     if (selectSession) selectSession.disabled = !ready;
     if (btnDeleteSession) btnDeleteSession.disabled = !ready;
     if (chipCapture) chipCapture.disabled = !ready;
+    if (chipCaptureSequence) chipCaptureSequence.disabled = !ready;
     if (chipInspect) chipInspect.disabled = !ready;
     if (btnSettings) btnSettings.disabled = !ready;
     if (btnInspectComp) btnInspectComp.disabled = !ready;
