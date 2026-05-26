@@ -537,7 +537,7 @@ async function runAgenticExecutionLoop(userText) {
                     } catch (err) {
                         app.endUndoGroup();
                         try {
-                            app.undo(); // Auto-rollback the ENTIRE transaction on script failure!
+                            app.executeCommand(16); // Auto-rollback the ENTIRE transaction on script failure!
                         } catch (e) {}
                         return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
@@ -934,7 +934,7 @@ async function executeToolCalls(jsonStr) {
                     await evalScriptAsync(`app.endUndoGroup()`);
                     undoGroupActive = false;
                 }
-                await evalScriptAsync("app.undo()");
+                await evalScriptAsync("app.executeCommand(16)");
                 observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
             } else if (toolName === "setPlayheadTime") {
