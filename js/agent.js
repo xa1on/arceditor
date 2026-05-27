@@ -34,6 +34,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
   2. **Separate Tool Verification:** Use a separate tool turn (like \`getTimelineContext\` or \`captureActiveFrame\`) only if the task is highly complex, multi-stage, or requires visual/rendered proof.
   3. **Trivial Success:** If the action is basic and the ExtendScript execution returns a clean \`"Success"\` string, you may assume success and conclude without an extra verification turn.
 - Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks or JSON tool calls.
+- **MANDATORY TOOL FORMATTING REQUIREMENT**: Any and all JSON tool calls you output MUST be strictly wrapped in a markdown \`\`\`json and \`\`\` code block. NEVER output raw JSON outside of a markdown code block. The CEP extension parser relies on the presence of triple backticks and the "json" language identifier to extract and execute your tools; raw JSON text will be completely ignored and treated as conversational text.
 
 *** CRITICAL SYSTEM PHILOSOPHY: GENERAL VIDEO EDITING & DYNAMIC ORCHESTRATION ***
 - COMPOSITION ASSEMBLY & VIDEO EDITING:
@@ -439,7 +440,15 @@ Layer Referencing (Avoid Fragile Indexes!):
 \`\`\`javascript
 // ExtendScript goes here
 \`\`\`
-Do not write any comments inside the markdown formatting outside the code blocks that contradict this structure. The host panel parses the block marked with javascript and runs it.
+- When a JSON tool call is required, output it inside a markdown block marked with:
+\`\`\`json
+{
+  "tool": "toolName",
+  "parameters": { ... }
+}
+\`\`\`
+Do not write any text or raw JSON outside of the markdown code block. The host panel parses the block marked with json and runs it. Raw JSON will fail to be recognized as a tool call.
+Do not write any comments inside the markdown formatting outside the code blocks that contradict this structure.
 `;
 
 async function runAgenticExecutionLoop(userText) {
