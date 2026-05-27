@@ -13,8 +13,6 @@ async function loadSettings() {
             apiUrl = data.url || getDefaultUrl(currentProvider);
             modelName = data.model || getDefaultModel(currentProvider);
             apiKey = data.key || "";
-            maxTokens = data.maxTokens !== undefined ? Number(data.maxTokens) : 100000;
-            maxTurns = data.maxTurns !== undefined ? Number(data.maxTurns) : 15;
             loaded = true;
         } catch (e) {
             if (e.code !== 'ENOENT') {
@@ -29,8 +27,6 @@ async function loadSettings() {
         apiUrl = getDefaultUrl(currentProvider);
         modelName = getDefaultModel(currentProvider);
         apiKey = "";
-        maxTokens = 100000;
-        maxTurns = 15;
     }
 
     // Sync into settings DOM
@@ -38,8 +34,6 @@ async function loadSettings() {
     document.getElementById("setting-url").value = apiUrl;
     document.getElementById("setting-model").value = modelName;
     document.getElementById("setting-key").value = apiKey;
-    document.getElementById("setting-max-tokens").value = maxTokens;
-    document.getElementById("setting-max-turns").value = maxTurns;
 }
 
 async function saveSettings(e) {
@@ -49,16 +43,12 @@ async function saveSettings(e) {
     apiUrl = document.getElementById("setting-url").value || getDefaultUrl(currentProvider);
     modelName = document.getElementById("setting-model").value || getDefaultModel(currentProvider);
     apiKey = document.getElementById("setting-key").value;
-    maxTokens = Number(document.getElementById("setting-max-tokens").value) || 100000;
-    maxTurns = Number(document.getElementById("setting-max-turns").value) || 15;
 
     const config = {
         provider: currentProvider,
         url: apiUrl,
         model: modelName,
-        key: apiKey,
-        maxTokens: maxTokens,
-        maxTurns: maxTurns
+        key: apiKey
     };
 
     if (fs) {

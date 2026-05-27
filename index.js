@@ -8,23 +8,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadSettings();
     await loadChats();
     initUI();
+    validateConnection();
+    syncProjectPath();
+    loadInstalledEffects();
     updateContextSizeInfo();
 
-    // Delay ExtendScript calls to let AE fully initialize its DOM before we query it.
-    // Calling evalScript too early or concurrently during startup can deadlock AE's scripting bridge.
-    setTimeout(async () => {
-        try {
-            await validateConnection();
-            await syncProjectPath();
-            await loadInstalledEffects();
-            updateContextSizeInfo();
-        } catch (e) {
-            console.error("[ArcEditor] Startup initialization error:", e);
-        }
-
-        // Auto-sync active AE project file path periodically
-        setInterval(syncProjectPath, 5000);
-    }, 2000);
+    // Auto-sync active AE project file path periodically
+    setInterval(syncProjectPath, 5000);
 });
 
 // --- SECTION 8: USER INTERFACE RENDERERS & EVENT BINDINGS ---

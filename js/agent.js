@@ -479,16 +479,14 @@ async function runAgenticExecutionLoop(userText) {
     let loopRetries = 0;
     const maxRetries = 3;
     let toolTurns = 0;
-    const currentMaxTurns = typeof maxTurns === "number" ? maxTurns : 15;
+    const maxToolTurns = 15;
     let finalLlmResponse = "";
     const executedActions = [];
     const completedTurnsHtml = [];
-    let cumulativeTokensUsed = 0;
 
-    while (!isCompleted && loopRetries < maxRetries && toolTurns < currentMaxTurns) {
+    while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
         try {
             pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
-            pruneOlderThinkingBlocks(activeContext); // Prune reasoning plan of previous turns to save context tokens!
             const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                 aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + 
                     `<div class="active-turn-container">` +
@@ -498,55 +496,11 @@ async function runAgenticExecutionLoop(userText) {
                 if (typeof scrollToBottom === "function") scrollToBottom();
             });
             aiBubble.setAttribute("data-raw-text", llmResponse);
-            
-            // Safety token budget check
-            const promptEst = estimateContextTokens(activeContext);
-            const completionEst = estimateAgentTokens(llmResponse);
-            cumulativeTokensUsed += (promptEst + completionEst);
-
-            console.log(`[ArcEditor] Turn ${toolTurns + 1}: Prompt tokens est: ${promptEst}, Completion tokens est: ${completionEst}. Cumulative tokens used: ${cumulativeTokensUsed}/${maxTokens}`);
-
-            const currentMaxTokensBudget = typeof maxTokens === "number" ? maxTokens : 100000;
             const assistantMsg = { role: "assistant", content: llmResponse };
             activeContext.push(assistantMsg);
             finalLlmResponse = llmResponse;
 
             writeToDebugLog("LLM Raw Response", llmResponse);
-
-            if (cumulativeTokensUsed > currentMaxTokensBudget) {
-                console.warn(`[ArcEditor] Token budget limit exceeded! Used: ${cumulativeTokensUsed}, Budget Limit: ${currentMaxTokensBudget}`);
-                isCompleted = true;
-                
-                const budgetExceededHtml = `
-                <div class="agent-turn-details" style="border-color: var(--text-error); margin-top: 12px; padding: 10px; border-radius: var(--border-radius-md); background: rgba(255, 68, 68, 0.05); text-align: left;">
-                    <strong style="color: var(--text-error); font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: flex-start;">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                        Token Budget Exceeded Safety Halt
-                    </strong>
-                    <p style="font-size: 11px; margin: 6px 0 0 0; color: var(--text-secondary); text-align: left; line-height: 1.4;">
-                        The execution loop was halted because it reached your cumulative token budget of <strong>${currentMaxTokensBudget.toLocaleString()}</strong> tokens (Estimated total used: <strong>${cumulativeTokensUsed.toLocaleString()}</strong> tokens). This prevents excess API usage.
-                    </p>
-                </div>
-                `;
-                completedTurnsHtml.push(budgetExceededHtml);
-
-                const finalExplanation = `I have paused the execution loop because your customized cumulative token budget of **${currentMaxTokensBudget.toLocaleString()}** tokens was reached (estimated usage: **${cumulativeTokensUsed.toLocaleString()}** tokens). 
-
-### Accomplishments so far:
-${executedActions.length > 0 ? executedActions.map((act, idx) => `${idx + 1}. Executed step: \`${act.indexOf('|') !== -1 ? act.split('|')[0] : act}\``).join('\n') : "No state-modifying actions were fully completed before the halt."}
-
-### How to continue:
-If you would like me to finish the remaining steps of your edit, simply type **"continue"** or **"proceed"** in the chat, or increase your **Token Budget** in the **API Settings** panel (gear icon) and reply to continue.`;
-
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(finalExplanation);
-                if (typeof scrollToBottom === "function") scrollToBottom();
-
-                // Add system summary to chat history
-                assistantMsg.content = finalExplanation;
-                assistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
-                chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
-                break;
-            }
 
             // Check for JSON tool calls first, then JSX code blocks
             const jsonBlock = extractJSONToolCalls(llmResponse);
@@ -773,9 +727,9 @@ If you would like me to finish the remaining steps of your edit, simply type **"
             `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
         if (typeof scrollToBottom === "function") scrollToBottom();
     }
-    if (toolTurns >= currentMaxTurns && !isCompleted) {
+    if (toolTurns >= maxToolTurns && !isCompleted) {
         aiBubble.querySelector(".message-content").innerHTML +=
-            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns (${currentMaxTurns}) reached to prevent looping.</div>`;
+            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
         if (typeof scrollToBottom === "function") scrollToBottom();
     }
 
@@ -783,7 +737,7 @@ If you would like me to finish the remaining steps of your edit, simply type **"
     const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
     if (lastAssistantMsg) {
         lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
-        if (loopRetries >= maxRetries || (toolTurns >= currentMaxTurns && !isCompleted)) {
+        if (loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
             delete lastAssistantMsg.isIntermediate;
         }
     }
@@ -1259,65 +1213,6 @@ function pruneBase64Images(context, maxKeep) {
             }
         }
     }
-}
-
-function pruneOlderThinkingBlocks(context) {
-    if (!context) return;
-    for (var i = 0; i < context.length; i++) {
-        var msg = context[i];
-        if (msg && msg.role === "assistant" && typeof msg.content === "string") {
-            if (msg.content.indexOf("<thinking>") !== -1) {
-                msg.content = msg.content.replace(/<thinking>([\s\S]*?)<\/thinking>/g, "<thinking>[Reasoning plan of completed turn omitted to save tokens]</thinking>");
-                msg.content = msg.content.replace(/<thinking>([\s\S]*?)$/g, "<thinking>[Reasoning plan of completed turn omitted to save tokens]</thinking>");
-            }
-        }
-    }
-}
-
-function estimateContextTokens(context) {
-    if (!context) return 0;
-    let textForEstimation = "";
-    let imageBlocksCount = 0;
-    for (var i = 0; i < context.length; i++) {
-        var msg = context[i];
-        if (msg) {
-            if (typeof msg.content === "string") {
-                textForEstimation += msg.content + "\n";
-            } else if (Array.isArray(msg.content)) {
-                for (var j = 0; j < msg.content.length; j++) {
-                    var part = msg.content[j];
-                    if (part && part.type === "text" && part.text) {
-                        textForEstimation += part.text + "\n";
-                    } else if (part && part.type === "image_url") {
-                        imageBlocksCount++;
-                    }
-                }
-            }
-        }
-    }
-    return estimateAgentTokens(textForEstimation) + (imageBlocksCount * 258);
-}
-
-function estimateAgentTokens(text) {
-    if (!text) return 0;
-    const spaces = text.match(/ {2,4}/g) || [];
-    let count = spaces.length;
-    const cleanedText = text.replace(/ {2,4}/g, '');
-    const words = cleanedText.match(/[\w]+|[^\s\w]/g) || [];
-    for (const token of words) {
-        if (/^[^\s\w]$/.test(token)) {
-            count += 1;
-        } else {
-            if (token.length > 4) {
-                count += Math.ceil(token.length / 3.5);
-            } else {
-                count += 1;
-            }
-        }
-    }
-    const newlines = (text.match(/\n/g) || []).length;
-    count += newlines * 0.5;
-    return Math.round(count);
 }
 
 async function pruneHistoryContexts(contextArray) {
