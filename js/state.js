@@ -8,6 +8,8 @@ let currentProvider = "lemonade";
 let apiUrl = "http://localhost:1337/v1";
 let modelName = "qwen2.5-coder-7b";
 let apiKey = "";
+let maxTokens = 100000;
+let maxTurns = 15;
 let isConnected = false;
 
 let chatHistory = [];
