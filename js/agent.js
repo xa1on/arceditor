@@ -85,23 +85,24 @@ Layer Referencing (Avoid Fragile Indexes!):
 
 2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`
    - Description: Applies an effect to a layer.
-   - Use the exact matchName from the getInstalledEffects catalog (e.g. "ADBE Glo2").
+   - Use the exact matchName from the getInstalledEffects catalog (e.g. "ADBE Slider Control", "ADBE Glo2").
    - Parameters:
      * \`layerRef\`: Layer unique ID, name, or index.
      * \`effectMatchName\`: String match name (e.g. "ADBE Slider Control", "ADBE Glo2").
      * \`effectDisplayName\`: (Optional) String display name.
    - Returns: The created Effect object.
 
-3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
-   - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
-     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\`, \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
-     2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
-     3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
-   - Parameters:
-     * \`layerRef\`: Layer unique ID, name, or index.
-     * \`propPath\`: String property name or Array path.
-     * \`value\`: Raw value to assign (Number, Array, String, or Boolean).
-     * \`time\`: (Optional) Number time in seconds to set keyframe value.
+ 3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
+    - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
+      1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\` [sets layer visibility!], \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
+      2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
+      3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
+      4. Visibility of individual sub-elements like shape groups, vector shapes, masks, and effects by setting \`"Enabled"\` at the end of deep property paths (e.g., \`["Contents", "Rectangle Group", "Enabled"]\` or \`["Effects", "Fast Box Blur", "Enabled"]\` or \`["Masks", "Mask 1", "Enabled"]\`).
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index.
+      * \`propPath\`: String property name or Array path.
+      * \`value\`: Raw value to assign (Number, Array, String, or Boolean).
+      * \`time\`: (Optional) Number time in seconds to set keyframe value.
 
 4. \`ArcEditor.setPropertyExpression(layerRef, propPath, expressionStr)\`
    - Description: Writes a JavaScript expression onto a property.

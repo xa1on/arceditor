@@ -553,6 +553,11 @@ var ArcEditor = {
     resolveProperty: function (layer, propPath) {
         if (!layer) throw new Error("Invalid layer parameter.");
         var prop;
+
+        if (typeof propPath === "string" && propPath.indexOf(".") !== -1) {
+            propPath = propPath.split(".");
+        }
+
         if (typeof propPath === "string") {
             prop = layer.property(propPath);
             if (!prop) {
@@ -571,6 +576,10 @@ var ArcEditor = {
                         next = curr.property("ADBE Effect Parade");
                     } else if (segment === "Transform") {
                         next = curr.property("ADBE Transform Group");
+                    } else if (segment === "Masks" || segment === "Mask" || segment === "Mask Parade") {
+                        next = curr.property("ADBE Mask Parade");
+                    } else if (segment === "Contents" || segment === "Content") {
+                        next = curr.property("ADBE Root Vectors Group");
                     }
                 }
                 if (!next) throw new Error("Property path segment not found: " + segment);
@@ -601,6 +610,27 @@ var ArcEditor = {
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
         if (!layer) throw new Error("Layer not found: " + layerRef);
+
+        // Intercept deep path visibility toggles (e.g. ending in "enabled")
+        var pathArray = null;
+        if (propPath instanceof Array) {
+            pathArray = propPath;
+        } else if (typeof propPath === "string" && propPath.indexOf(".") !== -1) {
+            pathArray = propPath.split(".");
+        }
+
+        if (pathArray && pathArray.length > 1) {
+            var lastSegment = String(pathArray[pathArray.length - 1]).toLowerCase();
+            if (lastSegment === "enabled") {
+                var parentPropPath = pathArray.slice(0, -1);
+                var parentProp = this.resolveProperty(layer, parentPropPath);
+                if (parentProp) {
+                    var boolVal = (value === true || value === 1 || String(value).toLowerCase() === "true");
+                    parentProp.enabled = boolVal;
+                    return true;
+                }
+            }
+        }
 
         // Normalize propPath to a string if it's a single-element array or basic string
         var pathStr = "";
