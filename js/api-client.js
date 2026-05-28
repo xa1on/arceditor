@@ -1,3 +1,15 @@
+const EXCLUDED_KEYS = {
+    system: true,
+    systemInstruction: true,
+    safetySettings: true,
+    generationConfig: true,
+    temperature: true,
+    model: true,
+    max_tokens: true,
+    stream: true,
+    stream_options: true
+};
+
 function sanitizePayload(obj) {
     if (obj === null || obj === undefined) return obj;
     if (typeof obj === "string") {
@@ -18,9 +30,9 @@ function sanitizePayload(obj) {
         const copy = {};
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                if (key === "system" || key === "systemInstruction") {
-                    copy[key] = "[System Instructions (Omitted for brevity)]";
-                } else if (key === "messages" && Array.isArray(obj[key])) {
+                if (EXCLUDED_KEYS[key]) continue;
+                
+                if (key === "messages" && Array.isArray(obj[key])) {
                     copy[key] = obj[key].filter(msg => msg.role !== "system").map(sanitizePayload);
                 } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "data" && typeof obj[key] === "string" && obj[key].length > 50) {
                     copy[key] = "[Base64 Image Data (Omitted)]";
@@ -308,6 +320,24 @@ Here is the ExtendScript to build it:
     let payload = {};
     let targetUrl = apiUrl.replace(/\/$/, "");
 
+    // Deep clone and clean past assistant reasoning blocks to prevent pattern contamination
+    const cleanedMessages = messages.map(m => {
+        const copy = { ...m };
+        if (m.role === "assistant" || m.role === "model") {
+            if (typeof m.content === "string") {
+                copy.content = m.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "[Thinking Collapsed]");
+            } else if (Array.isArray(m.content)) {
+                copy.content = m.content.map(part => {
+                    if (part && part.type === "text" && typeof part.text === "string") {
+                        return { ...part, text: part.text.replace(/<thinking>[\s\S]*?<\/thinking>/g, "[Thinking Collapsed]") };
+                    }
+                    return part;
+                });
+            }
+        }
+        return copy;
+    });
+
     if (currentProvider === "lemonade" || currentProvider === "openai") {
         targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
         if (currentProvider === "openai") {
@@ -316,9 +346,9 @@ Here is the ExtendScript to build it:
 
         payload = {
             model: modelName,
-            messages: skipSystemInstructions ? messages : [
+            messages: skipSystemInstructions ? cleanedMessages : [
                 { role: "system", content: SYSTEM_INSTRUCTIONS },
-                ...messages
+                ...cleanedMessages
             ],
             temperature: 0.2,
             stream: !!onChunkReceived
@@ -388,7 +418,7 @@ Here is the ExtendScript to build it:
             targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
         }
 
-        payload = prepareGeminiPayload(messages, skipSystemInstructions);
+        payload = prepareGeminiPayload(cleanedMessages, skipSystemInstructions);
         payload.generationConfig = {
             temperature: 0.2
         };
@@ -473,7 +503,7 @@ Here is the ExtendScript to build it:
         headers["anthropic-version"] = "2023-06-01";
 
         // Convert vision base64 input to Anthropic's block format
-        const anthropicMessages = messages.map(m => {
+        const anthropicMessages = cleanedMessages.map(m => {
             let contentArr = [];
             if (typeof m.content === "string") {
                 contentArr.push({ type: "text", text: m.content });
