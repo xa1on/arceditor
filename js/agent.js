@@ -48,7 +48,18 @@ You are helping the user automate compositions, edit/splice video assets, manage
   * Link parameters to target layers via clean expressions using the Progress slider method (\`ease(progress, 0, 100, start, end)\`), and keyframe the slider with \`ArcEditor.setKeyframes\` so it runs out-of-the-box.
 
 *** EXTENDSCRIPT SYNTAX & AE DOM RULES ***
-- ExtendScript is based on an old JavaScript ES3 engine. NEVER use modern ES6 features like 'const', 'let', '=>' arrow functions, 'Promise', or default parameters inside the JSX code blocks. Use standard 'var' and standard ES3/ES5 syntax.
+*** CRITICAL EXTENDSCRIPT ES3 COMPATIBILITY & STRING ESCAPING RULES ***
+- STRICT ES3 LEGACY JS ENGINE: ExtendScript is based on an old 1999 ECMAScript 3 engine. Modern JS is NOT supported.
+  * NEVER use 'const' or 'let'. Use ONLY 'var'.
+  * NEVER use arrow functions '() => {}' or default parameters. Use standard ES3 'function(param) { ... }' declarations.
+  * NEVER use backticks (`` `string` ``) or string templates. Use standard single quotes (') or double quotes (").
+  * NEVER use array spread operator '...' or array/object destructuring (e.g. 'var [a, b] = arr;').
+  * NEVER use modern array/object prototype helpers (like '.forEach()', '.map()', '.filter()', '.indexOf()', or 'Object.keys()'). Use classic 'for (var i = 0; i < arr.length; i++)' loops.
+- THE ABSOLUTE STRING ESCAPING GOLDEN RULE: When writing After Effects expressions (which are themselves string literals inside your script) or outputting JSON blocks:
+  * NEVER write real newlines or '+\n' / '+\\n' inside a string literal value. Keep the entire expression on a single, continuous line to prevent ExtendScript engine parsing/syntax errors.
+  * Example of a correct, robust, single-line expression assignment:
+    var expr = 'var speed = thisComp.layer("[Solar System] Controls").effect("Simulation Speed")("Slider"); time * speed * 1.5;';
+    ArcEditor.setPropertyExpression(orbitNull.id, 'Rotation', expr);
 - AE Collections are 1-indexed. The first item in an array or collection is index 1 (e.g., app.project.item(1)).
 - **NEVER use After Effects' native 'comp.layer(id)' directly with a numeric layer ID** (e.g. 'comp.layer(26)'). Native AE scripting only accepts indices or names in 'comp.layer()', so passing an ID will retrieve the wrong index or crash.
 - **ALWAYS use 'ArcEditor.resolveLayer(layerRef)'** to retrieve a layer safely from its ID, name, or index (e.g., 'var layer = ArcEditor.resolveLayer(layerRef);').
@@ -998,10 +1009,13 @@ async function executeToolCalls(jsonStr) {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
 
-            const result = await evalScriptAsync(jsxCommand);
+            let result = await evalScriptAsync(jsxCommand);
+            if (toolName === "executeExtendScript" && (!result || result.trim() === "")) {
+                result = "Error: ExtendScript execution returned an empty response. This usually indicates a global syntax or compilation error in After Effects (e.g., unescaped newlines, unmatched brackets, or quote mismatches) that prevented the script from parsing/compiling.";
+            }
             observations.push(`- Tool "${toolName}": ${result}`);
 
-            if (result.indexOf("Error:") === 0 || result.indexOf("EvalScript error") === 0) {
+            if (result && (result.indexOf("Error:") === 0 || result.indexOf("EvalScript error") === 0)) {
                 break;
             }
         }
