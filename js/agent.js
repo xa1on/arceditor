@@ -430,268 +430,239 @@ Layer Referencing (Avoid Fragile Indexes!):
 
 
 
-*** HOW TO COMUNICATE EXECUTION CODE ***
-- You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners. Any JavaScript/ExtendScript code block you output inside \`\`\`javascript ... \`\`\` WILL BE EXECUTED AUTOMATICALLY and natively inside After Effects by the extension panel.
-- Write your code blocks as direct, self-executing actions that run immediately on the active composition.
-- Double-check your code for basic JavaScript syntax errors. Ensure math operators are explicit (e.g., use \`spacing * 2\` rather than missing characters like \`spacing 2\`).
-- Only output a code block with ExtendScript if the user's request requires writing, modifying, or executing After Effects setups.
-- If the user's request is purely informational, conversational, or a general question, answer directly in plain markdown without any JavaScript code blocks. Do not invent scripts unnecessarily.
-- When a script is required, output your technical plan first, and then output your After Effects ExtendScript JSX script inside a single, clean code block marked with:
-\`\`\`javascript
-// ExtendScript goes here
-\`\`\`
+*** HOW TO COMMUNICATE EXECUTION CODE ***
+- You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners.
+- When an action is required on the After Effects timeline or project assets, you MUST use the JSON tool calling format.
+- To execute custom After Effects ExtendScript JSX code, invoke the "executeExtendScript" tool inside your JSON tool call block. NEVER write raw javascript/extendscript markdown blocks (like \`\`\`javascript ... \`\`\`). Custom script execution is done exclusively via tool calling.
 - When a JSON tool call is required, output it inside a markdown block marked with:
 \`\`\`json
 {
-  "tool": "toolName",
-  "parameters": { ... }
+  "tool": "executeExtendScript",
+  "parameters": {
+    "script": "// Your ExtendScript code here"
+  }
 }
 \`\`\`
-Do not write any text or raw JSON outside of the markdown code block. The host panel parses the block marked with json and runs it. Raw JSON will fail to be recognized as a tool call.
-Do not write any comments inside the markdown formatting outside the code blocks that contradict this structure.
+- You can combine multiple tools (like getTimelineContext, createLayer, and executeExtendScript) inside a single JSON array if needed:
+\`\`\`json
+[
+  {
+    "tool": "getTimelineContext",
+    "parameters": {}
+  },
+  {
+    "tool": "executeExtendScript",
+    "parameters": {
+      "script": "// Your ExtendScript code here"
+    }
+  }
+]
+\`\`\`
+- Double-check your code for basic JavaScript syntax errors inside the JSON strings. Escape double quotes and backslashes properly inside the "script" parameter string value.
+- If the user's request is purely informational, conversational, or a general question, answer directly in plain markdown without any tool calls. Do not invent scripts unnecessarily.
+- Do not write any text or raw JSON outside of the markdown code block. The host panel parses the block marked with json and runs it. Raw JSON will fail to be recognized as a tool call.
+- Do not write any comments inside the markdown formatting outside the code blocks that contradict this structure.
 `;
 
 async function runAgenticExecutionLoop(userText) {
     try {
         let visualFrameInputs = [...attachedFrames];
 
-    // Reset attachments
-    clearAttachmentDock();
+        // Reset attachments
+        clearAttachmentDock();
 
-    if (visualFrameInputs && visualFrameInputs.length > 0) {
-        const contentParts = [{ type: "text", text: userText }];
-        visualFrameInputs.forEach(img => {
-            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
-        });
-        chatHistory.push({
-            role: "user",
-            content: contentParts
-        });
-    } else {
-        chatHistory.push({ role: "user", content: userText });
-    }
-
-    // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
-    let activeContext = JSON.parse(JSON.stringify(chatHistory));
-    activeContext = fallbackSlidingWindowPrune(activeContext); // Instant local pruning to protect context size
-    pruneBase64Images(activeContext, 2); // Initial sliding window pruning
-
-    updateCurrentSessionHistory();
-    updateContextSizeInfo();
-
-    writeToDebugLog("Prompt / History Context", JSON.stringify(activeContext, null, 2));
-
-    const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
-    const aiBubble = document.getElementById(aiBubbleId);
-
-    let isCompleted = false;
-    let loopRetries = 0;
-    const maxRetries = 3;
-    let toolTurns = 0;
-    const maxToolTurns = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 15;
-    let finalLlmResponse = "";
-    const executedActions = [];
-    const completedTurnsHtml = [];
-
-    while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
-        try {
-            pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
-            const llmResponse = await callLLMApi(activeContext, (chunkText) => {
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + 
-                    `<div class="active-turn-container">` +
-                    formatMarkdown(chunkText) +
-                    `</div>`;
-                aiBubble.setAttribute("data-raw-text", chunkText);
-                if (typeof scrollToBottom === "function") scrollToBottom();
+        if (visualFrameInputs && visualFrameInputs.length > 0) {
+            const contentParts = [{ type: "text", text: userText }];
+            visualFrameInputs.forEach(img => {
+                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
             });
-            aiBubble.setAttribute("data-raw-text", llmResponse);
-            const assistantMsg = { role: "assistant", content: llmResponse };
-            activeContext.push(assistantMsg);
-            finalLlmResponse = llmResponse;
+            chatHistory.push({
+                role: "user",
+                content: contentParts
+            });
+        } else {
+            chatHistory.push({ role: "user", content: userText });
+        }
 
-            writeToDebugLog("LLM Raw Response", llmResponse);
+        // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
+        let activeContext = JSON.parse(JSON.stringify(chatHistory));
+        activeContext = fallbackSlidingWindowPrune(activeContext); // Instant local pruning to protect context size
+        pruneBase64Images(activeContext, 2); // Initial sliding window pruning
 
-            // Check for JSON tool calls first, then JSX code blocks
-            const jsonBlock = extractJSONToolCalls(llmResponse);
-            const jsxBlock = extractJSXCode(llmResponse);
+        updateCurrentSessionHistory();
+        updateContextSizeInfo();
 
-            if (jsxBlock || jsonBlock) {
-                assistantMsg.isIntermediate = true;
-                const significantJson = getSignificantJsonActionKey(jsonBlock);
-                const actionKey = (jsxBlock ? `jsx:${jsxBlock.trim()}` : "") + (significantJson ? `|json:${significantJson}` : "");
-                if (actionKey) {
-                    if (executedActions.indexOf(actionKey) !== -1) {
-                        console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
-                        aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse) +
-                            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
-                        if (typeof scrollToBottom === "function") scrollToBottom();
-                        isCompleted = true;
-                        break;
+        writeToDebugLog("Prompt / History Context", JSON.stringify(activeContext, null, 2));
+
+        const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
+        const aiBubble = document.getElementById(aiBubbleId);
+
+        let isCompleted = false;
+        let loopRetries = 0;
+        const maxRetries = 3;
+        let toolTurns = 0;
+        const maxToolTurns = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 15;
+        let finalLlmResponse = "";
+        const executedActions = [];
+        const completedTurnsHtml = [];
+
+        while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
+            try {
+                pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
+                const llmResponse = await callLLMApi(activeContext, (chunkText) => {
+                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                        `<div class="active-turn-container">` +
+                        formatMarkdown(chunkText) +
+                        `</div>`;
+                    aiBubble.setAttribute("data-raw-text", chunkText);
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+                });
+                aiBubble.setAttribute("data-raw-text", llmResponse);
+                const assistantMsg = { role: "assistant", content: llmResponse };
+                activeContext.push(assistantMsg);
+                finalLlmResponse = llmResponse;
+
+                writeToDebugLog("LLM Raw Response", llmResponse);
+
+                // Check for JSON tool calls only (ExtendScript is executed via the executeExtendScript tool)
+                const jsonBlock = extractJSONToolCalls(llmResponse);
+
+                if (jsonBlock) {
+                    assistantMsg.isIntermediate = true;
+                    const significantJson = getSignificantJsonActionKey(jsonBlock);
+                    const actionKey = significantJson ? `json:${significantJson}` : "";
+                    if (actionKey) {
+                        if (executedActions.indexOf(actionKey) !== -1) {
+                            console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
+                            aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse) +
+                                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
+                            if (typeof scrollToBottom === "function") scrollToBottom();
+                            isCompleted = true;
+                            break;
+                        }
+                        executedActions.push(actionKey);
                     }
-                    executedActions.push(actionKey);
                 }
-            }
-            chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
+                chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
 
-            var observations = "";
-            var executedAnything = false;
-            var scriptFailed = false;
+                var observations = "";
+                var executedAnything = false;
+                var scriptFailed = false;
 
-            if (jsxBlock) {
-                executedAnything = true;
-                toolTurns++;
-                updateConsolePane(jsxBlock);
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
-                    `<div class="active-turn-container">` +
-                    formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing ExtendScript...</div>` +
-                    `</div>`;
-                if (typeof scrollToBottom === "function") scrollToBottom();
+                if (jsonBlock) {
+                    executedAnything = true;
+                    toolTurns++;
+                    updateConsolePane(jsonBlock);
+                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                        `<div class="active-turn-container">` +
+                        formatMarkdown(llmResponse) +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
+                        `</div>`;
+                    if (typeof scrollToBottom === "function") scrollToBottom();
 
-                writeToDebugLog("ExtendScript Extracted", jsxBlock);
+                    writeToDebugLog("Tool Calls Extracted", jsonBlock);
 
-                // Wrap in try-catch to ensure we capture all ExtendScript runtime and reference errors
-                const wrappedJSX = `(function() {
-                    var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
-                    var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
-                    var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
-                    var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
-                    var JSON = ArcJSON;
-                    app.beginUndoGroup("ArcEditor Action");
-                    try {
-                        ${jsxBlock}
-                        app.endUndoGroup();
-                        return "Success";
-                    } catch (err) {
-                        app.endUndoGroup();
-                        try {
-                            app.executeCommand(16); // Auto-rollback the ENTIRE transaction on script failure!
-                        } catch (e) {}
-                        return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
-                    }
-                })()`;
+                    const toolObservations = await executeToolCalls(jsonBlock);
+                    console.log("[ArcEditor Tool Calls Observations]:", toolObservations);
 
-                // Execute ExtendScript via CEP evalScript
-                const execResult = await evalScriptAsync(wrappedJSX);
-                console.log("[ArcEditor JSX Executed Result]:", execResult);
+                    writeToDebugLog("Tool Execution Observations", toolObservations);
 
-                writeToDebugLog("ExtendScript Execution Result", execResult);
+                    if (toolObservations.indexOf("Error:") !== -1 || toolObservations.indexOf("EvalScript error") !== -1 || toolObservations.indexOf("Unsupported tool name:") !== -1) {
+                        scriptFailed = true;
+                        loopRetries++;
 
-                if (execResult.indexOf("Error:") === 0 || execResult.indexOf("EvalScript error") === 0) {
-                    scriptFailed = true;
-                    loopRetries++;
-                    
-                    // Package failed turn
-                    const turnNum = completedTurnsHtml.length + 1;
-                    const turnHtml = `
+                        // Package failed turn
+                        const turnNum = completedTurnsHtml.length + 1;
+                        const turnHtml = `
                     <details class="agent-turn-details" style="border-color: var(--text-error);">
                         <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
                             <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turnNum}</span>
-                            <span class="turn-title" style="color: var(--text-error);">Script execution failed (Retrying...)</span>
+                            <span class="turn-title" style="color: var(--text-error);">Tool execution failed (Retrying...)</span>
                         </summary>
                         <div class="agent-turn-body">
                             ${formatMarkdown(llmResponse)}
                             <div class="turn-observations">
                                 <strong style="color: var(--text-error);">Error Observation:</strong>
-                                <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${execResult}</pre>
+                                <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${toolObservations}</pre>
                             </div>
                         </div>
                     </details>
                     `;
-                    completedTurnsHtml.push(turnHtml);
+                        completedTurnsHtml.push(turnHtml);
 
-                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Script error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
-                    if (typeof scrollToBottom === "function") scrollToBottom();
+                        aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                            `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
+                        if (typeof scrollToBottom === "function") scrollToBottom();
 
-                    // Push error feedback to local context history and master history
-                    const errFeedbackMsg = {
-                        role: "user",
-                        content: `System execution failed with error: "${execResult}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised ExtendScript.`,
-                        isIntermediate: true
-                    };
-                    activeContext.push(errFeedbackMsg);
-                    chatHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
+                        // Push error feedback to local context history and master history
+                        const errFeedbackMsg = {
+                            role: "user",
+                            content: `System execution failed with error: "${toolObservations}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised JSON tool call.`,
+                            isIntermediate: true
+                        };
+                        activeContext.push(errFeedbackMsg);
+                        chatHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
 
-                    // Don't send the base64 image again to save bandwidth
-                    visualFrameInputs = null;
-                } else {
-                    observations += `ExtendScript executed successfully with result: "${execResult}"\n`;
-                }
-            }
-
-            // Only execute JSON tool calls if the ExtendScript succeeded (or if there was no script to begin with)
-            if (jsonBlock && !scriptFailed) {
-                executedAnything = true;
-                toolTurns++;
-                updateConsolePane(jsonBlock);
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
-                    `<div class="active-turn-container">` +
-                    formatMarkdown(llmResponse) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
-                    `</div>`;
-                if (typeof scrollToBottom === "function") scrollToBottom();
-
-                writeToDebugLog("Tool Calls Extracted", jsonBlock);
-
-                const toolObservations = await executeToolCalls(jsonBlock);
-                console.log("[ArcEditor Tool Calls Observations]:", toolObservations);
-
-                writeToDebugLog("Tool Execution Observations", toolObservations);
-                observations += (observations ? "\n" : "") + `Tool execution observation:\n${toolObservations}`;
-            }
-
-            if (executedAnything) {
-                if (scriptFailed) {
-                    continue; // Skip rest of execution and let loop retry self-correction
-                }
-
-                // Append observations to local context history and master history (handling multi-modal visual observations!)
-                if (capturedFrameDataDuringLoop) {
-                    const contentParts = [
-                        { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
-                    ];
-                    if (Array.isArray(capturedFrameDataDuringLoop)) {
-                        capturedFrameDataDuringLoop.forEach(img => {
-                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
-                        });
+                        // Don't send the base64 image again to save bandwidth
+                        visualFrameInputs = null;
                     } else {
-                        contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
-                    }
-                    const obsMsg = {
-                        role: "user",
-                        content: contentParts,
-                        isIntermediate: true
-                    };
-                    activeContext.push(obsMsg);
-                    chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
-                    capturedFrameDataDuringLoop = null; // Reset for next potential capture
-                } else {
-                    const obsMsg = {
-                        role: "user",
-                        content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
-                        isIntermediate: true
-                    };
-                    activeContext.push(obsMsg);
-                    chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
-                }
-
-                // Package successful turn
-                const turnNum = completedTurnsHtml.length + 1;
-                let turnTitle = "Analyzing composition context";
-                if (jsxBlock) {
-                    turnTitle = "Executing timeline automation script";
-                } else if (jsonBlock) {
-                    try {
-                        const parsed = JSON.parse(jsonBlock);
-                        const tools = (Array.isArray(parsed) ? parsed : [parsed]).map(t => t.tool).join(", ");
-                        turnTitle = `Running tool: ${tools}`;
-                    } catch (e) {
-                        turnTitle = "Running agent tool calls";
+                        observations += (observations ? "\n" : "") + `Tool execution observation:\n${toolObservations}`;
                     }
                 }
 
-                const turnHtml = `
+                if (executedAnything) {
+                    if (scriptFailed) {
+                        continue; // Skip rest of execution and let loop retry self-correction
+                    }
+
+                    // Append observations to local context history and master history (handling multi-modal visual observations!)
+                    if (capturedFrameDataDuringLoop) {
+                        const contentParts = [
+                            { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
+                        ];
+                        if (Array.isArray(capturedFrameDataDuringLoop)) {
+                            capturedFrameDataDuringLoop.forEach(img => {
+                                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+                            });
+                        } else {
+                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
+                        }
+                        const obsMsg = {
+                            role: "user",
+                            content: contentParts,
+                            isIntermediate: true
+                        };
+                        activeContext.push(obsMsg);
+                        chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                        capturedFrameDataDuringLoop = null; // Reset for next potential capture
+                    } else {
+                        const obsMsg = {
+                            role: "user",
+                            content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
+                            isIntermediate: true
+                        };
+                        activeContext.push(obsMsg);
+                        chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                    }
+
+                    // Package successful turn
+                    const turnNum = completedTurnsHtml.length + 1;
+                    let turnTitle = "Analyzing composition context";
+                    if (jsonBlock) {
+                        if (jsonBlock.indexOf("executeExtendScript") !== -1) {
+                            turnTitle = "Executing timeline automation script";
+                        } else {
+                            try {
+                                const parsed = JSON.parse(jsonBlock);
+                                const tools = (Array.isArray(parsed) ? parsed : [parsed]).map(t => t.tool).join(", ");
+                                turnTitle = `Running tool: ${tools}`;
+                            } catch (e) {
+                                turnTitle = "Running agent tool calls";
+                            }
+                        }
+                    }
+
+                    const turnHtml = `
                 <details class="agent-turn-details">
                     <summary class="agent-turn-summary">
                         <span class="turn-index-badge">Turn ${turnNum}</span>
@@ -706,75 +677,75 @@ async function runAgenticExecutionLoop(userText) {
                     </div>
                 </details>
                 `;
-                completedTurnsHtml.push(turnHtml);
+                    completedTurnsHtml.push(turnHtml);
 
-                // Show feedback in UI and prepare next turn
-                const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
-                    (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
+                    // Show feedback in UI and prepare next turn
+                    const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
+                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                        (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+
+                    continue; // Run next loop turn immediately
+                } else {
+                    // LLM replied without code blocks (informational answer)
+                    isCompleted = true;
+                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse);
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+                    writeToDebugLog("Informational Response Completed", llmResponse);
+                }
+
+            } catch (err) {
+                console.error("Loop iteration failed:", err);
+                aiBubble.querySelector(".message-content").innerHTML = `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
-
-                continue; // Run next loop turn immediately
-            } else {
-                // LLM replied without code blocks (informational answer)
                 isCompleted = true;
-                aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse);
-                if (typeof scrollToBottom === "function") scrollToBottom();
-                writeToDebugLog("Informational Response Completed", llmResponse);
             }
+        }
 
-        } catch (err) {
-            console.error("Loop iteration failed:", err);
-            aiBubble.querySelector(".message-content").innerHTML = `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`;
+        if (loopRetries >= maxRetries) {
+            aiBubble.querySelector(".message-content").innerHTML +=
+                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
             if (typeof scrollToBottom === "function") scrollToBottom();
-            isCompleted = true;
         }
-    }
-
-    if (loopRetries >= maxRetries) {
-        aiBubble.querySelector(".message-content").innerHTML +=
-            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
-        if (typeof scrollToBottom === "function") scrollToBottom();
-    }
-    if (toolTurns >= maxToolTurns && !isCompleted) {
-        aiBubble.querySelector(".message-content").innerHTML +=
-            `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
-        if (typeof scrollToBottom === "function") scrollToBottom();
-    }
-
-    // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed
-    const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
-    if (lastAssistantMsg) {
-        lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
-        if (loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
-            delete lastAssistantMsg.isIntermediate;
+        if (toolTurns >= maxToolTurns && !isCompleted) {
+            aiBubble.querySelector(".message-content").innerHTML +=
+                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
+            if (typeof scrollToBottom === "function") scrollToBottom();
         }
-    }
 
-    // Update persistent history size information
-    updateCurrentSessionHistory();
-    updateContextSizeInfo();
-
-    // Trigger memory condensation asynchronously in the background so the user does not wait
-    setTimeout(async () => {
-        try {
-            const condensedContext = await pruneHistoryContexts(chatHistory);
-            if (condensedContext && condensedContext.length < chatHistory.length) {
-                chatHistory = condensedContext;
-                updateCurrentSessionHistory();
-                updateContextSizeInfo();
+        // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed
+        const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
+        if (lastAssistantMsg) {
+            lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
+            if (loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
+                delete lastAssistantMsg.isIntermediate;
             }
-        } catch (e) {
-            console.error("Background memory condensation failed:", e);
         }
-    }, 50);
 
-    // Expose activeContext strictly for testing, assertion, and developer inspection
-    if (typeof window !== "undefined") {
-        window.lastActiveContext = activeContext;
-    } else if (typeof global !== "undefined") {
-        global.lastActiveContext = activeContext;
-    }
+        // Update persistent history size information
+        updateCurrentSessionHistory();
+        updateContextSizeInfo();
+
+        // Trigger memory condensation asynchronously in the background so the user does not wait
+        setTimeout(async () => {
+            try {
+                const condensedContext = await pruneHistoryContexts(chatHistory);
+                if (condensedContext && condensedContext.length < chatHistory.length) {
+                    chatHistory = condensedContext;
+                    updateCurrentSessionHistory();
+                    updateContextSizeInfo();
+                }
+            } catch (e) {
+                console.error("Background memory condensation failed:", e);
+            }
+        }, 50);
+
+        // Expose activeContext strictly for testing, assertion, and developer inspection
+        if (typeof window !== "undefined") {
+            window.lastActiveContext = activeContext;
+        } else if (typeof global !== "undefined") {
+            global.lastActiveContext = activeContext;
+        }
         try {
             lastActiveContext = activeContext;
         } catch (e) { }
@@ -817,7 +788,7 @@ function extractJSXCode(text) {
                             try {
                                 JSON.parse(code);
                                 continue;
-                            } catch (e) {}
+                            } catch (e) { }
                         }
                         return code;
                     }
@@ -1002,6 +973,27 @@ async function executeToolCalls(jsonStr) {
                 jsxCommand = `(function() { return ArcEditor.setSolidColor(${serializedRef}, ${JSON.stringify(params.color)}); })()`;
             } else if (toolName === "deleteLayer") {
                 jsxCommand = `(function() { return ArcEditor.deleteLayer(${serializedRef}); })()`;
+            } else if (toolName === "executeExtendScript") {
+                const script = params.script;
+                jsxCommand = `(function() {
+                    var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+                    var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+                    var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+                    var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+                    var JSON = ArcJSON;
+                    app.beginUndoGroup("ArcEditor Action");
+                    try {
+                        ${script}
+                        app.endUndoGroup();
+                        return "Success";
+                    } catch (err) {
+                        app.endUndoGroup();
+                        try {
+                            app.executeCommand(16); // Auto-rollback on script failure!
+                        } catch (e) {}
+                        return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+                    }
+                })()`;
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
@@ -1020,7 +1012,7 @@ async function executeToolCalls(jsonStr) {
         if (undoGroupActive) {
             try {
                 await evalScriptAsync(`app.endUndoGroup()`);
-            } catch (e) {}
+            } catch (e) { }
         }
         observations.push(`- Tool execution exception: ${err.message}`);
     }
@@ -1037,11 +1029,11 @@ function tryFormatToolCall(code) {
     try {
         const parsed = JSON.parse(cleanCode);
         const calls = Array.isArray(parsed) ? parsed : [parsed];
-        
+
         // Validate if this actually looks like a tool call sequence
         const isValid = calls.every(c => c && typeof c === "object" && typeof c.tool === "string");
         if (!isValid) return null;
-        
+
         let html = `<div class="tool-calls-container">`;
         calls.forEach((call, index) => {
             const params = call.parameters || {};
@@ -1062,7 +1054,7 @@ function tryFormatToolCall(code) {
             } else {
                 paramsHtml = `<div class="tool-no-params">No parameters</div>`;
             }
-            
+
             const cardId = "tool-card-" + Date.now() + "-" + index;
             const rawJsonHtml = `<pre class="code-viewport"><code>${JSON.stringify(call, null, 2)}</code></pre>`;
 
