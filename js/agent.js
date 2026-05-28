@@ -793,7 +793,9 @@ async function runAgenticExecutionLoop(userText) {
 function extractJSXCode(text) {
     if (!text) return null;
     const parts = text.split("```");
-    for (let i = 1; i < parts.length; i += 2) {
+    // If the last block is unclosed (even number of parts), ignore it to prevent executing truncated code that deadlocks AE
+    const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
+    for (let i = 1; i < limit; i += 2) {
         let block = parts[i];
         let lines = block.split("\n");
         if (lines.length > 0) {
@@ -829,7 +831,9 @@ function extractJSXCode(text) {
 function extractJSONToolCalls(text) {
     if (!text) return null;
     const parts = text.split("```");
-    for (let i = 1; i < parts.length; i += 2) {
+    // If the last block is unclosed (even number of parts), ignore it to prevent parsing truncated JSON
+    const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
+    for (let i = 1; i < limit; i += 2) {
         let block = parts[i];
         let lines = block.split("\n");
         if (lines.length > 0) {

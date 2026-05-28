@@ -570,6 +570,10 @@ var ArcEditor = {
             var curr = layer;
             for (var i = 0; i < propPath.length; i++) {
                 var segment = propPath[i];
+                if (typeof curr.property === "undefined") {
+                    var prevSeg = i > 0 ? "segment '" + propPath[i-1] + "'" : "layer root";
+                    throw new Error("Property path " + prevSeg + " resolved to a leaf Property and cannot contain child property '" + segment + "'.");
+                }
                 var next = curr.property(segment);
                 if (!next) {
                     if (segment === "Effects" || segment === "Effect") {
