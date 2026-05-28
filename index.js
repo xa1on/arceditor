@@ -5,13 +5,53 @@
  */
 
 document.addEventListener("DOMContentLoaded", async () => {
-    await loadSettings();
-    await loadChats();
-    initUI();
-    validateConnection();
-    syncProjectPath();
-    loadInstalledEffects();
-    updateContextSizeInfo();
+    // 1. Initialize UI elements and event listeners first to ensure input/buttons are interactive immediately
+    try {
+        initUI();
+    } catch (e) {
+        console.error("UI Initialization failed:", e);
+    }
+
+    // 2. Load configurations and states resiliently
+    try {
+        await loadSettings();
+    } catch (e) {
+        console.error("Failed to load settings:", e);
+    }
+    
+    try {
+        await loadChats();
+    } catch (e) {
+        console.error("Failed to load chats:", e);
+    }
+
+    // 3. Kick off async integrations and background syncs resiliently
+    try {
+        validateConnection();
+    } catch (e) {
+        console.error("Failed to validate connection:", e);
+    }
+
+    // Defer any ExtendScript bridge calls by 2 seconds to let After Effects fully initialize and prevent CEP deadlocks
+    setTimeout(() => {
+        try {
+            syncProjectPath();
+        } catch (e) {
+            console.error("Failed to sync project path:", e);
+        }
+
+        try {
+            loadInstalledEffects();
+        } catch (e) {
+            console.error("Failed to load installed effects:", e);
+        }
+    }, 2000);
+
+    try {
+        updateContextSizeInfo();
+    } catch (e) {
+        console.error("Failed to update context size:", e);
+    }
 
     // Auto-sync active AE project file path periodically
     setInterval(syncProjectPath, 5000);
