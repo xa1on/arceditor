@@ -13,6 +13,8 @@ async function loadSettings() {
             apiUrl = data.url || getDefaultUrl(currentProvider);
             modelName = data.model || getDefaultModel(currentProvider);
             apiKey = data.key || "";
+            includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
+            maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             loaded = true;
         } catch (e) {
             if (e.code !== 'ENOENT') {
@@ -27,6 +29,8 @@ async function loadSettings() {
         apiUrl = getDefaultUrl(currentProvider);
         modelName = getDefaultModel(currentProvider);
         apiKey = "";
+        includeBase64InDebugLog = false;
+        maxToolRetryLimit = 15;
     }
 
     // Sync into settings DOM
@@ -34,6 +38,10 @@ async function loadSettings() {
     document.getElementById("setting-url").value = apiUrl;
     document.getElementById("setting-model").value = modelName;
     document.getElementById("setting-key").value = apiKey;
+    const base64Checkbox = document.getElementById("setting-include-base64");
+    if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
+    const maxRetryInput = document.getElementById("setting-max-tool-retry");
+    if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
 }
 
 async function saveSettings(e) {
@@ -43,12 +51,20 @@ async function saveSettings(e) {
     apiUrl = document.getElementById("setting-url").value || getDefaultUrl(currentProvider);
     modelName = document.getElementById("setting-model").value || getDefaultModel(currentProvider);
     apiKey = document.getElementById("setting-key").value;
+    
+    const base64Checkbox = document.getElementById("setting-include-base64");
+    if (base64Checkbox) includeBase64InDebugLog = base64Checkbox.checked;
+    
+    const maxRetryInput = document.getElementById("setting-max-tool-retry");
+    if (maxRetryInput) maxToolRetryLimit = parseInt(maxRetryInput.value, 10) || 15;
 
     const config = {
         provider: currentProvider,
         url: apiUrl,
         model: modelName,
-        key: apiKey
+        key: apiKey,
+        includeBase64InDebugLog: includeBase64InDebugLog,
+        maxToolRetryLimit: maxToolRetryLimit
     };
 
     if (fs) {

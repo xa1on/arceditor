@@ -9,6 +9,8 @@ let apiUrl = "http://localhost:1337/v1";
 let modelName = "qwen2.5-coder-7b";
 let apiKey = "";
 let isConnected = false;
+let includeBase64InDebugLog = false;
+let maxToolRetryLimit = 15;
 
 let chatHistory = [];
 let attachedFrames = [];

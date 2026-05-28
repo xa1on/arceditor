@@ -165,6 +165,16 @@
                             </div>
                         </div>
 
+                        <div class="field-group">
+                            <label for="setting-max-tool-retry">Max Tool Turns Limit</label>
+                            <input type="number" id="setting-max-tool-retry" class="form-input" min="1" max="100" placeholder="15">
+                        </div>
+
+                        <div class="field-group check-group" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+                            <input type="checkbox" id="setting-include-base64" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--text-accent);">
+                            <label for="setting-include-base64" style="margin: 0; cursor: pointer; user-select: none;">Include Base64 in Debug Logs</label>
+                        </div>
+
                         <div class="drawer-actions" style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
                             <button type="submit" id="btn-save-settings" class="btn-primary">Save & Apply</button>
                             <button type="button" id="btn-inspect-comp" class="btn-secondary">Test Connection</button>

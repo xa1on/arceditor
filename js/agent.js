@@ -488,7 +488,7 @@ async function runAgenticExecutionLoop(userText) {
     let loopRetries = 0;
     const maxRetries = 3;
     let toolTurns = 0;
-    const maxToolTurns = 15;
+    const maxToolTurns = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 15;
     let finalLlmResponse = "";
     const executedActions = [];
     const completedTurnsHtml = [];
@@ -1317,9 +1317,19 @@ function fallbackSlidingWindowPrune(contextArray) {
 }
 
 function writeToDebugLog(category, text) {
+    let loggedText = text;
+    if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && typeof loggedText === "string") {
+        // Replace base64 data URIs
+        loggedText = loggedText.replace(/data:image\/[a-zA-Z+.-]+;base64,[a-zA-Z0-9+/=\s\r\n]{50,}/g, "data:image/png;base64,[Base64 Image Data (Omitted)]");
+        // Replace JSON base64 payloads (e.g. "data": "iVBORw...")
+        loggedText = loggedText.replace(/"data":\s*"[a-zA-Z0-9+/=\s\r\n]{100,}"/g, '"data": "[Base64 Image Data (Omitted)]"');
+        // Replace JSON "url": "data:image..." payloads
+        loggedText = loggedText.replace(/"url":\s*"data:image\/[a-zA-Z+.-]+;base64,[a-zA-Z0-9+/=\s\r\n]{50,}"/g, '"url": "data:image/png;base64,[Base64 Image Data (Omitted)]"');
+    }
+
     const timestamp = new Date().toISOString();
     const divider = "\n\n" + "=".repeat(60) + "\n";
-    const logEntry = `${divider}[${timestamp}] [${category.toUpperCase()}]\n${text}\n`;
+    const logEntry = `${divider}[${timestamp}] [${category.toUpperCase()}]\n${loggedText}\n`;
 
     // 1. Update UI Textarea
     const debugTextarea = document.getElementById("debug-output");
