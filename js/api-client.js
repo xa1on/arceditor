@@ -1,7 +1,40 @@
-/**
- * ArcEditor API Client Module
- * Manages http/https connections and abstracts provider compilation formats for cloud and local VLMs.
- */
+function sanitizePayload(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj === "string") {
+        if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog) {
+            if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
+                return "data:image/png;base64,[Base64 Image Data (Omitted)]";
+            }
+            if (obj.length > 100 && /^[a-zA-Z0-9+/=\s\r\n]+$/.test(obj)) {
+                return "[Base64 Image Data (Omitted)]";
+            }
+        }
+        return obj;
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(sanitizePayload);
+    }
+    if (typeof obj === "object") {
+        const copy = {};
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                if (key === "system" || key === "systemInstruction") {
+                    copy[key] = "[System Instructions (Omitted for brevity)]";
+                } else if (key === "messages" && Array.isArray(obj[key])) {
+                    copy[key] = obj[key].filter(msg => msg.role !== "system").map(sanitizePayload);
+                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "data" && typeof obj[key] === "string" && obj[key].length > 50) {
+                    copy[key] = "[Base64 Image Data (Omitted)]";
+                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "url" && typeof obj[key] === "string" && obj[key].indexOf("data:image/") === 0) {
+                    copy[key] = "data:image/png;base64,[Base64 Image Data (Omitted)]";
+                } else {
+                    copy[key] = sanitizePayload(obj[key]);
+                }
+            }
+        }
+        return copy;
+    }
+    return obj;
+}
 
 function makeRequest(url, method, headers, payload) {
     return new Promise((resolve, reject) => {
@@ -291,6 +324,15 @@ Here is the ExtendScript to build it:
             stream: !!onChunkReceived
         };
 
+        if (typeof writeToDebugLog === "function") {
+            writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
+                provider: currentProvider,
+                url: targetUrl,
+                headers: { ...headers, "Authorization": headers["Authorization"] ? "Bearer [Omitted]" : undefined },
+                payload: sanitizePayload(payload)
+            }, null, 2));
+        }
+
         if (onChunkReceived) {
             payload.stream_options = { include_usage: true };
             let accumulatedText = "";
@@ -317,9 +359,15 @@ Here is the ExtendScript to build it:
                     } catch (e) { }
                 }
             });
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", accumulatedText);
+            }
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (OpenAI/Lemonade)", responseText);
+            }
             const responseData = JSON.parse(responseText);
             if (responseData.usage) {
                 lastApiUsage = {
@@ -347,21 +395,30 @@ Here is the ExtendScript to build it:
         payload.safetySettings = [
             {
                 category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_NONE"
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
             },
             {
                 category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_NONE"
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
             },
             {
                 category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_NONE"
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
             },
             {
                 category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_NONE"
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
             }
         ];
+
+        if (typeof writeToDebugLog === "function") {
+            writeToDebugLog("API Request Sent (Gemini)", JSON.stringify({
+                provider: currentProvider,
+                url: targetUrl.replace(/\?key=.*$/, "?key=[Omitted]"),
+                headers: headers,
+                payload: sanitizePayload(payload)
+            }, null, 2));
+        }
 
 
         if (onChunkReceived) {
@@ -388,9 +445,15 @@ Here is the ExtendScript to build it:
                     } catch (e) { }
                 }
             });
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Gemini Stream Finished)", accumulatedText);
+            }
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Gemini)", responseText);
+            }
             const responseData = JSON.parse(responseText);
             if (responseData.usageMetadata) {
                 lastApiUsage = {
@@ -447,6 +510,14 @@ Here is the ExtendScript to build it:
         if (!skipSystemInstructions) {
             payload.system = SYSTEM_INSTRUCTIONS;
         }
+        if (typeof writeToDebugLog === "function") {
+            writeToDebugLog("API Request Sent (Anthropic)", JSON.stringify({
+                provider: currentProvider,
+                url: targetUrl,
+                headers: { ...headers, "x-api-key": "[Omitted]" },
+                payload: sanitizePayload(payload)
+            }, null, 2));
+        }
 
         if (onChunkReceived) {
             let accumulatedText = "";
@@ -474,9 +545,15 @@ Here is the ExtendScript to build it:
                     } catch (e) { }
                 }
             });
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Anthropic Stream Finished)", accumulatedText);
+            }
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Anthropic)", responseText);
+            }
             const responseData = JSON.parse(responseText);
             if (responseData.usage) {
                 lastApiUsage = {

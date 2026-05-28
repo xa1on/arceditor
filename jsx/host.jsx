@@ -467,32 +467,6 @@ var ArcEditor = {
         } else if (type === "Shape") {
             layer = comp.layers.addShape();
             layer.name = name;
-            try {
-                var contents = layer.property("Contents") || layer.property("ADBE Root Vectors Group");
-                if (contents) {
-                    var group = contents.addProperty("ADBE Vector Group");
-                    if (group) {
-                        group.name = "Rectangle Group";
-                        var groupContents = group.property("Contents") || group.property("ADBE Vectors Group");
-                        if (groupContents) {
-                            var rect = groupContents.addProperty("ADBE Vector Shape - Rect");
-                            var fill = groupContents.addProperty("ADBE Vector Graphic - Fill");
-                            if (rect) {
-                                rect.property("Size").setValue([100, 100]); // 100x100 default size
-                            }
-                            if (fill) {
-                                var fillColor = [1, 1, 1, 1]; // R, G, B, A
-                                if (color && color.length >= 3) {
-                                    fillColor = [Number(color[0]), Number(color[1]), Number(color[2]), 1.0];
-                                }
-                                fill.property("Color").setValue(fillColor);
-                            }
-                        }
-                    }
-                }
-            } catch (shapeErr) {
-                // If it fails (e.g. in test mock environments), degrade gracefully
-            }
         } else if (type === "Solid") {
             var solidColor = [0.1, 0.1, 0.1];
             if (color && color.length >= 3) {
