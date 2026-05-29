@@ -243,34 +243,28 @@ Layer Referencing (Avoid Fragile Indexes!):
 
 17. \`getTimelineContext\`
     - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).
-    - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
       \`\`\`json
       {
-        "tool": "getTimelineContext",
-        "parameters": {}
+        "tool": "getTimelineContext"
       }
       \`\`\`
 
 18. \`getInstalledEffects\`
     - Description: Retrieves the live catalog/dictionary of installed effects in the host After Effects application. Use this to lookup exact matchNames.
-    - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
       \`\`\`json
       {
-        "tool": "getInstalledEffects",
-        "parameters": {}
+        "tool": "getInstalledEffects"
       }
       \`\`\`
 
 19. \`captureActiveFrame\`
     - Description: Programmatically captures the current active frame preview of the After Effects canvas. Use this tool whenever you need to visually verify layer layout coordinates, styling, expression binding outcomes, or splicing alignment.
-    - Parameters: None.
     - JSON Call Format: Output a JSON code block like this:
       \`\`\`json
       {
-        "tool": "captureActiveFrame",
-        "parameters": {}
+        "tool": "captureActiveFrame"
       }
       \`\`\`
 
@@ -293,13 +287,11 @@ Layer Referencing (Avoid Fragile Indexes!):
       \`\`\`
 
 20. \`undoLastAction\`
-    - Description: Undoes the very last committed ExtendScript action block in After Effects (acting as a programmatic 'Ctrl+Z'). Use this tool if your previous script executed successfully, but upon verification (via getTimelineContext or captureActiveFrame), you realize the resulting layout, alignment, or properties are incorrect, so you can safely roll back and retry on a clean slate.
-    - Parameters: None.
+    - Description: Rolls back the very last ExtendScript transaction executed inside After Effects. Use this tool immediately whenever the user requests to undo, cancel, or revert a change, or when you realize your previous script output did something incorrect on the composition timeline.
     - JSON Call Format: Output a JSON code block like this:
       \`\`\`json
       {
-        "tool": "undoLastAction",
-        "parameters": {}
+        "tool": "undoLastAction"
       }
       \`\`\`
 
@@ -428,15 +420,6 @@ Layer Referencing (Avoid Fragile Indexes!):
         "parameters": {
           "layerRef": 16
         }
-      }
-      \`\`\`
-
-29. \`undoLastAction\`
-    - Description: Rolls back the very last ExtendScript transaction executed inside After Effects. Use this tool immediately whenever the user requests to undo, cancel, or revert a change, or when you realize your previous script output did something incorrect on the composition timeline.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "undoLastAction"
       }
       \`\`\`
 
