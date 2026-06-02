@@ -278,6 +278,17 @@ ${code}`;
                 }
                 return;
             }
+
+            // 3. User manually toggled reasoning details block
+            const reasoningSummary = e.target.closest(".reasoning-details summary");
+            if (reasoningSummary) {
+                const details = reasoningSummary.closest(".reasoning-details");
+                if (details) {
+                    const willBeOpen = !details.hasAttribute("open");
+                    window._userReasoningState = willBeOpen;
+                    window._userToggledReasoning = true;
+                }
+            }
         });
     }
 }
@@ -350,6 +361,9 @@ function triggerUserMessage() {
     const input = document.getElementById("chat-input");
     const userText = input.value.trim();
     if (!userText || isExecuting) return;
+
+    window._userToggledReasoning = false;
+    window._userReasoningState = false;
 
     addBubble("user", userText, attachedFrames);
     input.value = "";

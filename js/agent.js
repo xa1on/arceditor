@@ -485,12 +485,30 @@ async function runAgenticExecutionLoop(userText) {
             }
             try {
                 pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
+
+                // Reset reasoning toggled flag for each new LLM generation turn
+                window._userToggledReasoning = false;
+                window._userReasoningState = false;
+
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
                     aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                         `<div class="active-turn-container">` +
                         formatMarkdown(chunkText) +
                         `</div>`;
+
+                    // Restore user's manual expand/collapse state if they interacted with it
+                    if (window._userToggledReasoning) {
+                        const newDetails = aiBubble.querySelector(".active-turn-container .reasoning-details");
+                        if (newDetails) {
+                            if (window._userReasoningState) {
+                                newDetails.setAttribute("open", "");
+                            } else {
+                                newDetails.removeAttribute("open");
+                            }
+                        }
+                    }
+
                     aiBubble.setAttribute("data-raw-text", chunkText);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                 });
@@ -1288,7 +1306,7 @@ function formatMarkdown(text) {
     });
 
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)$/g, (match, thoughts) => {
-        return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${thoughts}</div></details>`;
+        return `<details class="reasoning-details" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
 
     return result;
