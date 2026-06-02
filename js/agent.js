@@ -444,7 +444,7 @@ async function runAgenticExecutionLoop(userText) {
         const maxToolTurns = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 15;
         let finalLlmResponse = "";
         const executedActions = [];
-        const completedTurnsHtml = [];
+        const completedTurns = [];
 
         while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
             if (executionId !== currentExecutionId || isStopped) {
@@ -455,7 +455,7 @@ async function runAgenticExecutionLoop(userText) {
                 pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
-                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                         `<div class="active-turn-container">` +
                         formatMarkdown(chunkText) +
                         `</div>`;
@@ -483,7 +483,7 @@ async function runAgenticExecutionLoop(userText) {
                     if (actionKey) {
                         if (executedActions.indexOf(actionKey) !== -1) {
                             console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
-                            aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse) +
+                            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) + formatMarkdown(llmResponse) +
                                 `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
                             if (typeof scrollToBottom === "function") scrollToBottom();
                             isCompleted = true;
@@ -502,7 +502,7 @@ async function runAgenticExecutionLoop(userText) {
                     executedAnything = true;
                     toolTurns++;
                     updateConsolePane(jsonBlock);
-                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                         `<div class="active-turn-container">` +
                         formatMarkdown(llmResponse) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
@@ -531,25 +531,15 @@ async function runAgenticExecutionLoop(userText) {
                         loopRetries++;
 
                         // Package failed turn
-                        const turnNum = completedTurnsHtml.length + 1;
-                        const turnHtml = `
-                    <details class="agent-turn-details" style="border-color: var(--text-error);">
-                        <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
-                            <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turnNum}</span>
-                            <span class="turn-title" style="color: var(--text-error);">Tool execution failed (Retrying...)</span>
-                        </summary>
-                        <div class="agent-turn-body">
-                            ${formatMarkdown(llmResponse)}
-                            <div class="turn-observations">
-                                <strong style="color: var(--text-error);">Error Observation:</strong>
-                                <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${toolObservations}</pre>
-                            </div>
-                        </div>
-                    </details>
-                    `;
-                        completedTurnsHtml.push(turnHtml);
+                        completedTurns.push({
+                            type: "failed",
+                            turnNum: completedTurns.length + 1,
+                            turnTitle: "Tool execution failed (Retrying...)",
+                            llmResponse: llmResponse,
+                            observations: toolObservations
+                        });
 
-                        aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
                         if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -605,7 +595,6 @@ async function runAgenticExecutionLoop(userText) {
                     }
 
                     // Package successful turn
-                    const turnNum = completedTurnsHtml.length + 1;
                     let turnTitle = "Analyzing composition context";
                     if (jsonBlock) {
                         if (jsonBlock.indexOf("executeExtendScript") !== -1) {
@@ -621,26 +610,17 @@ async function runAgenticExecutionLoop(userText) {
                         }
                     }
 
-                    const turnHtml = `
-                <details class="agent-turn-details">
-                    <summary class="agent-turn-summary">
-                        <span class="turn-index-badge">Turn ${turnNum}</span>
-                        <span class="turn-title">${turnTitle}</span>
-                    </summary>
-                    <div class="agent-turn-body">
-                        ${formatMarkdown(llmResponse)}
-                        <div class="turn-observations">
-                            <strong>Observations:</strong>
-                            <pre class="observation-pre">${observations}</pre>
-                        </div>
-                    </div>
-                </details>
-                `;
-                    completedTurnsHtml.push(turnHtml);
+                    completedTurns.push({
+                        type: "success",
+                        turnNum: completedTurns.length + 1,
+                        turnTitle: turnTitle,
+                        llmResponse: llmResponse,
+                        observations: observations
+                    });
 
                     // Show feedback in UI and prepare next turn
                     const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
-                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                         (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -648,7 +628,7 @@ async function runAgenticExecutionLoop(userText) {
                 } else {
                     // LLM replied without code blocks (informational answer)
                     isCompleted = true;
-                    aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") + formatMarkdown(llmResponse);
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) + formatMarkdown(llmResponse);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
@@ -667,7 +647,7 @@ async function runAgenticExecutionLoop(userText) {
         }
 
         if (isStopped) {
-            aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                 `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
                 `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
                 `Execution stopped by user.</div>`;
@@ -685,10 +665,11 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
 
-        // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed or stopped
+        // Set the intermediateTurns property on the last assistant message in history, and remove isIntermediate if failed or stopped
         const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
         if (lastAssistantMsg) {
-            lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
+            lastAssistantMsg.intermediateTurns = completedTurns;
+            delete lastAssistantMsg.intermediateTurnsHtml;
             if (isStopped || loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
                 delete lastAssistantMsg.isIntermediate;
             }
@@ -1050,6 +1031,48 @@ function tryFormatToolCall(code) {
     } catch (e) {
         return null;
     }
+}
+
+function renderTurnsHtml(turns) {
+    if (!turns || turns.length === 0) return "";
+    let html = "";
+    for (let i = 0; i < turns.length; i++) {
+        const turn = turns[i];
+        if (turn.type === "failed") {
+            html += `
+            <details class="agent-turn-details" style="border-color: var(--text-error);">
+                <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
+                    <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turn.turnNum}</span>
+                    <span class="turn-title" style="color: var(--text-error);">${turn.turnTitle}</span>
+                </summary>
+                <div class="agent-turn-body">
+                    ${formatMarkdown(turn.llmResponse)}
+                    <div class="turn-observations">
+                        <strong style="color: var(--text-error);">Error Observation:</strong>
+                        <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${turn.observations}</pre>
+                    </div>
+                </div>
+            </details>
+            `;
+        } else {
+            html += `
+            <details class="agent-turn-details">
+                <summary class="agent-turn-summary">
+                    <span class="turn-index-badge">Turn ${turn.turnNum}</span>
+                    <span class="turn-title">${turn.turnTitle}</span>
+                </summary>
+                <div class="agent-turn-body">
+                    ${formatMarkdown(turn.llmResponse)}
+                    <div class="turn-observations">
+                        <strong>Observations:</strong>
+                        <pre class="observation-pre">${turn.observations}</pre>
+                    </div>
+                </div>
+            </details>
+            `;
+        }
+    }
+    return html;
 }
 
 function formatMarkdown(text) {

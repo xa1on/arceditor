@@ -373,7 +373,7 @@ function scrollToBottom(force = false) {
     }
 }
 
-function addBubble(sender, text, base64Images = null, intermediateTurnsHtml = null) {
+function addBubble(sender, text, base64Images = null, intermediateTurns = null) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
 
@@ -388,8 +388,12 @@ function addBubble(sender, text, base64Images = null, intermediateTurnsHtml = nu
         wrapper.setAttribute("data-raw-text", "");
     } else {
         let htmlContent = "";
-        if (intermediateTurnsHtml) {
-            htmlContent += intermediateTurnsHtml;
+        if (intermediateTurns) {
+            if (typeof intermediateTurns === "string") {
+                htmlContent += intermediateTurns;
+            } else if (Array.isArray(intermediateTurns)) {
+                htmlContent += renderTurnsHtml(intermediateTurns);
+            }
         }
         htmlContent += formatMarkdown(text);
         content.innerHTML = htmlContent;
