@@ -8,14 +8,18 @@ async function validateConnection() {
     const statusDot = document.getElementById("status-dot");
     const sendBtn = document.getElementById("btn-send");
 
-    statusDot.className = "status-dot offline";
-    statusDot.title = "Validating connection...";
+    if (statusDot) {
+        statusDot.className = "status-dot offline";
+        statusDot.title = "Validating connection...";
+    }
     sendBtn.disabled = true;
 
     if (!httpsClient && !httpClient) {
         // Standalone browser fallback mock state
-        statusDot.className = "status-dot online";
-        statusDot.title = "Mock Connection (Browser Mode)";
+        if (statusDot) {
+            statusDot.className = "status-dot online";
+            statusDot.title = "Mock Connection (Browser Mode)";
+        }
         sendBtn.disabled = false;
         isConnected = true;
         return;
@@ -27,19 +31,25 @@ async function validateConnection() {
             const baseUrl = apiUrl.replace(/\/$/, "");
             const checkUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
             await makeRequest(checkUrl, 'GET', {}, "");
-            statusDot.className = "status-dot online";
-            statusDot.title = `Connected successfully via ${currentProvider}`;
+            if (statusDot) {
+                statusDot.className = "status-dot online";
+                statusDot.title = `Connected successfully via ${currentProvider}`;
+            }
         } else {
             // For cloud APIs, skip proactive key validation checks (preventing false positives).
             // Cloud model state is assumed ready, Send is enabled, and real failures are captured on demand.
-            statusDot.className = "status-dot online";
-            statusDot.title = `Cloud model '${modelName}' active. Connection is verified upon sending message.`;
+            if (statusDot) {
+                statusDot.className = "status-dot online";
+                statusDot.title = `Cloud model '${modelName}' active. Connection is verified upon sending message.`;
+            }
         }
         sendBtn.disabled = false;
         isConnected = true;
     } catch (err) {
-        statusDot.className = "status-dot error";
-        statusDot.title = `Failed to connect to local Lemonade server: ${err.message}`;
+        if (statusDot) {
+            statusDot.className = "status-dot error";
+            statusDot.title = `Failed to connect to local Lemonade server: ${err.message}`;
+        }
         sendBtn.disabled = false; // Let the user send anyway to troubleshoot
         isConnected = false;
     }

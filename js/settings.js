@@ -227,7 +227,7 @@ function loadSessionHistory(sessionId) {
         scroller.innerHTML = `
             <div class="message system-msg">
                 <div class="message-content">
-                    <p><strong>ArcEditor v1.0.0</strong> initialized. Setup your API key or point to a local Lemonade server to begin automating, editing, and designing compositions!</p>
+                    <p>ArcEditor initialized.</p>
                 </div>
             </div>
         `;

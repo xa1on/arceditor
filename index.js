@@ -156,20 +156,7 @@ ${code}`;
         });
     }
 
-    const chipInspect = document.getElementById("chip-inspect");
-    if (chipInspect) {
-        chipInspect.addEventListener("click", async () => {
-            if (isExecuting) return;
-            addBubble("user", "Test Timeline Connection");
-            addSystemMessage("Loading active timeline context...");
-            const context = await getTimelineContext();
-            if (context.error) {
-                addBubble("ai", `Timeline Inspector failed:\n\n${context.error}`);
-            } else {
-                addBubble("ai", `Successfully connected to After Effects! Active Comp: **${context.name}** (${context.width}x${context.height}, ${context.frameRate} fps). Layers: **${context.numLayers}**.`);
-            }
-        });
-    }
+
 
     const btnInspectComp = document.getElementById("btn-inspect-comp");
     if (btnInspectComp) {
@@ -637,7 +624,6 @@ function setUIReadyState(ready) {
     const btnDeleteSession = document.getElementById("btn-delete-session");
     const chipCapture = document.getElementById("chip-capture");
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
-    const chipInspect = document.getElementById("chip-inspect");
     const btnSettings = document.getElementById("btn-settings");
     const btnInspectComp = document.getElementById("btn-inspect-comp");
 
@@ -664,7 +650,6 @@ function setUIReadyState(ready) {
     if (btnDeleteSession) btnDeleteSession.disabled = !ready;
     if (chipCapture) chipCapture.disabled = !ready;
     if (chipCaptureSequence) chipCaptureSequence.disabled = !ready;
-    if (chipInspect) chipInspect.disabled = !ready;
     if (btnSettings) btnSettings.disabled = !ready;
     if (btnInspectComp) btnInspectComp.disabled = !ready;
 

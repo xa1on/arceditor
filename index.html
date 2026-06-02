@@ -5,30 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ArcEditor</title>
     <!-- Modern Premium Typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
 </head>
 <body class="dark-theme">
     <div id="arc-root" class="glass-container">
         
-        <!-- HEADER -->
-        <header class="app-header">
-            <div class="logo-area">
-                <span class="logo-glow"></span>
-                <h1 class="logo-title">Arc<span>Editor</span></h1>
-            </div>
-            <div class="header-actions">
-                <div id="status-dot" class="status-dot offline" title="Not connected to LLM"></div>
-                <button id="btn-settings" class="icon-btn" title="API Settings">
-                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                </button>
-            </div>
-        </header>
+
 
         <!-- CHAT SESSIONS CONTROL BAR -->
         <div class="chat-sessions-bar">
             <div class="project-info">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 <span id="label-active-project" title="Active Project">Unsaved Project</span>
             </div>
             <div class="session-selector-wrap">
@@ -46,6 +33,9 @@
             <button id="tab-chat" class="tab-btn active">Chat</button>
             <button id="tab-console" class="tab-btn">JSX Console</button>
             <button id="tab-debug" class="tab-btn">Debug Log</button>
+            <button id="btn-settings" class="icon-btn" title="API Settings">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
         </div>
 
         <main class="content-viewport">
@@ -55,7 +45,7 @@
                     <!-- Dynamic Messages will load here -->
                     <div class="message system-msg">
                         <div class="message-content">
-                            <p><strong>ArcEditor v1.0.0</strong> initialized. Setup your API key or point to a local Lemonade server to begin automating, editing, and designing compositions!</p>
+                            <p>ArcEditor initialized.</p>
                         </div>
                     </div>
                 </div>
@@ -65,7 +55,7 @@
             <div id="pane-console" class="view-pane">
                 <div class="console-wrapper">
                     <div class="console-header">
-                        <span>JSX Console (Editable Scratchpad)</span>
+                        <span>JSX Console</span>
                         <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
                             <button id="btn-run-console" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Execute Script</button>
                             <button id="btn-clear-console" class="txt-btn">Clear</button>
@@ -79,7 +69,7 @@
             <div id="pane-debug" class="view-pane">
                 <div class="console-wrapper">
                     <div class="console-header">
-                        <span>Agent Execution & Debug Log (Prompts, Responses, Tools)</span>
+                        <span>Debug Log</span>
                         <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
                             <button id="btn-copy-debug" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Copy Log</button>
                             <button id="btn-clear-debug" class="txt-btn">Clear Log</button>
@@ -96,7 +86,7 @@
                 <!-- Thumbnails will be injected dynamically -->
             </div>
             <button id="btn-remove-attachment" class="close-badge" style="position: static; margin-left: auto; width: auto; height: auto; padding: 2px 6px; border-radius: var(--border-radius-sm); font-size: 9px; line-height: 1.2;">Clear All</button>
-            <span class="dock-label" style="margin-left: 8px;">Current frames captured for analysis</span>
+            <span class="dock-label" style="margin-left: 8px;">Captured frames</span>
         </div>
 
         <!-- QUICK CHIPS & UTILITIES -->
@@ -108,10 +98,6 @@
             <button id="chip-capture-sequence" class="chip" title="Capture a sequence of 5 frames from the composition">
                 <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><rect x="2" y="2" width="20" height="20" rx="2.5" ry="2.5"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line></svg>
                 <span>Capture Sequence</span>
-            </button>
-            <button id="chip-inspect" class="chip" title="Diagnose timeline connection">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                <span>Test Connection</span>
             </button>
         </div>
 
@@ -126,7 +112,6 @@
                     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
                 </button>
             </div>
-            <div id="input-meta-info" class="input-meta-info">Context: 0 chars (~0 tokens)</div>
         </footer>
 
         <!-- DRAWER SETTINGS PANEL -->
