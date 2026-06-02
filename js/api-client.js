@@ -31,7 +31,7 @@ function sanitizePayload(obj) {
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
                 if (EXCLUDED_KEYS[key]) continue;
-                
+
                 if (key === "messages" && Array.isArray(obj[key])) {
                     copy[key] = obj[key].filter(msg => msg.role !== "system").map(sanitizePayload);
                 } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "data" && typeof obj[key] === "string" && obj[key].length > 50) {
