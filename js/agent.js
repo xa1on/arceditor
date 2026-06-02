@@ -350,21 +350,38 @@ Layer Referencing (Avoid Fragile Indexes!):
     - Description: Sets high-level ease curve presets or custom Bezier weights on an existing keyframe.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
-      * \`propPath\`: String name or Array path.
+      * \`propPath\`: String name (e.g. "Position", "Opacity") or Array path (e.g. \`["Transform", "Scale"]\`).
       * \`keyIndex\`: Integer 1-based keyframe index.
-      * \`easeIn\`, \`easeOut\`: String preset name OR custom Bezier object \`{ speed: Number, influence: Number }\`.
+      * \`easeIn\`, \`easeOut\`: String preset name (\`"linear"\`, \`"easyEase"\`, \`"easeInQuad"\`, \`"easeOutQuad"\`, \`"easeInOutQuad"\`, \`"easeInExpo"\`, \`"easeOutExpo"\`, \`"easeInOutExpo"\`) OR custom Bezier object \`{ speed: Number, influence: Number }\`.
 
 14. \`ArcEditor.setTextProperties(layerRef, properties)\`
-    - Description: Sets multiple typography and style properties on an text layer.
+    - Description: Sets multiple typography and style properties on an existing Text layer in a single atomic call.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
+      * \`properties\`: Configuration JSON object. Supports any subset of these optional keys:
+        - \`text\`: (Optional) String new text content.
+        - \`font\`: (Optional) String PostScript font name (e.g. \`"Arial-BoldMT"\`).
+        - \`fontSize\`: (Optional) Number font size in pixels.
+        - \`fillColor\`: (Optional) String color hex code (e.g. \`"#FF3366"\`). Maps to RGB array and turns fill on under the hood.
+        - \`strokeColor\`: (Optional) String color hex code. Maps to RGB array and turns stroke on under the hood.
+        - \`strokeWidth\`: (Optional) Number stroke width in pixels.
+        - \`tracking\`: (Optional) Number horizontal tracking.
+        - \`leading\`: (Optional) Number line leading.
+        - \`alignment\`: (Optional) String alignment (\`"left"\`, \`"center"\`, \`"right"\`). Maps to ParagraphJustification.
       * \`properties\`: Configuration JSON object supporting: \`text\`, \`font\`, \`fontSize\`, \`fillColor\`, \`strokeColor\`, \`strokeWidth\`, \`tracking\`, \`leading\`, \`alignment\`.
 
 15. \`ArcEditor.addAssetToTimeline(assetRef, properties)\`
     - Description: Adds an existing asset from the project bin (e.g. footage, audio, or another precomposition) to the active composition timeline as a new layer.
+    - Context Awareness: Available project panel assets are automatically listed in the \`[Active Timeline Context]\` payload under \`projectAssets\`. You MUST inspect \`projectAssets\` first to verify if the asset is present in the project before trying to add it.
     - Parameters:
-      * \`assetRef\`: Project item ID (integer) or exact item name string.
-      * \`properties\`: (Optional) Configuration JSON object supporting: \`name\`, \`startTime\`, \`inPoint\`, \`outPoint\`, \`parentLayerRef\`, \`blendMode\`.
+      * \`assetRef\`: Project item ID (integer) or exact item name string (e.g. \`"logo.png"\`).
+      * \`properties\`: (Optional) Configuration JSON object supporting any subset of these keys:
+        - \`name\`: (Optional) String custom layer name.
+        - \`startTime\`: (Optional) Number time in seconds to place layer inPoints on the timeline.
+        - \`inPoint\`: (Optional) Number footage inPoint.
+        - \`outPoint\`: (Optional) Number footage outPoint.
+        - \`parentLayerRef\`: (Optional) Parent layer ID, name, or index.
+        - \`blendMode\`: (Optional) String blend mode (e.g. \`"ADD"\`, \`"SCREEN"\`, \`"MULTIPLY"\`, \`"NORMAL"\`).
 
 16. \`ArcEditor.setSolidColor(layerRef, color)\`
     - Description: Sets/changes the color of a Solid layer's source.
@@ -383,7 +400,12 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`layerRef\`: Layer unique ID, name, or index of the target Shape Layer.
       * \`shapeType\`: String. "Ellipse" (or "Circle") or "Rect" (or "Rectangle").
       * \`groupName\`: (Optional) String custom name for the shape vector group.
-      * \`properties\`: (Optional) Configuration JSON object supporting: \`size\`, \`position\`, \`fillColor\`, \`strokeColor\`, \`strokeWidth\`.
+      * \`properties\`: (Optional) Configuration JSON object supporting:
+        * \`size\`: (Optional) [width, height] array (e.g. \`[150, 150]\` for wheel, \`[400, 100]\` for frame).
+        * \`position\`: (Optional) [X, Y] local position offset array relative to the layer's center.
+        * \`fillColor\`: (Optional) String hex color code (e.g. \`"#FF3366"\`) or \`[R, G, B]\` normalized array. Enforces light gray if omitted (pass \`false\` to disable fill).
+        * \`strokeColor\`: (Optional) String hex color code or \`[R, G, B]\` normalized array. Defaults to black.
+        * \`strokeWidth\`: (Optional) Number stroke width in pixels. Defaults to 2 (pass \`0\` to disable stroke).
 
 *** RESILIENT UNDO & CORRECTIVE BEHAVIOR ***
 - HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
