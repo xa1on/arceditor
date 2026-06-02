@@ -48,6 +48,30 @@ function sanitizePayload(obj) {
     return obj;
 }
 
+let activeRequests = [];
+
+function addActiveRequest(req) {
+    activeRequests.push(req);
+}
+
+function removeActiveRequest(req) {
+    const idx = activeRequests.indexOf(req);
+    if (idx !== -1) {
+        activeRequests.splice(idx, 1);
+    }
+}
+
+function abortActiveRequests() {
+    for (let i = 0; i < activeRequests.length; i++) {
+        try {
+            activeRequests[i].destroy();
+        } catch (e) {
+            console.error("Failed to destroy request:", e);
+        }
+    }
+    activeRequests = [];
+}
+
 function makeRequest(url, method, headers, payload) {
     return new Promise((resolve, reject) => {
         if (!httpsClient || !httpClient) {
@@ -79,6 +103,7 @@ function makeRequest(url, method, headers, payload) {
                     data += chunk;
                 });
                 res.on('end', () => {
+                    removeActiveRequest(req);
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         resolve(data);
                     } else {
@@ -88,8 +113,11 @@ function makeRequest(url, method, headers, payload) {
             });
 
             req.on('error', (err) => {
+                removeActiveRequest(req);
                 reject(err);
             });
+
+            addActiveRequest(req);
 
             if (method !== 'GET' && postData) {
                 req.write(postData);
@@ -131,7 +159,10 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                 if (res.statusCode < 200 || res.statusCode >= 300) {
                     let errData = '';
                     res.on('data', (chunk) => { errData += chunk; });
-                    res.on('end', () => { reject(new Error(`HTTP Error ${res.statusCode}: ${errData}`)); });
+                    res.on('end', () => {
+                        removeActiveRequest(req);
+                        reject(new Error(`HTTP Error ${res.statusCode}: ${errData}`));
+                    });
                     return;
                 }
 
@@ -165,6 +196,7 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                 });
 
                 res.on('end', () => {
+                    removeActiveRequest(req);
                     let remaining = buffer;
                     if (decoder) {
                         remaining += decoder.end();
@@ -181,8 +213,11 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
             });
 
             req.on('error', (err) => {
+                removeActiveRequest(req);
                 reject(err);
             });
+
+            addActiveRequest(req);
 
             if (method !== 'GET' && postData) {
                 req.write(postData);

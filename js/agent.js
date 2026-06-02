@@ -98,7 +98,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
 
 - Property Match Names must be handled carefully. Colors are represented as an array of 4 floats: [R, G, B, A] normalized between 0.0 and 1.0 (e.g. red is [1, 0, 0, 1]).
 - If a layer is parented, its Position is in local coordinates relative to the parent.
-- Always wrap scripts in a clean try-catch block and return meaningful error messages.
+- NEVER wrap your entire script in try-catch blocks or define global try-catch wrappers yourself. The execution framework automatically wraps all scripts in an outer try-catch block, registers undo points, handles errors, and performs automatic rollbacks. Let errors throw naturally so the framework can detect them and trigger self-correction.
 - NEVER wrap your scripts or property additions in 'app.beginUndoGroup' and 'app.endUndoGroup' yourself. The host panel automatically wraps all executed scripts in a single atomic transaction. Writing your own undo groups will nest them, which breaks After Effects' undo history and prevents clean rollbacks during error self-corrections.
 
 *** PROCEDURAL SHAPE & LAYOUT RULES ***
@@ -598,7 +598,7 @@ async function runAgenticExecutionLoop(userText) {
                         break;
                     }
 
-                    if (toolObservations.indexOf("Error:") !== -1 || toolObservations.indexOf("EvalScript error") !== -1 || toolObservations.indexOf("Unsupported tool name:") !== -1) {
+                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 || toolObservations.toLowerCase().indexOf("evalscript error") !== -1 || toolObservations.indexOf("Unsupported tool name:") !== -1) {
                         scriptFailed = true;
                         loopRetries++;
 
@@ -1073,7 +1073,7 @@ async function executeToolCalls(jsonStr) {
             }
             observations.push(`- Tool "${toolName}": ${result}`);
 
-            if (result && (result.indexOf("Error:") === 0 || result.indexOf("EvalScript error") === 0)) {
+            if (result && (result.toLowerCase().indexOf("error:") === 0 || result.toLowerCase().indexOf("evalscript error") === 0)) {
                 break;
             }
         }
@@ -1467,6 +1467,10 @@ function stopAgentExecution() {
     isStopped = true;
     isExecuting = false;
     currentExecutionId++; // Increment to invalidate active loops
+
+    if (typeof abortActiveRequests === "function") {
+        abortActiveRequests();
+    }
 
     // Clean up active AI bubble
     if (activeAiBubbleId) {
