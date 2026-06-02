@@ -537,6 +537,28 @@ textarea::placeholder {
     cursor: not-allowed;
 }
 
+.stop-btn {
+    background: none;
+    border: none;
+    color: var(--text-error);
+    padding: 6px;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.stop-btn:hover {
+    color: #ff3333;
+    background: var(--bg-tab-hover);
+}
+
+.hidden {
+    display: none !important;
+}
+
 /* DRAWER / SETTINGS OVERLAY */
 .drawer {
     position: absolute;

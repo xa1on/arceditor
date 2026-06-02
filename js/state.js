@@ -60,3 +60,6 @@ let allProjectChats = {};
 let activeSessionId = null;
 let currentProjectPath = "Unsaved Project";
 let isExecuting = false;
+let isStopped = false;
+let currentExecutionId = 0;
+let activeAiBubbleId = null;

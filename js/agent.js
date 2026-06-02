@@ -385,6 +385,10 @@ Layer Referencing (Avoid Fragile Indexes!):
 `;
 
 async function runAgenticExecutionLoop(userText) {
+    isStopped = false;
+    currentExecutionId++;
+    const executionId = currentExecutionId;
+
     try {
         let visualFrameInputs = [...attachedFrames];
 
@@ -415,6 +419,7 @@ async function runAgenticExecutionLoop(userText) {
         writeToDebugLog("Prompt / History Context", JSON.stringify(activeContext, null, 2));
 
         const aiBubbleId = addBubble("ai", '<div class="dots-loader"><span></span><span></span><span></span></div>');
+        activeAiBubbleId = aiBubbleId;
         const aiBubble = document.getElementById(aiBubbleId);
 
         let isCompleted = false;
@@ -427,9 +432,14 @@ async function runAgenticExecutionLoop(userText) {
         const completedTurnsHtml = [];
 
         while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
+            if (executionId !== currentExecutionId || isStopped) {
+                isCompleted = true;
+                break;
+            }
             try {
                 pruneBase64Images(activeContext, 2); // Prune old base64 images to keep a sliding window of the last 2 captures
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
+                    if (executionId !== currentExecutionId || isStopped) return;
                     aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
                         `<div class="active-turn-container">` +
                         formatMarkdown(chunkText) +
@@ -437,6 +447,10 @@ async function runAgenticExecutionLoop(userText) {
                     aiBubble.setAttribute("data-raw-text", chunkText);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                 });
+                if (executionId !== currentExecutionId || isStopped) {
+                    isCompleted = true;
+                    break;
+                }
                 aiBubble.setAttribute("data-raw-text", llmResponse);
                 const assistantMsg = { role: "assistant", content: llmResponse };
                 activeContext.push(assistantMsg);
@@ -482,10 +496,20 @@ async function runAgenticExecutionLoop(userText) {
 
                     writeToDebugLog("Tool Calls Extracted", jsonBlock);
 
+                    if (executionId !== currentExecutionId || isStopped) {
+                        isCompleted = true;
+                        break;
+                    }
+
                     const toolObservations = await executeToolCalls(jsonBlock);
                     console.log("[ArcEditor Tool Calls Observations]:", toolObservations);
 
                     writeToDebugLog("Tool Execution Observations", toolObservations);
+
+                    if (executionId !== currentExecutionId || isStopped) {
+                        isCompleted = true;
+                        break;
+                    }
 
                     if (toolObservations.indexOf("Error:") !== -1 || toolObservations.indexOf("EvalScript error") !== -1 || toolObservations.indexOf("Unsupported tool name:") !== -1) {
                         scriptFailed = true;
@@ -622,22 +646,35 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
 
-        if (loopRetries >= maxRetries) {
-            aiBubble.querySelector(".message-content").innerHTML +=
-                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
-            if (typeof scrollToBottom === "function") scrollToBottom();
-        }
-        if (toolTurns >= maxToolTurns && !isCompleted) {
-            aiBubble.querySelector(".message-content").innerHTML +=
-                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
-            if (typeof scrollToBottom === "function") scrollToBottom();
+        if (executionId !== currentExecutionId) {
+            // Obsolete thread, exit silently
+            return;
         }
 
-        // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed
+        if (isStopped) {
+            aiBubble.querySelector(".message-content").innerHTML = completedTurnsHtml.join("") +
+                `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
+                `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
+                `Execution stopped by user.</div>`;
+            if (typeof scrollToBottom === "function") scrollToBottom();
+        } else {
+            if (loopRetries >= maxRetries) {
+                aiBubble.querySelector(".message-content").innerHTML +=
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
+                if (typeof scrollToBottom === "function") scrollToBottom();
+            }
+            if (toolTurns >= maxToolTurns && !isCompleted) {
+                aiBubble.querySelector(".message-content").innerHTML +=
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
+                if (typeof scrollToBottom === "function") scrollToBottom();
+            }
+        }
+
+        // Set the intermediateTurnsHtml property on the last assistant message in history, and remove isIntermediate if failed or stopped
         const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
         if (lastAssistantMsg) {
             lastAssistantMsg.intermediateTurnsHtml = completedTurnsHtml.join("");
-            if (loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
+            if (isStopped || loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
                 delete lastAssistantMsg.isIntermediate;
             }
         }
@@ -670,13 +707,15 @@ async function runAgenticExecutionLoop(userText) {
             lastActiveContext = activeContext;
         } catch (e) { }
     } finally {
-        isExecuting = false;
-        attachedFrames = [];
-        if (typeof updateContextSizeInfo === "function") {
-            updateContextSizeInfo();
-        }
-        if (typeof setUIReadyState === "function") {
-            setUIReadyState(true);
+        if (executionId === currentExecutionId) {
+            isExecuting = false;
+            attachedFrames = [];
+            if (typeof updateContextSizeInfo === "function") {
+                updateContextSizeInfo();
+            }
+            if (typeof setUIReadyState === "function") {
+                setUIReadyState(true);
+            }
         }
     }
 }
@@ -784,6 +823,10 @@ async function executeToolCalls(jsonStr) {
 
     try {
         for (let i = 0; i < toolCalls.length; i++) {
+            if (typeof isStopped !== "undefined" && isStopped) {
+                observations.push(`- Tool execution aborted: Stopped by user.`);
+                break;
+            }
             const tc = toolCalls[i];
             const toolName = tc.tool;
             const params = tc.parameters || {};
@@ -885,6 +928,11 @@ async function executeToolCalls(jsonStr) {
                     var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
                     var JSON = ArcJSON;
                     app.beginUndoGroup("ArcEditor Action");
+                    var _arcEditorTempFolder;
+                    try {
+                        _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
+                        if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
+                    } catch (dummyErr) {}
                     try {
                         ${script}
                         app.endUndoGroup();
@@ -1253,4 +1301,41 @@ function writeToDebugLog(category, text) {
             console.error("Failed to initiate write to arceditor_debug.log: ", e);
         }
     }
+}
+
+function stopAgentExecution() {
+    isStopped = true;
+    isExecuting = false;
+    currentExecutionId++; // Increment to invalidate active loops
+
+    // Clean up active AI bubble
+    if (activeAiBubbleId) {
+        const aiBubble = document.getElementById(activeAiBubbleId);
+        if (aiBubble) {
+            const contentDiv = aiBubble.querySelector(".message-content");
+            if (contentDiv) {
+                const loader = contentDiv.querySelector(".dots-loader");
+                if (loader) {
+                    loader.remove();
+                }
+                const activeTurn = contentDiv.querySelector(".active-turn-container");
+                if (activeTurn) {
+                    activeTurn.remove();
+                }
+
+                // If not already ended with a stopped message, append one
+                if (contentDiv.innerHTML.indexOf("Execution stopped by user.") === -1) {
+                    contentDiv.innerHTML += '<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">' +
+                        '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></svg>' +
+                        'Execution stopped by user.</div>';
+                }
+            }
+        }
+    }
+
+    if (typeof setUIReadyState === "function") {
+        setUIReadyState(true);
+    }
+    
+    addSystemMessage("Execution stopped by user.");
 }

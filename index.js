@@ -195,6 +195,14 @@ ${code}`;
     });
 
     btnSend.addEventListener("click", triggerUserMessage);
+    const btnStop = document.getElementById("btn-stop");
+    if (btnStop) {
+        btnStop.addEventListener("click", () => {
+            if (typeof stopAgentExecution === "function") {
+                stopAgentExecution();
+            }
+        });
+    }
     chatInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -623,7 +631,17 @@ function setUIReadyState(ready) {
             chatInput.placeholder = "Ask Arc to edit, splice, or animate...";
         }
     }
-    if (btnSend) btnSend.disabled = !ready || !chatInput.value.trim();
+    const btnStop = document.getElementById("btn-stop");
+    if (ready) {
+        if (btnSend) {
+            btnSend.classList.remove("hidden");
+            btnSend.disabled = !chatInput.value.trim();
+        }
+        if (btnStop) btnStop.classList.add("hidden");
+    } else {
+        if (btnSend) btnSend.classList.add("hidden");
+        if (btnStop) btnStop.classList.remove("hidden");
+    }
     if (selectSession) selectSession.disabled = !ready;
     if (btnDeleteSession) btnDeleteSession.disabled = !ready;
     if (chipCapture) chipCapture.disabled = !ready;
