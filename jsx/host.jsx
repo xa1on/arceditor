@@ -1215,17 +1215,12 @@ var ArcEditor = {
     },
 
     /**
-     * Selects a specific layer by layerRef, optionally deselecting others.
+     * Selects multiple layers by an array of layerRefs, optionally deselecting others.
      */
-    selectLayer: function (layerRef, deselectOthers) {
+    selectLayers: function (layerRefs, deselectOthers) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) {
             return "Error: No active composition found.";
-        }
-
-        var layer = this.resolveLayer(layerRef);
-        if (!layer) {
-            return "Error: Layer not found for reference: " + layerRef;
         }
 
         if (deselectOthers !== false) {
@@ -1233,8 +1228,21 @@ var ArcEditor = {
                 comp.layer(i).selected = false;
             }
         }
-        layer.selected = true;
-        return "Success: Selected layer '" + layer.name + "'.";
+
+        var selectedCount = 0;
+        var refs = layerRefs;
+        if (typeof refs === "string" || typeof refs === "number" || !(refs instanceof Array)) {
+            refs = [refs];
+        }
+
+        for (var j = 0; j < refs.length; j++) {
+            var layer = this.resolveLayer(refs[j]);
+            if (layer) {
+                layer.selected = true;
+                selectedCount++;
+            }
+        }
+        return "Success: Selected " + selectedCount + " layers.";
     },
 
     /**

@@ -21,14 +21,14 @@ You are helping the user automate compositions, edit/splice video assets, manage
   2. For simple or self-contained tasks (e.g., adding a background solid, creating standard shape layers, or applying standard effects), you are highly encouraged to write robust, self-contained ExtendScript that dynamically queries properties at runtime directly in After Effects (e.g. \`app.project.activeItem.width\` / \`app.project.activeItem.height\`) and execute it immediately in the first turn to minimize latency.
 - **CONVERSATIONAL, INVESTIGATIVE, & NON-MODIFYING CLAUSE**: If the user's message is conversational, asks an explanatory/investigative question, or points out a factual/spelling correction without explicitly requesting timeline modifications:
   1. You ARE fully allowed and encouraged to run read-only investigative tools (\`getTimelineContext\`, \`captureActiveFrame\`, \`captureCompositionSequence\`, \`getLayerProperties\`, \`getInstalledEffects\`) to inspect the project state and answer their question accurately.
-  2. However, you MUST NOT run any state-modifying ExtendScript blocks or layout-altering tool calls (such as creating solid/shape layers, applying effects, altering keyframes, or shifting layer properties) unless the user has explicitly requested you to edit or animate the composition. Keep your output purely analytical, explanatory, and read-only.
+  2. However, you MUST NOT run any state-modifying ExtendScript blocks or layout-altering tool calls unless the user has explicitly requested you to edit or animate the composition. Keep your output purely analytical, explanatory, and read-only.
 - **VERIFY EFFECT MATCH NAMES**: Always retrieve the active match name from the \`getInstalledEffects\` catalog first before applying an effect (e.g., standard AE Glow is "ADBE Glo2", not "ADBE Glow").
 - **THE MULTI-SCRIPT REACT SYSTEM**: Rather than trying to combine everything into a single massive script, you are highly encouraged to use a step-by-step ReAct strategy. You can execute an ExtendScript code block, inspect the outcome returned in the next turn's Observation, and then write subsequent scripts or correction loops.
 - **DYNAMIC PROPERTY & BLEND MODE DISCOVERY**: You can dynamically discover valid properties, values, or blending modes at runtime:
   1. Use the \`getLayerProperties\` tool to fetch absolute property paths, matchNames, display names, and values.
   2. Blending modes are resolved dynamically at runtime on the host system (completely case-, space-, and punctuation-insensitive, supporting all 38 AE modes like \`"SUBTRACT"\`, \`"ADD"\`, \`"ALPHA_ADD"\`, etc.).
   3. If you ever supply an invalid or misspelled blend mode, the host throws a detailed ExtendScript error showing the complete list of supported blend modes on that specific system. This observation is returned directly to your ReAct loop, allowing you to self-correct in the next turn.
-  4. You can also write a brief 3-line exploratory script in one turn (e.g., iterating keys of BlendingMode) to inspect After Effects API globals, and then use the returned results in subsequent turns.
+  4. You can also write a brief 3-line exploratory script in one turn to inspect After Effects API globals, and then use the returned results in subsequent turns.
 - **DYNAMIC WORK VERIFICATION PRINCIPLE**: Always ensure your modifications did exactly what was requested before concluding. Dynamically choose the most efficient verification strategy:
   1. **Combined Inline Verification (Highly Recommended for simple tasks):** Run verification checks directly within the same ExtendScript block (e.g. verify that the layer or effect was successfully created or updated, and return validation details or throw an error if a validation check fails). Throwing an error (e.g. \`throw new Error("Verification failed: ...")\`) inside your ExtendScript automatically triggers a clean transaction rollback and lets you self-correct in the next turn.
   2. **Separate Tool Verification:** Use a separate tool turn (like \`getTimelineContext\` or \`captureActiveFrame\`) only if the task is highly complex, multi-stage, or requires visual/rendered proof.
@@ -82,8 +82,153 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - Always check the composition dimensions (width and height) from 'getTimelineContext'. Adjust your shape sizes, solid layers, and offset coordinates proportionally (e.g. for a 1920x1080 composition, standard shapes should be 100-300px; for a 4K 3840x2160 composition, scale shapes up by 2x).
 - Avoid calling setPropertyValue() on properties that already have keyframes (e.g., animated Position, Scale, etc.). If you must modify an animated parameter statically, rely on our built-in keyframe protection inside setPropertyValue which updates the value at 'comp.time', or overwrite the entire keyframe sequence using 'setKeyframes'.
 
-*** AVAILABLE HIGH-LEVEL TOOL CALLS & EDITING API (ArcEditor) ***
-To make editing, composition, and timeline automation simple and bulletproof, you have access to a pre-compiled high-level global API object named \`ArcEditor\` inside the host ExtendScript environment. Use these functions in your generated scripts to perform complex editing tasks reliably:
+*** STREAMLINED JSON TOOLS CATALOG ***
+You have access to 10 streamlined JSON tools. For ALL editing, composition, creation, and animation tasks, you MUST use the single state-modifying JSON tool \`executeExtendScript\`. The other 9 tools are strictly read-only or navigation utilities.
+
+1. \`executeExtendScript\`
+   - Description: Executes custom After Effects ExtendScript JSX code inside an atomic Undo transaction.
+   - Parameters:
+     * \`script\`: String of standard ExtendScript code to execute.
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "executeExtendScript",
+       "parameters": {
+         "script": "// Your ExtendScript code here"
+       }
+     }
+     \`\`\`
+
+2. \`getTimelineContext\`
+   - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "getTimelineContext"
+     }
+     \`\`\`
+
+3. \`getInstalledEffects\`
+   - Description: Retrieves the live catalog/dictionary of installed effects in the host After Effects application. Use this to lookup exact matchNames.
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "getInstalledEffects"
+     }
+     \`\`\`
+
+3a. \`searchInstalledEffects\`
+    - Description: Searches the live catalog of installed effects in the host After Effects application based on a keyword, returning only matching categories and effects. Use this to lookup exact matchNames without fetching the entire catalog.
+    - Parameters:
+      * \`keyword\`: String keyword (case-insensitive) to search for (e.g. "glow" or "blur").
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "searchInstalledEffects",
+        "parameters": {
+          "keyword": "glow"
+        }
+      }
+      \`\`\`
+
+4. \`getLayerProperties\`
+   - Description: Recursively inspects a layer's properties, shapes, and applied effects, returning their exact display names, matchNames, values, and array property paths (e.g. \`["Effects", "Fast Box Blur", "Blur Radius"]\`). Use this to discover paths and matchNames with 100% precision.
+   - Parameters:
+     * \`layerRef\`: Layer unique ID, name string, or index.
+     * \`groupFilter\`: (Optional) String. Target a specific group branch to inspect (e.g., \`"Effects"\`, \`"Transform"\`, \`"Contents"\`).
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "getLayerProperties",
+       "parameters": {
+         "layerRef": 14,
+         "groupFilter": "Effects"
+       }
+     }
+     \`\`\`
+
+5. \`captureActiveFrame\`
+   - Description: Programmatically captures the current active frame preview of the After Effects canvas. Use this whenever you need to visually verify layer layout coordinates, styling, expression binding outcomes, or splicing alignment.
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "captureActiveFrame"
+     }
+     \`\`\`
+
+6. \`captureCompositionSequence\`
+   - Description: Programmatically captures a sequence of N frames of the composition timeline between startTime and endTime to inspect transitions, animations, or movements.
+   - Parameters:
+     * \`startTime\`: (Optional) Number. The start time in seconds (defaults to 0).
+     * \`endTime\`: (Optional) Number. The end time in seconds (defaults to composition duration).
+     * \`numFrames\`: (Optional) Integer. The number of frames to capture (e.g. 5, max 10, defaults to 5).
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "captureCompositionSequence",
+       "parameters": {
+         "startTime": 0.0,
+         "endTime": 5.0,
+         "numFrames": 5
+       }
+     }
+     \`\`\`
+
+7. \`undoLastAction\`
+   - Description: Rolls back the very last ExtendScript transaction executed inside After Effects. Use this tool immediately whenever the user requests to undo, cancel, or revert a change.
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "undoLastAction"
+     }
+     \`\`\`
+
+8. \`setPlayheadTime\`
+   - Description: Moves the active timeline playhead/needle to a specific time or shifts it relatively.
+   - Parameters:
+     * \`time\`: Number (absolute seconds) OR String relative offset (e.g. \`"+1.5"\` or \`"-0.5"\`).
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "setPlayheadTime",
+       "parameters": {
+         "time": "+2.0"
+       }
+     }
+     \`\`\`
+
+9. \`selectLayers\`
+   - Description: Selects multiple specific layers in the active composition, optionally deselecting all other layers.
+   - Parameters:
+     * \`layerRefs\`: Array of layer unique IDs, name strings, or indices. Or a single layer unique ID, name, or index.
+     * \`deselectOthers\`: (Optional) Boolean. Defaults to true.
+   - JSON Call Format:
+     \`\`\`json
+     {
+       "tool": "selectLayers",
+       "parameters": {
+         "layerRefs": [24, "Logo Null"],
+         "deselectOthers": true
+       }
+     }
+     \`\`\`
+
+10. \`switchComposition\`
+    - Description: Switches the active composition by opening a target composition from the project bin in the viewer, and returns its new structural context.
+    - Parameters:
+      * \`compRef\`: Composition unique ID, name string, or index in the project bin.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "switchComposition",
+        "parameters": {
+          "compRef": "Main Precomp"
+        }
+      }
+      \`\`\`
+
+*** AVAILABLE EXTENDSCRIPT API (ArcEditor) ***
+To make editing, composition, and timeline automation simple and bulletproof, you have access to a pre-compiled high-level global API object named \`ArcEditor\` inside the host ExtendScript environment. Use these functions in your generated scripts (inside the \`executeExtendScript\` parameter \`script\`) to perform complex editing tasks reliably:
 
 Layer Referencing (Avoid Fragile Indexes!):
 - Instead of raw layer indexes (which shift dynamically), always refer to layers using a \`layerRef\`.
@@ -103,25 +248,24 @@ Layer Referencing (Avoid Fragile Indexes!):
    - Returns: The created Layer object.
 
 2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`
-   - Description: Applies an effect to a layer.
-   - Use the exact matchName from the getInstalledEffects catalog (e.g. "ADBE Slider Control", "ADBE Glo2").
+   - Description: Applies an effect to a layer. Use the exact matchName from the getInstalledEffects catalog.
    - Parameters:
      * \`layerRef\`: Layer unique ID, name, or index.
      * \`effectMatchName\`: String match name (e.g. "ADBE Slider Control", "ADBE Glo2").
      * \`effectDisplayName\`: (Optional) String display name.
    - Returns: The created Effect object.
 
- 3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
-    - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
-      1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\` [sets layer visibility!], \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
-      2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
-      3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
-      4. Visibility of individual sub-elements like shape groups, vector shapes, masks, and effects by setting \`"Enabled"\` at the end of deep property paths (e.g., \`["Contents", "Rectangle Group", "Enabled"]\` or \`["Effects", "Fast Box Blur", "Enabled"]\` or \`["Masks", "Mask 1", "Enabled"]\`).
-    - Parameters:
-      * \`layerRef\`: Layer unique ID, name, or index.
-      * \`propPath\`: String property name or Array path.
-      * \`value\`: Raw value to assign (Number, Array, String, or Boolean).
-      * \`time\`: (Optional) Number time in seconds to set keyframe value.
+3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
+   - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
+     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\` [sets layer visibility!], \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
+     2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
+     3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
+     4. Visibility of individual sub-elements like shape groups, vector shapes, masks, and effects by setting \`"Enabled"\` at the end of deep property paths (e.g., \`["Contents", "Rectangle Group", "Enabled"]\`).
+   - Parameters:
+     * \`layerRef\`: Layer unique ID, name, or index.
+     * \`propPath\`: String property name or Array path.
+     * \`value\`: Raw value to assign (Number, Array, String, or Boolean).
+     * \`time\`: (Optional) Number time in seconds to set keyframe value.
 
 4. \`ArcEditor.setPropertyExpression(layerRef, propPath, expressionStr)\`
    - Description: Writes a JavaScript expression onto a property.
@@ -153,14 +297,12 @@ Layer Referencing (Avoid Fragile Indexes!):
      * \`moveAllAttributes\`: (Optional) Boolean. Defaults to true.
 
 9. \`ArcEditor.setLayerBlendMode(layerRef, blendModeName)\`
-   - Description: Changes layer blend mode. Supported modes are resolved dynamically at runtime (case-insensitive and punctuation-insensitive, covering all AE blend modes such as \`"ADD\"\`, \`"ALPHA_ADD\"\`, \`"SCREEN\"\`, \`"MULTIPLY\"\`, \`"NORMAL\"\`). If a mode is invalid, the script throws an error listing all available native modes.
+   - Description: Changes layer blend mode. Supported modes are resolved dynamically at runtime (case-insensitive and punctuation-insensitive).
    - Parameters:
-     * \`blendModeName\`: Any native After Effects blend mode string (e.g. \`"SUBTRACT\"\`, \`\"ADD\"\`, \`\"SCREEN\"\`, etc.).
+     * \`blendModeName\`: Any native After Effects blend mode string (e.g. \`"SUBTRACT"\`, \`"ADD"\`, \`"SCREEN"\`).
 
 10. \`ArcEditor.resolveLayer(layerRef)\`
     - Description: Safely resolves any layer ID, name, or index into a native After Effects Layer object.
-    - Parameters:
-      * \`layerRef\`: Layer unique ID (integer), name (string), or index (integer).
     - Returns: Native After Effects Layer object.
 
 11. \`ArcEditor.addMarker(type, layerRef, time, comment, duration, labelIndex)\`
@@ -169,59 +311,42 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`type\`: String. "comp" (for composition marker) or "layer" (for layer marker).
       * \`layerRef\`: Layer unique ID, name, or index (ignored if type is "comp", pass \`null\`).
       * \`time\`: Number. Time in seconds from timeline start.
-      * \`comment\`: (Optional) String text description inside the marker.
+      * \`comment\`: (Optional) String text description.
       * \`duration\`: (Optional) Number duration in seconds (defaults to \`0\`).
-      * \`labelIndex\`: (Optional) Integer label color index (0 to 16, e.g. 1 for Red, 9 for Green).
+      * \`labelIndex\`: (Optional) Integer label color index (0 to 16).
 
 12. \`ArcEditor.deleteMarker(type, layerRef, timeOrIndex)\`
     - Description: Deletes a marker from the active composition or a specific layer.
     - Parameters:
       * \`type\`: String. "comp" or "layer".
       * \`layerRef\`: Layer unique ID, name, or index (ignored if type is "comp").
-      * \`timeOrIndex\`: Number or String. 1-based marker index (integer) or the exact time (number in seconds) of the marker to remove.
+      * \`timeOrIndex\`: Number or String. 1-based marker index (integer) or the exact time (number in seconds).
 
 13. \`ArcEditor.setKeyframeEasing(layerRef, propPath, keyIndex, easeIn, easeOut)\`
     - Description: Sets high-level ease curve presets or custom Bezier weights on an existing keyframe.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
-      * \`propPath\`: String name (e.g. "Position", "Opacity") or Array path (e.g. \`["Transform", "Scale"]\`).
+      * \`propPath\`: String name or Array path.
       * \`keyIndex\`: Integer 1-based keyframe index.
-      * \`easeIn\`: String preset name (\`"linear"\`, \`"easyEase"\`, \`"easeInQuad"\`, \`"easeOutQuad"\`, \`"easeInOutQuad"\`, \`"easeInExpo"\`, \`"easeOutExpo"\`, \`"easeInOutExpo"\`) OR custom Bezier object \`{ speed: Number, influence: Number }\`.
-      * \`easeOut\`: String preset name OR custom Bezier object \`{ speed: Number, influence: Number }\`.
+      * \`easeIn\`, \`easeOut\`: String preset name OR custom Bezier object \`{ speed: Number, influence: Number }\`.
 
 14. \`ArcEditor.setTextProperties(layerRef, properties)\`
-    - Description: Sets multiple typography and style properties on an existing Text layer in a single atomic call.
+    - Description: Sets multiple typography and style properties on an text layer.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
-      * \`properties\`: Configuration JSON object. Supports any subset of these optional keys:
-        - \`text\`: (Optional) String new text content.
-        - \`font\`: (Optional) String PostScript font name (e.g. \`"Arial-BoldMT"\`).
-        - \`fontSize\`: (Optional) Number font size in pixels.
-        - \`fillColor\`: (Optional) String color hex code (e.g. \`"#FF3366"\`). Maps to RGB array and turns fill on under the hood.
-        - \`strokeColor\`: (Optional) String color hex code. Maps to RGB array and turns stroke on under the hood.
-        - \`strokeWidth\`: (Optional) Number stroke width in pixels.
-        - \`tracking\`: (Optional) Number horizontal tracking.
-        - \`leading\`: (Optional) Number line leading.
-        - \`alignment\`: (Optional) String alignment (\`"left"\`, \`"center"\`, \`"right"\`). Maps to ParagraphJustification.
+      * \`properties\`: Configuration JSON object supporting: \`text\`, \`font\`, \`fontSize\`, \`fillColor\`, \`strokeColor\`, \`strokeWidth\`, \`tracking\`, \`leading\`, \`alignment\`.
 
 15. \`ArcEditor.addAssetToTimeline(assetRef, properties)\`
     - Description: Adds an existing asset from the project bin (e.g. footage, audio, or another precomposition) to the active composition timeline as a new layer.
-    - Context Awareness: Available project panel assets are automatically listed in the \`[Active Timeline Context]\` payload under \`projectAssets\`. You MUST inspect \`projectAssets\` first to verify if the asset is present in the project before trying to add it.
     - Parameters:
-      * \`assetRef\`: Project item ID (integer) or exact item name string (e.g. \`"logo.png"\`).
-      * \`properties\`: (Optional) Configuration JSON object supporting any subset of these keys:
-        - \`name\`: (Optional) String custom layer name.
-        - \`startTime\`: (Optional) Number time in seconds to place layer inPoints on the timeline.
-        - \`inPoint\`: (Optional) Number footage inPoint.
-        - \`outPoint\`: (Optional) Number footage outPoint.
-        - \`parentLayerRef\`: (Optional) Parent layer ID, name, or index.
-        - \`blendMode\`: (Optional) String blend mode (e.g. \`"ADD"\`, \`"SCREEN"\`, \`"MULTIPLY"\`, \`"NORMAL"\`).
+      * \`assetRef\`: Project item ID (integer) or exact item name string.
+      * \`properties\`: (Optional) Configuration JSON object supporting: \`name\`, \`startTime\`, \`inPoint\`, \`outPoint\`, \`parentLayerRef\`, \`blendMode\`.
 
 16. \`ArcEditor.setSolidColor(layerRef, color)\`
     - Description: Sets/changes the color of a Solid layer's source.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
-      * \`color\`: [R, G, B] normalized array (e.g. \`[1, 1, 1]\` for white).
+      * \`color\`: [R, G, B] normalized array of floats.
 
 17. \`ArcEditor.deleteLayer(layerRef)\`
     - Description: Safely deletes a layer from the composition.
@@ -229,207 +354,16 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`layerRef\`: Layer unique ID, name, or index.
 
 18. \`ArcEditor.addShapeToLayer(layerRef, shapeType, groupName, properties)\`
-    - Description: Procedurally draws a styled shape group (with optional vector sizes, position offsets, color fills, and strokes) inside an existing Shape Layer, enforcing sensible visible defaults if styling parameters are omitted.
+    - Description: Procedurally draws a styled shape group (with optional vector sizes, position offsets, color fills, and strokes) inside an existing Shape Layer.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index of the target Shape Layer.
       * \`shapeType\`: String. "Ellipse" (or "Circle") or "Rect" (or "Rectangle").
-      * \`groupName\`: (Optional) String custom name for the shape vector group (e.g., "Wheel Front").
-      * \`properties\`: (Optional) Configuration JSON object supporting:
-        - \`size\`: (Optional) [width, height] array (e.g. \`[150, 150]\` for wheel, \`[400, 100]\` for frame).
-        - \`position\`: (Optional) [X, Y] local position offset array relative to the layer's center.
-        - \`fillColor\`: (Optional) String hex color code (e.g. \`"#FF3366"\`) or \`[R, G, B]\` normalized array. Enforces light gray if omitted (pass \`false\` to disable fill).
-        - \`strokeColor\`: (Optional) String hex color code or \`[R, G, B]\` normalized array. Defaults to black.
-        - \`strokeWidth\`: (Optional) Number stroke width in pixels. Defaults to 2 (pass \`0\` to disable stroke).
-
-17. \`getTimelineContext\`
-    - Description: Retrieves the active composition details on demand, including layer names, IDs, indices, structures, and all available project bin assets (\`projectAssets\`).
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "getTimelineContext"
-      }
-      \`\`\`
-
-18. \`getInstalledEffects\`
-    - Description: Retrieves the live catalog/dictionary of installed effects in the host After Effects application. Use this to lookup exact matchNames.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "getInstalledEffects"
-      }
-      \`\`\`
-
-19. \`captureActiveFrame\`
-    - Description: Programmatically captures the current active frame preview of the After Effects canvas. Use this tool whenever you need to visually verify layer layout coordinates, styling, expression binding outcomes, or splicing alignment.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "captureActiveFrame"
-      }
-      \`\`\`
-
-19a. \`captureCompositionSequence\`
-    - Description: Programmatically captures a sequence of N frames of the composition timeline between startTime and endTime. Use this tool when the user asks to analyze visual transitions, check animations across time, verify splicing alignment across multiple scenes, or understand timing and movement.
-    - Parameters:
-      * \`startTime\`: (Optional) Number. The start time in seconds (defaults to 0).
-      * \`endTime\`: (Optional) Number. The end time in seconds (defaults to composition duration).
-      * \`numFrames\`: (Optional) Integer. The number of frames to capture (e.g. 5, max 10, defaults to 5).
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "captureCompositionSequence",
-        "parameters": {
-          "startTime": 0.0,
-          "endTime": 5.0,
-          "numFrames": 5
-        }
-      }
-      \`\`\`
-
-20. \`undoLastAction\`
-    - Description: Rolls back the very last ExtendScript transaction executed inside After Effects. Use this tool immediately whenever the user requests to undo, cancel, or revert a change, or when you realize your previous script output did something incorrect on the composition timeline.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "undoLastAction"
-      }
-      \`\`\`
-
-21. \`setPlayheadTime\`
-    - Description: Moves the active timeline playhead/needle to a specific time or shifts it relatively.
-    - Parameters:
-      * \`time\`: Number (absolute seconds, e.g. \`2.5\`) OR String relative offset (e.g. \`"+1.5"\` or \`"-0.5"\` to shift from current position).
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "setPlayheadTime",
-        "parameters": {
-          "time": "+2.0"
-        }
-      }
-      \`\`\`
-
-22. \`selectLayer\`
-    - Description: Selects a specific layer in the active composition, optionally deselecting all other layers.
-    - Parameters:
-      * \`layerRef\`: Layer unique ID, name string, or index.
-      * \`deselectOthers\`: (Optional) Boolean. Defaults to true. If false, adds to active selection.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "selectLayer",
-        "parameters": {
-          "layerRef": 24,
-          "deselectOthers": true
-        }
-      }
-      \`\`\`
-
-23. \`switchComposition\`
-    - Description: Switches the active composition by opening a target composition from the project bin in the viewer, and returns its new structural context.
-    - Parameters:
-      * \`compRef\`: Composition unique ID, name string, or index in the project bin.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "switchComposition",
-        "parameters": {
-          "compRef": "Main Precomp"
-        }
-      }
-      \`\`\`
-
-24. \`addMarker\`
-    - Description: Adds a marker to the active composition timeline or a specific layer.
-    - Parameters:
-      * \`type\`: "comp" (for composition marker) or "layer" (for layer marker).
-      * \`layerRef\`: Layer unique ID, name string, or index (ignored if type is "comp").
-      * \`time\`: Number. Time in seconds from timeline start.
-      * \`comment\`: (Optional) String text description inside the marker.
-      * \`duration\`: (Optional) Number duration in seconds (defaults to 0).
-      * \`labelIndex\`: (Optional) Integer label color index (0 to 16, e.g. 1 for Red, 9 for Green).
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "addMarker",
-        "parameters": {
-          "type": "comp",
-          "time": 3.5,
-          "comment": "Chorus Hook"
-        }
-      }
-      \`\`\`
-
-25. \`deleteMarker\`
-    - Description: Deletes a marker from the active composition or a specific layer.
-    - Parameters:
-      * \`type\`: "comp" or "layer".
-      * \`layerRef\`: Layer unique ID, name string, or index (ignored if type is "comp").
-      * \`timeOrIndex\`: Number or String. 1-based marker index (integer) or the exact time (number in seconds) of the marker to remove.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "deleteMarker",
-        "parameters": {
-          "type": "comp",
-          "timeOrIndex": 1
-        }
-      }
-      \`\`\`
-
-26. \`getLayerProperties\`
-    - Description: Recursively inspects a layer's properties, shapes, and applied effects, returning their exact display names, matchNames, values, and array property paths (e.g. \`["Effects", "Fast Box Blur", "Blur Radius"]\`). Use this tool immediately whenever you need to edit an effect parameter or shape property, or if you receive a "Property path segment not found" error, to discover the correct paths and matchNames with 100% precision.
-    - Parameters:
-      * \`layerRef\`: Layer unique ID, name string, or index.
-      * \`groupFilter\`: (Optional) String. Target a specific group branch to inspect (e.g., \`"Effects"\` or \`"Transform"\` or \`"Contents"\`) to keep context payloads very focused and small. If omitted, defaults to crawling the Transform and Effects groups.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "getLayerProperties",
-        "parameters": {
-          "layerRef": 14,
-          "groupFilter": "Effects"
-        }
-      }
-      \`\`\`
-
-27. \`setSolidColor\`
-    - Description: Sets or changes the color of a Solid layer's source.
-    - Parameters:
-      * \`layerRef\`: Layer unique ID, name string, or index.
-      * \`color\`: [R, G, B] normalized array of floats (e.g. \`[1.0, 1.0, 1.0]\` for white, \`[0.0, 0.0, 0.0]\` for black).
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "setSolidColor",
-        "parameters": {
-          "layerRef": 15,
-          "color": [1.0, 1.0, 1.0]
-        }
-      }
-      \`\`\`
-
-28. \`deleteLayer\`
-    - Description: Safely deletes a layer from the composition timeline by its ID, name, or index.
-    - Parameters:
-      * \`layerRef\`: Layer unique ID, name string, or index.
-    - JSON Call Format: Output a JSON code block like this:
-      \`\`\`json
-      {
-        "tool": "deleteLayer",
-        "parameters": {
-          "layerRef": 16
-        }
-      }
-      \`\`\`
-
-
+      * \`groupName\`: (Optional) String custom name for the shape vector group.
+      * \`properties\`: (Optional) Configuration JSON object supporting: \`size\`, \`position\`, \`fillColor\`, \`strokeColor\`, \`strokeWidth\`.
 
 *** RESILIENT UNDO & CORRECTIVE BEHAVIOR ***
-- HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool (or output \`app.undo()\` in ExtendScript) on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
+- HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
 - SELF-CORRECTION UNDO: If you run an ExtendScript code block and realize it has a layout bug or configuration mistake, perform an undo step first before generating the corrected script block. Always ensure the canvas is clean before applying revised designs.
-
-
 
 *** HOW TO COMMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners.
@@ -443,21 +377,6 @@ Layer Referencing (Avoid Fragile Indexes!):
     "script": "// Your ExtendScript code here"
   }
 }
-\`\`\`
-- You can combine multiple tools (like getTimelineContext, createLayer, and executeExtendScript) inside a single JSON array if needed:
-\`\`\`json
-[
-  {
-    "tool": "getTimelineContext",
-    "parameters": {}
-  },
-  {
-    "tool": "executeExtendScript",
-    "parameters": {
-      "script": "// Your ExtendScript code here"
-    }
-  }
-]
 \`\`\`
 - Double-check your code for basic JavaScript syntax errors inside the JSON strings. Escape double quotes and backslashes properly inside the "script" parameter string value.
 - If the user's request is purely informational, conversational, or a general question, answer directly in plain markdown without any tool calls. Do not invent scripts unnecessarily.
@@ -833,8 +752,9 @@ function getSignificantJsonActionKey(jsonStr) {
                 "captureCompositionSequence",
                 "getTimelineContext",
                 "getInstalledEffects",
+                "searchInstalledEffects",
                 "getLayerProperties",
-                "selectLayer",
+                "selectLayers",
                 "switchComposition",
                 "setPlayheadTime"
             ].indexOf(toolName) !== -1;
@@ -876,8 +796,9 @@ async function executeToolCalls(jsonStr) {
                 "captureCompositionSequence",
                 "getTimelineContext",
                 "getInstalledEffects",
+                "searchInstalledEffects",
                 "getLayerProperties",
-                "selectLayer",
+                "selectLayers",
                 "switchComposition",
                 "setPlayheadTime",
                 "undoLastAction"
@@ -890,48 +811,31 @@ async function executeToolCalls(jsonStr) {
             }
 
             let jsxCommand = "";
-            if (toolName === "createLayer") {
-                const colorVal = params.color ? JSON.stringify(params.color) : 'null';
-                jsxCommand = `(function() { var l = ArcEditor.createLayer("${params.type}", "${params.name || 'Layer'}", ${params.size ? JSON.stringify(params.size) : 'null'}, ${colorVal}); return "Success: Created layer '" + l.name + "' at index " + l.index; })()`;
-            } else if (toolName === "applyEffect") {
-                jsxCommand = `(function() { var fx = ArcEditor.applyEffect(${serializedRef}, "${params.effectMatchName}", "${params.effectDisplayName || ''}"); return "Success: Applied effect '" + fx.name + "' to layer " + ${serializedRef}; })()`;
-            } else if (toolName === "setPropertyValue") {
-                jsxCommand = `(function() { ArcEditor.setPropertyValue(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.value)}, ${params.time !== undefined && params.time !== null ? params.time : 'null'}); return "Success: Set property value on layer " + ${serializedRef}; })()`;
-            } else if (toolName === "setPropertyExpression") {
-                jsxCommand = `(function() { ArcEditor.setPropertyExpression(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.expressionStr)}); return "Success: Set expression on layer " + ${serializedRef}; })()`;
-            } else if (toolName === "setKeyframes") {
-                jsxCommand = `(function() { ArcEditor.setKeyframes(${serializedRef}, ${JSON.stringify(params.propPath)}, ${JSON.stringify(params.times)}, ${JSON.stringify(params.values)}, ${!!params.easeIn}, ${!!params.easeOut}); return "Success: Set keyframes on layer " + ${serializedRef}; })()`;
-            } else if (toolName === "parentLayer") {
-                const pRef = params.parentLayerRef !== undefined ? params.parentLayerRef : params.parentLayerIndex;
-                const serializedParentRef = pRef === null || pRef === undefined ? 'null' : (typeof pRef === "string" ? `"${pRef.replace(/"/g, '\\"')}"` : pRef);
-                jsxCommand = `(function() { ArcEditor.parentLayer(${serializedRef}, ${serializedParentRef}); return "Success: Set parenting for layer " + ${serializedRef}; })()`;
-            } else if (toolName === "trimLayer") {
-                jsxCommand = `(function() { ArcEditor.trimLayer(${serializedRef}, ${params.inPoint !== undefined && params.inPoint !== null ? params.inPoint : 'null'}, ${params.outPoint !== undefined && params.outPoint !== null ? params.outPoint : 'null'}, ${params.startTime !== undefined && params.startTime !== null ? params.startTime : 'null'}); return "Success: Trimmed layer " + ${serializedRef}; })()`;
-            } else if (toolName === "precompose") {
-                const refs = params.layerRefs !== undefined ? params.layerRefs : params.layerIndices;
-                jsxCommand = `(function() { var l = ArcEditor.precompose(${JSON.stringify(refs)}, "${params.precompName}", ${params.moveAllAttributes !== false}); return "Success: Created precomposition layer '" + l.name + "' at index " + l.index; })()`;
-            } else if (toolName === "setLayerBlendMode") {
-                jsxCommand = `(function() { ArcEditor.setLayerBlendMode(${serializedRef}, "${params.blendModeName}"); return "Success: Set blend mode to " + "${params.blendModeName}" + " on layer " + ${serializedRef}; })()`;
-            } else if (toolName === "addMarker") {
-                jsxCommand = `(function() { return ArcEditor.addMarker("${params.type}", ${serializedRef}, ${params.time}, ${params.comment ? `"${params.comment.replace(/"/g, '\\"')}"` : 'null'}, ${params.duration !== undefined && params.duration !== null ? params.duration : 'null'}, ${params.labelIndex !== undefined && params.labelIndex !== null ? params.labelIndex : 'null'}); })()`;
-            } else if (toolName === "deleteMarker") {
-                const serializedTimeOrIndex = typeof params.timeOrIndex === "string" ? `"${params.timeOrIndex.replace(/"/g, '\\"')}"` : params.timeOrIndex;
-                jsxCommand = `(function() { return ArcEditor.deleteMarker("${params.type}", ${serializedRef}, ${serializedTimeOrIndex}); })()`;
-            } else if (toolName === "setKeyframeEasing") {
-                const easeInVal = typeof params.easeIn === "string" ? `"${params.easeIn}"` : JSON.stringify(params.easeIn);
-                const easeOutVal = typeof params.easeOut === "string" ? `"${params.easeOut}"` : JSON.stringify(params.easeOut);
-                jsxCommand = `(function() { return ArcEditor.setKeyframeEasing(${serializedRef}, ${JSON.stringify(params.propPath)}, ${params.keyIndex}, ${easeInVal}, ${easeOutVal}); })()`;
-            } else if (toolName === "setTextProperties") {
-                jsxCommand = `(function() { return ArcEditor.setTextProperties(${serializedRef}, ${JSON.stringify(params.properties)}); })()`;
-            } else if (toolName === "addAssetToTimeline") {
-                const serializedAssetRef = typeof params.assetRef === "string" ? `"${params.assetRef.replace(/"/g, '\\"')}"` : params.assetRef;
-                jsxCommand = `(function() { return ArcEditor.addAssetToTimeline(${serializedAssetRef}, ${JSON.stringify(params.properties)}); })()`;
-            } else if (toolName === "getTimelineContext") {
+            if (toolName === "getTimelineContext") {
                 const timelineData = await getTimelineContext();
                 observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
                 continue;
             } else if (toolName === "getInstalledEffects") {
                 observations.push(`- Tool "getInstalledEffects": ${JSON.stringify(installedEffects)}`);
+                continue;
+            } else if (toolName === "searchInstalledEffects") {
+                const keyword = (params.keyword || "").toLowerCase();
+                const matched = {};
+                for (const category in installedEffects) {
+                    if (Object.prototype.hasOwnProperty.call(installedEffects, category)) {
+                        const list = installedEffects[category];
+                        if (Array.isArray(list)) {
+                            const filtered = list.filter(fx => 
+                                (fx.displayName && fx.displayName.toLowerCase().indexOf(keyword) !== -1) ||
+                                (fx.matchName && fx.matchName.toLowerCase().indexOf(keyword) !== -1)
+                            );
+                            if (filtered.length > 0) {
+                                matched[category] = filtered;
+                            }
+                        }
+                    }
+                }
+                observations.push(`- Tool "searchInstalledEffects": ${JSON.stringify(matched)}`);
                 continue;
             } else if (toolName === "captureActiveFrame") {
                 const base64Data = await captureCompositionFrame(true);
@@ -962,18 +866,16 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "setPlayheadTime") {
                 const serializedTime = typeof params.time === "string" ? `"${params.time.replace(/"/g, '\\"')}"` : params.time;
                 jsxCommand = `(function() { return ArcEditor.setPlayheadTime(${serializedTime}); })()`;
-            } else if (toolName === "selectLayer") {
-                jsxCommand = `(function() { return ArcEditor.selectLayer(${serializedRef}, ${params.deselectOthers !== false}); })()`;
+            } else if (toolName === "selectLayers") {
+                const refs = params.layerRefs !== undefined ? params.layerRefs : params.layerIndices;
+                const serializedRefs = typeof refs === "string" || typeof refs === "number" ? (typeof refs === "string" ? `"${refs.replace(/"/g, '\\"')}"` : refs) : JSON.stringify(refs);
+                jsxCommand = `(function() { return ArcEditor.selectLayers(${serializedRefs}, ${params.deselectOthers !== false}); })()`;
             } else if (toolName === "switchComposition") {
                 const serializedCompRef = typeof params.compRef === "string" ? `"${params.compRef.replace(/"/g, '\\"')}"` : params.compRef;
                 jsxCommand = `(function() { return ArcEditor.switchComposition(${serializedCompRef}); })()`;
             } else if (toolName === "getLayerProperties") {
                 const groupFilterVal = params.groupFilter ? `"${params.groupFilter.replace(/"/g, '\\"')}"` : "null";
                 jsxCommand = `ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
-            } else if (toolName === "setSolidColor") {
-                jsxCommand = `(function() { return ArcEditor.setSolidColor(${serializedRef}, ${JSON.stringify(params.color)}); })()`;
-            } else if (toolName === "deleteLayer") {
-                jsxCommand = `(function() { return ArcEditor.deleteLayer(${serializedRef}); })()`;
             } else if (toolName === "executeExtendScript") {
                 const script = params.script;
                 jsxCommand = `(function() {
