@@ -30,10 +30,10 @@ You are helping the user automate compositions, edit/splice video assets, manage
   3. If you ever supply an invalid or misspelled blend mode, the host throws a detailed ExtendScript error showing the complete list of supported blend modes on that specific system. This observation is returned directly to your ReAct loop, allowing you to self-correct in the next turn.
 - **MANDATORY VISUAL WORK VERIFICATION PRINCIPLE**:
   1. For ANY and ALL tasks that modify the active composition (e.g., creating solid/null/shape/text layers, applying effects, updating positions/transforms, changing blend modes, or splicing assets), you are strictly required to perform a visual verification turn before concluding.
-  2. You MUST call the `captureActiveFrame` tool (for static layout, positioning, scaling, and typography styling verification) or `captureCompositionSequence` (for timeline splicing, timing transitions, or animation sequence verification) immediately following your ExtendScript execution.
+  2. You MUST call the \`captureActiveFrame\` tool (for static layout, positioning, scaling, and typography styling verification) or \`captureCompositionSequence\` (for timeline splicing, timing transitions, or animation sequence verification) immediately following your ExtendScript execution.
   3. Once the rendered frame or sequence is returned as an Observation image, you must visually inspect the preview. Verify that:
      * Text layer justification, font sizes, and layout coordinates are aligned and centered correctly.
-     * Shape vectors and solid layer dimensions completely fit the composition aspect ratio (proportionally matching the dimensions from `getTimelineContext`).
+     * Shape vectors and solid layer dimensions completely fit the composition aspect ratio (proportionally matching the dimensions from \`getTimelineContext\`).
      * Transition splices and keyframe easing align perfectly with the target timeline timings.
   4. Only after visually confirming that your changes look exactly right are you allowed to finalize your answer and declare success. If you detect visual overlap, clipping, coordinate misalignment, or styling defects in the observation frame, you must run a self-correction turn to fix the script.
   5. You may only skip the visual capture turn if the user's request is purely read-only, conversational, or informational (where no ExtendScript mutations occurred).
@@ -64,14 +64,19 @@ You are helping the user automate compositions, edit/splice video assets, manage
   * You are strictly forbidden from writing raw JavaScript concatenation operators (like \`+ name +\` or \`+ p.s +\`) inside the static JSON \`"script"\` tool parameter value!
   * Doing so closes the string quotes in JSON prematurely and crashes the JSON parser at the CEP layer before After Effects is ever contacted.
   * Every single character inside the \`"script"\` parameter value MUST be part of a single, continuous, static string. To pass variable names, write their assignments statically inside the script text (e.g. \`var name = "Earth"; var d = 360;\` or construct the expression string dynamically *within* ExtendScript using string manipulation, not as raw JSON operators).
-- **JSON DOUBLE-QUOTE ESCAPING RULES**:
+- **JSON DOUBLE-QUOTE & SINGLE-QUOTE ESCAPING RULES**:
   * Because the \`"script"\` parameter is wrapped in double quotes (\`"\`), all double quotes inside the ExtendScript code MUST be escaped as \`\\"\`.
   * All backslashes inside the ExtendScript code MUST be double-escaped as \`\\\\\` so they decode correctly.
-  * To avoid complex double-escaping madness in Expressions, write Expression string literals using single quotes (\`'\`) instead of double quotes inside your script (e.g. \`var expr = "var c = thisComp.layer('Controls'); c.effect('Progress')('Slider');";\`).
+  * **CRITICAL SINGLE-QUOTE RULE**: Single quotes (\`'\`) inside the ExtendScript code DO NOT need to be escaped in JSON. Write them as raw, unescaped single quotes (\`'\`). You are **strictly forbidden** from writing backslash-single-quote (\`\\'\` or \`\\\\'\`) inside the JSON \`"script"\` string. Doing so creates an invalid JSON escape sequence and will immediately crash the CEP JSON parser before any code runs!
+    - Correct (Valid JSON): \`"var a = 'Earth';"\`
+    - Incorrect (Parser Crash): \`"var a = \\'Earth\\';"\` or \`"var a = \\\\'Earth\\\\';"\`
+  * **EASY EXPRESSION ASSIGNMENT PATTERN**: To write expressions that contain single-quoted layer/effect names and runtime variables, wrap the JS string literal in escaped double quotes \`\\"\` and use single quotes (\`'\`) inside for target names, performing runtime string concatenation in After Effects.
+    - Example: \`var revExpr = \\"var s = thisComp.layer('\\" + controlName + \\"').effect('Simulation Speed')('Slider'); time * s * \\" + speedVal + \\";\\";\`
+    - When parsed by JSON, this decodes to perfectly valid ExtendScript: \`var revExpr = "var s = thisComp.layer('" + controlName + "').effect('Simulation Speed')('Slider'); time * s * " + speedVal + ";";\` which runs flawlessly!
 - **THE ABSOLUTE STRING ESCAPING GOLDEN RULE**: When writing After Effects expressions (which are themselves string literals inside your script):
   * NEVER write real newlines or \`+\\n\` / \`+\\\\\\\n\` inside a string literal value. Keep the entire expression on a single, continuous line to prevent ExtendScript engine parsing/syntax errors.
   * Example of a correct, robust, single-line expression assignment:
-    \`var expr = 'var speed = thisComp.layer("[Solar System] Controls").effect("Simulation Speed")("Slider"); time * speed * 1.5;';\`
+    \`var expr = \\"var speed = thisComp.layer('[Solar System] Controls').effect('Simulation Speed')('Slider'); time * speed * 1.5;\\";\`
     \`ArcEditor.setPropertyExpression(orbitNull.id, 'Rotation', expr);\`
 
 *** STRICT ES3 LEGACY JS ENGINE RULES ***
@@ -674,7 +679,7 @@ async function runAgenticExecutionLoop(userText) {
                     // LLM replied without code blocks (informational answer)
                     if (stateModifiedSinceLastCapture) {
                         writeToDebugLog("Auto-Verification Intercept", "State was modified but no frame was captured. Automatically capturing active frame for validation...");
-                        
+
                         // 1. Show feedback in UI that verification is in progress
                         aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
                             `<div class="active-turn-container">` +
@@ -713,7 +718,7 @@ async function runAgenticExecutionLoop(userText) {
                             });
 
                             capturedFrameDataDuringLoop = null; // Reset for next potential loop turn
-                            
+
                             // Force loop to continue so the LLM receives the image and verifies it!
                             continue;
                         } else {
@@ -959,7 +964,7 @@ async function executeToolCalls(jsonStr) {
                     if (Object.prototype.hasOwnProperty.call(installedEffects, category)) {
                         const list = installedEffects[category];
                         if (Array.isArray(list)) {
-                            const filtered = list.filter(fx => 
+                            const filtered = list.filter(fx =>
                                 (fx.displayName && fx.displayName.toLowerCase().indexOf(keyword) !== -1) ||
                                 (fx.matchName && fx.matchName.toLowerCase().indexOf(keyword) !== -1)
                             );
@@ -1469,6 +1474,6 @@ function stopAgentExecution() {
     if (typeof setUIReadyState === "function") {
         setUIReadyState(true);
     }
-    
+
     addSystemMessage("Execution stopped by user.");
 }
