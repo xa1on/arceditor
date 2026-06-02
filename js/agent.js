@@ -28,11 +28,15 @@ You are helping the user automate compositions, edit/splice video assets, manage
   1. Use the \`getLayerProperties\` tool to fetch absolute property paths, matchNames, display names, and values.
   2. Blending modes are resolved dynamically at runtime on the host system (completely case-, space-, and punctuation-insensitive, supporting all 38 AE modes like \`"SUBTRACT"\`, \`"ADD"\`, \`"ALPHA_ADD"\`, etc.).
   3. If you ever supply an invalid or misspelled blend mode, the host throws a detailed ExtendScript error showing the complete list of supported blend modes on that specific system. This observation is returned directly to your ReAct loop, allowing you to self-correct in the next turn.
-  4. You can also write a brief 3-line exploratory script in one turn to inspect After Effects API globals, and then use the returned results in subsequent turns.
-- **DYNAMIC WORK VERIFICATION PRINCIPLE**: Always ensure your modifications did exactly what was requested before concluding. Dynamically choose the most efficient verification strategy:
-  1. **Combined Inline Verification (Highly Recommended for simple tasks):** Run verification checks directly within the same ExtendScript block (e.g. verify that the layer or effect was successfully created or updated, and return validation details or throw an error if a validation check fails). Throwing an error (e.g. \`throw new Error("Verification failed: ...")\`) inside your ExtendScript automatically triggers a clean transaction rollback and lets you self-correct in the next turn.
-  2. **Separate Tool Verification:** Use a separate tool turn (like \`getTimelineContext\` or \`captureActiveFrame\`) only if the task is highly complex, multi-stage, or requires visual/rendered proof.
-  3. **Trivial Success:** If the action is basic and the ExtendScript execution returns a clean \`"Success"\` string, you may assume success and conclude without an extra verification turn.
+- **MANDATORY VISUAL WORK VERIFICATION PRINCIPLE**:
+  1. For ANY and ALL tasks that modify the active composition (e.g., creating solid/null/shape/text layers, applying effects, updating positions/transforms, changing blend modes, or splicing assets), you are strictly required to perform a visual verification turn before concluding.
+  2. You MUST call the `captureActiveFrame` tool (for static layout, positioning, scaling, and typography styling verification) or `captureCompositionSequence` (for timeline splicing, timing transitions, or animation sequence verification) immediately following your ExtendScript execution.
+  3. Once the rendered frame or sequence is returned as an Observation image, you must visually inspect the preview. Verify that:
+     * Text layer justification, font sizes, and layout coordinates are aligned and centered correctly.
+     * Shape vectors and solid layer dimensions completely fit the composition aspect ratio (proportionally matching the dimensions from `getTimelineContext`).
+     * Transition splices and keyframe easing align perfectly with the target timeline timings.
+  4. Only after visually confirming that your changes look exactly right are you allowed to finalize your answer and declare success. If you detect visual overlap, clipping, coordinate misalignment, or styling defects in the observation frame, you must run a self-correction turn to fix the script.
+  5. You may only skip the visual capture turn if the user's request is purely read-only, conversational, or informational (where no ExtendScript mutations occurred).
 - **SELF-CORRECTION TURNS BREVITY RULE**: If the previous turn failed with an ExtendScript or tool execution error, you MUST NOT output any design/hierarchy descriptions, massive architectural thoughts, or step-by-step reasoning. You are strictly forbidden from repeating the entire composition or rig plan. Instead, inside your \`<thinking>\` block, write only a single-sentence diagnosis of the error. Then, immediately close the thinking block and output ONLY the corrected JSON tool call block. This is critical to avoid reaching token limits, causing execution delays, and causing parsing/truncation failures.
 - Only after closing the \`</thinking>\` tag should you output your conversational text and After Effects ExtendScript JSX code blocks or JSON tool calls.
 - **MANDATORY TOOL FORMATTING REQUIREMENT**: Any and all JSON tool calls you output MUST be strictly wrapped in a markdown \`\`\`json and \`\`\` code block. NEVER output raw JSON outside of a markdown code block. The CEP extension parser relies on the presence of triple backticks and the "json" language identifier to extract and execute your tools; raw JSON text will be completely ignored and treated as conversational text.
@@ -445,6 +449,7 @@ async function runAgenticExecutionLoop(userText) {
         let finalLlmResponse = "";
         const executedActions = [];
         const completedTurns = [];
+        let stateModifiedSinceLastCapture = false;
 
         while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
             if (executionId !== currentExecutionId || isStopped) {
@@ -475,6 +480,46 @@ async function runAgenticExecutionLoop(userText) {
 
                 // Check for JSON tool calls only (ExtendScript is executed via the executeExtendScript tool)
                 const jsonBlock = extractJSONToolCalls(llmResponse);
+
+                if (jsonBlock) {
+                    try {
+                        const parsed = JSON.parse(jsonBlock);
+                        const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+                        let containsModifying = false;
+                        let containsCapture = false;
+                        for (let tIdx = 0; tIdx < toolCalls.length; tIdx++) {
+                            const tc = toolCalls[tIdx];
+                            if (tc && tc.tool) {
+                                const isReadOnly = [
+                                    "captureActiveFrame",
+                                    "captureCompositionSequence",
+                                    "getTimelineContext",
+                                    "getInstalledEffects",
+                                    "searchInstalledEffects",
+                                    "getLayerProperties",
+                                    "selectLayers",
+                                    "switchComposition",
+                                    "setPlayheadTime",
+                                    "undoLastAction"
+                                ].indexOf(tc.tool) !== -1;
+                                if (!isReadOnly) {
+                                    containsModifying = true;
+                                }
+                                if (tc.tool === "captureActiveFrame" || tc.tool === "captureCompositionSequence") {
+                                    containsCapture = true;
+                                }
+                            }
+                        }
+                        if (containsModifying) {
+                            stateModifiedSinceLastCapture = true;
+                        }
+                        if (containsCapture) {
+                            stateModifiedSinceLastCapture = false;
+                        }
+                    } catch (e) {
+                        stateModifiedSinceLastCapture = true; // Fallback to safe side
+                    }
+                }
 
                 if (jsonBlock) {
                     assistantMsg.isIntermediate = true;
@@ -627,6 +672,56 @@ async function runAgenticExecutionLoop(userText) {
                     continue; // Run next loop turn immediately
                 } else {
                     // LLM replied without code blocks (informational answer)
+                    if (stateModifiedSinceLastCapture) {
+                        writeToDebugLog("Auto-Verification Intercept", "State was modified but no frame was captured. Automatically capturing active frame for validation...");
+                        
+                        // 1. Show feedback in UI that verification is in progress
+                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                            `<div class="active-turn-container">` +
+                            formatMarkdown(llmResponse) +
+                            `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Verifying timeline canvas changes...</div>` +
+                            `</div>`;
+                        if (typeof scrollToBottom === "function") scrollToBottom();
+
+                        // 2. Perform the frame capture
+                        const base64Data = await captureCompositionFrame(true);
+                        if (base64Data) {
+                            capturedFrameDataDuringLoop = base64Data;
+                            stateModifiedSinceLastCapture = false; // Reset the flag since we've now provided a capture
+
+                            // 3. Inject the observation message with the image to prompt the LLM
+                            const contentParts = [
+                                { type: "text", text: `[System Verification Observation]: You have modified the composition but did not request a visual capture to inspect your changes. The system has automatically captured the active frame. Please analyze this attached canvas frame to visually verify that all layout coordinates, typography styles, shape sizes, colors, and blend modes are perfectly aligned and correct.\n\n- If everything looks correct: please summarize your changes and finalize your response to the user.\n- If you spot any layout bugs, rendering defects, or alignment issues: execute a corrected ExtendScript to fix them before finalizing.` }
+                            ];
+                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
+
+                            const obsMsg = {
+                                role: "user",
+                                content: contentParts,
+                                isIntermediate: true
+                            };
+                            activeContext.push(obsMsg);
+                            chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+
+                            // Add a successful verification turn to completedTurns
+                            completedTurns.push({
+                                type: "success",
+                                turnNum: completedTurns.length + 1,
+                                turnTitle: "Visual verification frame captured",
+                                llmResponse: llmResponse,
+                                observations: "Success: Canvas frame automatically captured and attached for visual inspection."
+                            });
+
+                            capturedFrameDataDuringLoop = null; // Reset for next potential loop turn
+                            
+                            // Force loop to continue so the LLM receives the image and verifies it!
+                            continue;
+                        } else {
+                            // If capture failed, degrade gracefully as agreed
+                            writeToDebugLog("Auto-Verification Warning", "Failed to capture active frame during intercept. Proceeding to finalize completion.");
+                        }
+                    }
+
                     isCompleted = true;
                     aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) + formatMarkdown(llmResponse);
                     if (typeof scrollToBottom === "function") scrollToBottom();
