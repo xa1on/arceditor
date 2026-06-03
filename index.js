@@ -73,7 +73,12 @@ function initUI() {
     // Quick Chips
     const chipCapture = document.getElementById("chip-capture");
 
-    btnSettings.addEventListener("click", () => toggleSettingsDrawer(true));
+    btnSettings.addEventListener("click", () => {
+        toggleSettingsDrawer(true);
+        if (typeof populateAndQueryModels === "function") {
+            populateAndQueryModels();
+        }
+    });
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     formSettings.addEventListener("submit", saveSettings);
 

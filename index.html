@@ -142,8 +142,11 @@
                         </div>
 
                         <div class="field-group">
-                            <label for="setting-model">Model Name</label>
-                            <input type="text" id="setting-model" class="form-input" placeholder="e.g. qwen2.5-coder-7b">
+                            <label for="setting-model-select">Model Name</label>
+                            <select id="setting-model-select" class="form-input" style="margin-bottom: 4px;">
+                                <option value="">Select a model...</option>
+                            </select>
+                            <input type="text" id="setting-model" class="form-input hidden" placeholder="Enter custom model name">
                         </div>
 
                         <div class="field-group">
