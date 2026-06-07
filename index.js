@@ -202,6 +202,26 @@ ${code}`;
         }
     });
 
+    // Welcome Chat Input Auto-resize, Enter key, and Send button bindings
+    const welcomeChatInput = document.getElementById("welcome-chat-input");
+    const welcomeBtnSend = document.getElementById("welcome-btn-send");
+    if (welcomeChatInput && welcomeBtnSend) {
+        welcomeChatInput.addEventListener("input", function () {
+            this.style.height = "auto";
+            this.style.height = (this.scrollHeight - 6) + "px";
+            welcomeBtnSend.disabled = !this.value.trim();
+        });
+        
+        welcomeChatInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                triggerWelcomeUserMessage();
+            }
+        });
+        
+        welcomeBtnSend.addEventListener("click", triggerWelcomeUserMessage);
+    }
+
     // Chat Sessions Dropdown Selector
     const selectSession = document.getElementById("select-chat-session");
     if (selectSession) {
@@ -349,23 +369,104 @@ function switchTab(tab) {
     document.getElementById(`pane-${tab}`).classList.add("active");
 }
 
-function triggerUserMessage() {
-    const input = document.getElementById("chat-input");
-    const userText = input.value.trim();
+function sendUserMessage(userText, isFromWelcome = false) {
     if (!userText || isExecuting) return;
 
     window._userToggledReasoning = false;
     window._userReasoningState = false;
 
+    if (isFromWelcome) {
+        toggleWelcomeScreen(false, true);
+    } else {
+        toggleWelcomeScreen(false, false);
+    }
+
     addBubble("user", userText, attachedFrames);
-    input.value = "";
-    input.style.height = "auto";
+    
+    // Clear inputs
+    const mainInput = document.getElementById("chat-input");
+    const welcomeInput = document.getElementById("welcome-chat-input");
+    if (mainInput) {
+        mainInput.value = "";
+        mainInput.style.height = "auto";
+    }
+    if (welcomeInput) {
+        welcomeInput.value = "";
+        welcomeInput.style.height = "auto";
+    }
 
     isExecuting = true;
     setUIReadyState(false);
 
     runAgenticExecutionLoop(userText);
 }
+
+function triggerUserMessage() {
+    const input = document.getElementById("chat-input");
+    sendUserMessage(input.value.trim(), false);
+}
+
+function triggerWelcomeUserMessage() {
+    const input = document.getElementById("welcome-chat-input");
+    sendUserMessage(input.value.trim(), true);
+}
+
+function toggleWelcomeScreen(isEmpty, animate = false) {
+    const welcomeScreen = document.getElementById("welcome-screen");
+    const chatMessages = document.getElementById("chat-messages");
+    const footer = document.querySelector("footer.app-footer");
+    
+    if (isEmpty) {
+        if (welcomeScreen) {
+            welcomeScreen.classList.remove("hidden");
+            welcomeScreen.classList.remove("fade-out");
+        }
+        if (chatMessages) chatMessages.classList.add("hidden");
+        if (footer) footer.classList.add("hidden");
+    } else {
+        if (animate && welcomeScreen && !welcomeScreen.classList.contains("hidden")) {
+            // Apply fade transition
+            welcomeScreen.classList.add("fade-out");
+            
+            if (chatMessages) {
+                chatMessages.classList.remove("hidden");
+                chatMessages.classList.add("fade-in-start");
+            }
+            if (footer) {
+                footer.classList.remove("hidden");
+                footer.classList.add("fade-in-start");
+            }
+            
+            // Force repaint
+            welcomeScreen.offsetHeight;
+            
+            if (chatMessages) chatMessages.classList.remove("fade-in-start");
+            if (footer) footer.classList.remove("fade-in-start");
+            
+            setTimeout(() => {
+                welcomeScreen.classList.add("hidden");
+                welcomeScreen.classList.remove("fade-out");
+            }, 200);
+        } else {
+            // Instant transition
+            if (welcomeScreen) {
+                welcomeScreen.classList.add("hidden");
+                welcomeScreen.classList.remove("fade-out");
+            }
+            if (chatMessages) {
+                chatMessages.classList.remove("hidden");
+                chatMessages.classList.remove("fade-in-start");
+            }
+            if (footer) {
+                footer.classList.remove("hidden");
+                footer.classList.remove("fade-in-start");
+            }
+        }
+    }
+}
+
+// Assign to window for settings.js access
+window.toggleWelcomeScreen = toggleWelcomeScreen;
 
 function scrollToBottom(force = false) {
     const scroller = document.getElementById("chat-messages");
@@ -631,6 +732,8 @@ function setUIReadyState(ready) {
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     const btnSettings = document.getElementById("btn-settings");
     const btnInspectComp = document.getElementById("btn-inspect-comp");
+    const welcomeInput = document.getElementById("welcome-chat-input");
+    const welcomeBtnSend = document.getElementById("welcome-btn-send");
 
     if (chatInput) {
         chatInput.disabled = !ready;
@@ -640,16 +743,32 @@ function setUIReadyState(ready) {
             chatInput.placeholder = "Ask Arc to edit, splice, or animate...";
         }
     }
+    
+    if (welcomeInput) {
+        welcomeInput.disabled = !ready;
+        if (!ready) {
+            welcomeInput.placeholder = "Agent is active... please wait";
+        } else {
+            welcomeInput.placeholder = "Ask Arc to edit, splice, or animate...";
+        }
+    }
+
     const btnStop = document.getElementById("btn-stop");
     if (ready) {
         if (btnSend) {
             btnSend.classList.remove("hidden");
             btnSend.disabled = !chatInput.value.trim();
         }
+        if (welcomeBtnSend) {
+            welcomeBtnSend.disabled = !welcomeInput || !welcomeInput.value.trim();
+        }
         if (btnStop) btnStop.classList.add("hidden");
     } else {
         if (btnSend) btnSend.classList.add("hidden");
         if (btnStop) btnStop.classList.remove("hidden");
+        if (welcomeBtnSend) {
+            welcomeBtnSend.disabled = true;
+        }
     }
     if (selectSession) selectSession.disabled = !ready;
     if (btnDeleteSession) btnDeleteSession.disabled = !ready;

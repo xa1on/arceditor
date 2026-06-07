@@ -227,13 +227,7 @@ function loadSessionHistory(sessionId) {
     // Clear Chat Scroller and re-render messages!
     const scroller = document.getElementById("chat-messages");
     if (scroller) {
-        scroller.innerHTML = `
-            <div class="message system-msg">
-                <div class="message-content">
-                    <p>ArcEditor initialized.</p>
-                </div>
-            </div>
-        `;
+        scroller.innerHTML = "";
 
         // Re-render chat bubbles from history, filtering out intermediate technical turns!
         chatHistory.forEach(msg => {
@@ -269,6 +263,10 @@ function loadSessionHistory(sessionId) {
     // Sync selection in dropdown UI
     const select = document.getElementById("select-chat-session");
     if (select) select.value = activeSessionId;
+
+    if (typeof toggleWelcomeScreen === "function") {
+        toggleWelcomeScreen(chatHistory.length === 0, false);
+    }
 
     updateContextSizeInfo();
 }
@@ -432,9 +430,13 @@ async function fetchModelsForProvider(provider, url, key) {
             }
         }
 
-        const allModels = Array.from(new Set([...models, ...presets[provider]]));
-        cachedModels[provider] = allModels;
-        return allModels;
+        if (models && models.length > 0) {
+            cachedModels[provider] = models;
+            return models;
+        } else {
+            cachedModels[provider] = presets[provider];
+            return presets[provider];
+        }
     } catch (e) {
         console.warn(`[ArcEditor] Failed to fetch models for ${provider}:`, e);
         cachedModels[provider] = presets[provider];
