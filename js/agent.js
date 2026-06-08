@@ -50,7 +50,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
   * Only follow strictly what the user requests. Do not modify the state any more than necessary unless the user explicitly gives you creative control via a loose ended prompt.
      * For example, if the user gives you a simple task or strict prompt, do not over-engineer a solution and add things the user did not explicitly ask for, unless the language in the prompt encourages creativity or is open-ended. You are encouraged to, however, provide a few suggestions for what the user might want to do next.
   * When the user requests dynamic motion graphics or templated animations, avoid baking static keyframes on individual elements.
-  * Instead, create green parameter Nulls (e.g., "[RigName] Controls") with standard sliders ("Progress", "Duration", "Spread") to let animators easily tune visual timing.
+  * Instead, create green parameter Nulls (e.g., "[RigName] Controls") with standard sliders ("Progress", "Duration", "Spread") above the other layers to let animators easily tune visual timing. Don't hide the layer underneath the other layers, for accessibility, move this layer as high as you can.
   * Re-use existing control Nulls and effects in the composition. Avoid duplicating Null layers if they already exist in the timeline inspector payload.
   * Link parameters to target layers via clean expressions using the Progress slider method (\`ease(progress, 0, 100, start, end)\`), and keyframe the slider with \`ArcEditor.setKeyframes\` so it runs out-of-the-box.
 
@@ -289,9 +289,9 @@ Layer Referencing (Avoid Fragile Indexes!):
      * \`effectDisplayName\`: (Optional) String display name.
    - Returns: The created Effect object.
 
-3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
+ 3. \`ArcEditor.setPropertyValue(layerRef, propPath, value, time)\`
    - Description: A UNIFIED, OMNIPOTENT PROPERTY API. Sets static or keyframe values. Under the hood, it automatically intercepts and sets:
-     1. Native Layer Fields (e.g. \`"Name"\`, \`"Enabled"\` [sets layer visibility!], \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
+     1. Native Layer Fields (e.g. \`"Name"\`, \`"SourceName"\` or \`"Source_Name"\` [renames underlying solid/footage source asset!], \`"Enabled"\` [sets layer visibility!], \`"Locked"\`, \`"Selected"\`, \`"InPoint"\`, \`"OutPoint"\`, \`"StartTime"\`, \`"Stretch"\`, \`"Comment"\`, \`"ThreeDLayer"\`, \`"GuideLayer"\`, \`"MotionBlur"\`, \`"AdjustmentLayer"\`, \`"Parent"\` [pass parent layerRef or null to unparent], \`"BlendMode"\` [supports any case/space/punctuation-insensitive native mode, e.g. \`\"SUBTRACT\"\`, \`\"ADD\"\`, \`\"ALPHA_ADD\"\`, \`\"SCREEN\"\`, \`\"MULTIPLY\"\`, \`\"NORMAL\"\`]).
      2. Footage/Solid source properties (e.g. \`"Color"\` / \`"SolidColor"\` [pass \`[R, G, B]\` normalized color array like \`[1, 1, 1]\` for white]).
      3. Standard timeline Property objects (e.g. \`"Position"\`, \`"Opacity"\`, or path arrays like \`["Effects", "Fast Box Blur", "Blur Radius"]\`).
      4. Visibility of individual sub-elements like shape groups, vector shapes, masks, and effects by setting \`"Enabled"\` at the end of deep property paths (e.g., \`["Contents", "Rectangle Group", "Enabled"]\`).
@@ -322,6 +322,13 @@ Layer Referencing (Avoid Fragile Indexes!):
 
 7. \`ArcEditor.trimLayer(layerRef, inPoint, outPoint, startTime)\`
    - Description: Sets layer inPoint, outPoint, and timeline startTime in seconds.
+
+7a. \`ArcEditor.moveLayer(layerRef, position, relativeToLayerRef)\`
+    - Description: Reorganizes the layer order (index) in the timeline stack.
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index to move.
+      * \`position\`: Target position string (\`"top"\` or \`"beginning"\` to move to top; \`"bottom"\` or \`"end"\` to move to bottom; \`"before"\` or \`"above"\` to place above reference layer; \`"after"\` or \`"below"\` to place below reference layer).
+      * \`relativeToLayerRef\`: (Optional) Reference layer ID, name, or index. Required if position is \`"before"\`, \`"above"\`, \`"after"\`, or \`"below"\`.
 
 8. \`ArcEditor.precompose(layerRefs, precompName, moveAllAttributes)\`
    - Description: Groups selected layers into a precomposition.
@@ -387,6 +394,7 @@ Layer Referencing (Avoid Fragile Indexes!):
       * \`assetRef\`: Project item ID (integer) or exact item name string (e.g. \`"logo.png"\`).
       * \`properties\`: (Optional) Configuration JSON object supporting any subset of these keys:
         - \`name\`: (Optional) String custom layer name.
+        - \`sourceName\` / \`source_name\`: (Optional) String custom name for the original source asset in the project.
         - \`startTime\`: (Optional) Number time in seconds to place layer inPoints on the timeline.
         - \`inPoint\`: (Optional) Number footage inPoint.
         - \`outPoint\`: (Optional) Number footage outPoint.
@@ -1260,7 +1268,7 @@ function tryFormatToolCall(code, isStreaming) {
                         .replace(/&/g, "&amp;")
                         .replace(/</g, "&lt;")
                         .replace(/>/g, "&gt;");
-                    
+
                     let displayHtml = "";
                     if (key === "script" || valStr.indexOf("\n") !== -1) {
                         displayHtml = `<pre class="param-value-code"><code>${escapedValStr}</code></pre>`;

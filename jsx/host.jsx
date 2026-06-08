@@ -185,6 +185,7 @@ var ArcInspector = {
                 index: layer.index,
                 id: layer.id,
                 name: layer.name,
+                sourceName: (layer.source && typeof layer.source.name !== "undefined") ? layer.source.name : "",
                 type: layerType,
                 selected: layer.selected,
                 enabled: layer.enabled,
@@ -462,6 +463,9 @@ var ArcEditor = {
         if (type === "Null") {
             layer = comp.layers.addNull(comp.duration);
             layer.name = name;
+            if (layer.source && typeof layer.source.name !== "undefined") {
+                layer.source.name = name;
+            }
         } else if (type === "Text") {
             layer = comp.layers.addText(name);
         } else if (type === "Shape") {
@@ -634,6 +638,13 @@ var ArcEditor = {
             if (lowerPath === "name") {
                 layer.name = String(value);
                 return true;
+            }
+            if (lowerPath === "sourcename" || lowerPath === "source_name") {
+                if (layer.source && typeof layer.source.name !== "undefined") {
+                    layer.source.name = String(value);
+                    return true;
+                }
+                throw new Error("Layer does not have a source to rename.");
             }
             if (lowerPath === "enabled") {
                 layer.enabled = (value === true || value === 1 || String(value).toLowerCase() === "true");
@@ -815,6 +826,40 @@ var ArcEditor = {
         if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
         if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
         if (outPoint !== undefined && outPoint !== null) layer.outPoint = outPoint;
+        return true;
+    },
+
+    /**
+     * Reorganizes the layer ordering (index) in the composition.
+     * 
+     * @param {string|number} layerRef Layer unique ID, name, or index to move.
+     * @param {string} position Target position: "top", "bottom", "before", or "after".
+     * @param {string|number} relativeToLayerRef (Optional) Reference layer if position is "before" or "after".
+     */
+    moveLayer: function (layerRef, position, relativeToLayerRef) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+        var layer = this.resolveLayer(layerRef);
+        if (!layer) throw new Error("Layer to move not found: " + layerRef);
+
+        var cleanPos = String(position).toLowerCase();
+        if (cleanPos === "top" || cleanPos === "beginning") {
+            layer.moveToBeginning();
+        } else if (cleanPos === "bottom" || cleanPos === "end") {
+            layer.moveToEnd();
+        } else if (cleanPos === "before" || cleanPos === "above") {
+            if (!relativeToLayerRef) throw new Error("Missing relativeToLayerRef parameter for 'before' position.");
+            var relativeLayer = this.resolveLayer(relativeToLayerRef);
+            if (!relativeLayer) throw new Error("Relative reference layer not found: " + relativeToLayerRef);
+            layer.moveBefore(relativeLayer);
+        } else if (cleanPos === "after" || cleanPos === "below") {
+            if (!relativeToLayerRef) throw new Error("Missing relativeToLayerRef parameter for 'after' position.");
+            var relativeLayer = this.resolveLayer(relativeToLayerRef);
+            if (!relativeLayer) throw new Error("Relative reference layer not found: " + relativeToLayerRef);
+            layer.moveAfter(relativeLayer);
+        } else {
+            throw new Error("Invalid move position: " + position + ". Supported options: 'top', 'bottom', 'before', 'after'.");
+        }
         return true;
     },
 
@@ -1163,6 +1208,12 @@ var ArcEditor = {
             var props = properties || {};
             if (props.name) {
                 layer.name = props.name;
+            }
+            if (props.sourceName || props.source_name) {
+                var sName = props.sourceName || props.source_name;
+                if (layer.source && typeof layer.source.name !== "undefined") {
+                    layer.source.name = String(sName);
+                }
             }
 
             if (props.startTime !== undefined && props.startTime !== null) layer.startTime = Number(props.startTime);
