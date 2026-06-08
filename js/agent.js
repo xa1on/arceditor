@@ -1112,14 +1112,102 @@ async function executeToolCalls(jsonStr) {
     return observations.join("\n");
 }
 
-function tryFormatToolCall(code) {
+function repairJSON(jsonStr) {
+    let repaired = jsonStr.trim();
+    if (!repaired) return null;
+
+    // Remove any trailing commas or commas followed by space at the end
+    repaired = repaired.replace(/,\s*$/g, '');
+    repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+
+    let structure = [];
+    let inString = false;
+    let escaping = false;
+    let lastValidIndex = repaired.length;
+
+    for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+        if (escaping) {
+            escaping = false;
+            continue;
+        }
+        if (char === '\\') {
+            escaping = true;
+            continue;
+        }
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+        if (!inString) {
+            if (char === '{' || char === '[') {
+                structure.push(char);
+            } else if (char === '}') {
+                if (structure.length > 0 && structure[structure.length - 1] === '{') {
+                    structure.pop();
+                    if (structure.length === 0) {
+                        lastValidIndex = i + 1;
+                    }
+                }
+            } else if (char === ']') {
+                if (structure.length > 0 && structure[structure.length - 1] === '[') {
+                    structure.pop();
+                    if (structure.length === 0) {
+                        lastValidIndex = i + 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if (structure.length === 0) {
+        repaired = repaired.substring(0, lastValidIndex);
+    } else {
+        if (inString) {
+            if (escaping) {
+                repaired = repaired.substring(0, repaired.length - 1);
+            }
+            repaired += '"';
+        }
+
+        repaired = repaired.trim().replace(/,\s*$/g, '');
+
+        while (structure.length > 0) {
+            const openChar = structure.pop();
+            if (openChar === '{') {
+                repaired += '}';
+            } else if (openChar === '[') {
+                repaired += ']';
+            }
+        }
+    }
+
+    try {
+        return JSON.parse(repaired);
+    } catch (e) {
+        return null;
+    }
+}
+
+function tryFormatToolCall(code, isStreaming) {
     // Unescape HTML entities first (since formatMarkdown escapes them before processing code blocks)
     const cleanCode = code
         .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">");
     try {
-        const parsed = JSON.parse(cleanCode);
+        let parsed = null;
+        if (isStreaming) {
+            parsed = repairJSON(cleanCode);
+        } else {
+            try {
+                parsed = JSON.parse(cleanCode);
+            } catch (e) {
+                parsed = repairJSON(cleanCode);
+            }
+        }
+        if (!parsed) return null;
+
         const calls = Array.isArray(parsed) ? parsed : [parsed];
 
         // Validate if this actually looks like a tool call sequence
@@ -1136,11 +1224,22 @@ function tryFormatToolCall(code) {
                 paramKeys.forEach(key => {
                     let valStr = "";
                     if (typeof params[key] === "object" && params[key] !== null) {
-                        valStr = JSON.stringify(params[key]);
+                        valStr = JSON.stringify(params[key], null, 2);
                     } else {
                         valStr = String(params[key]);
                     }
-                    paramsHtml += `<tr><td class="param-key">${key}</td><td class="param-value">${valStr}</td></tr>`;
+                    const escapedValStr = valStr
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;");
+                    
+                    let displayHtml = "";
+                    if (key === "script" || valStr.indexOf("\n") !== -1) {
+                        displayHtml = `<pre class="param-value-code"><code>${escapedValStr}</code></pre>`;
+                    } else {
+                        displayHtml = escapedValStr;
+                    }
+                    paramsHtml += `<tr><td class="param-key">${key}</td><td class="param-value">${displayHtml}</td></tr>`;
                 });
                 paramsHtml += `</table>`;
             } else {
@@ -1153,7 +1252,7 @@ function tryFormatToolCall(code) {
             html += `
                 <div class="tool-call-card" id="${cardId}">
                     <div class="tool-call-header">
-                        <span class="tool-badge">Tool Call</span>
+                        <span class="tool-badge">Tool Call${isStreaming ? ' (Streaming...)' : ''}</span>
                         <span class="tool-name">${call.tool}</span>
                         <button class="toggle-tool-view-btn">Show JSON</button>
                     </div>
@@ -1174,6 +1273,7 @@ function tryFormatToolCall(code) {
         return null;
     }
 }
+
 
 function renderTurnsHtml(turns) {
     if (!turns || turns.length === 0) return "";
@@ -1226,29 +1326,63 @@ function formatMarkdown(text) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
 
-    // Extract pre/code blocks upfront to prevent formatting inside them
     const preBlocks = [];
-    html = html.replace(/```(javascript|js|extendscript|jsx|json)?\n([\s\S]*?)\n```/g, (match, lang, code) => {
-        if (lang === "json") {
-            const formatted = tryFormatToolCall(code);
-            if (formatted) {
-                preBlocks.push(formatted);
-                return `__PRE_BLOCK_${preBlocks.length - 1}__`;
+    const parts = html.split("```");
+    let rebuiltHtml = "";
+
+    for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 0) {
+            rebuiltHtml += parts[i];
+        } else {
+            const block = parts[i];
+            const isClosed = i < parts.length - 1;
+
+            let lang = "";
+            let code = block;
+
+            const firstNewline = block.indexOf("\n");
+            if (firstNewline !== -1) {
+                lang = block.substring(0, firstNewline).trim().toLowerCase();
+                code = block.substring(firstNewline + 1);
+            } else {
+                const possibleLang = block.trim().toLowerCase();
+                const knownLangs = ["json", "javascript", "js", "extendscript", "jsx", "python", "py", "html", "css", "bash", "sh", "txt", "markdown", "md"];
+                if (knownLangs.indexOf(possibleLang) !== -1 || possibleLang === "") {
+                    lang = possibleLang;
+                    code = "";
+                }
             }
+
+            let renderedBlock = "";
+            if (lang === "json") {
+                const formatted = tryFormatToolCall(code, !isClosed);
+                if (formatted) {
+                    renderedBlock = formatted;
+                } else {
+                    renderedBlock = `<pre class="code-viewport"><code>${code}</code></pre>`;
+                }
+            } else if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
+                renderedBlock = `
+                <details class="jsx-code-details" ${!isClosed ? 'open' : ''}>
+                    <summary class="jsx-code-summary">ExtendScript JSX Code Block${!isClosed ? ' (Streaming...)' : ''}</summary>
+                    <pre class="code-viewport"><code>${code}</code></pre>
+                </details>
+                `;
+            } else {
+                let displayCode = code;
+                if (firstNewline === -1) {
+                    displayCode = block;
+                }
+                renderedBlock = `<pre class="code-viewport"><code>${displayCode}</code></pre>`;
+            }
+
+            preBlocks.push(renderedBlock);
+            rebuiltHtml += `__PRE_BLOCK_${preBlocks.length - 1}__`;
         }
-        if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
-            const collapsibleHtml = `
-            <details class="jsx-code-details">
-                <summary class="jsx-code-summary">ExtendScript JSX Code Block</summary>
-                <pre class="code-viewport"><code>${code}</code></pre>
-            </details>
-            `;
-            preBlocks.push(collapsibleHtml);
-            return `__PRE_BLOCK_${preBlocks.length - 1}__`;
-        }
-        preBlocks.push(`<pre class="code-viewport"><code>${code}</code></pre>`);
-        return `__PRE_BLOCK_${preBlocks.length - 1}__`;
-    });
+    }
+
+    html = rebuiltHtml;
+
 
 
     // Process the text paragraph by paragraph

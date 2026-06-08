@@ -1016,6 +1016,7 @@ select.form-input {
     border-collapse: collapse;
     font-family: var(--font-mono);
     font-size: 9.5px;
+    table-layout: fixed;
 }
 
 .tool-params-table tr {
@@ -1038,6 +1039,26 @@ select.form-input {
     color: #ce9178;
     padding: 3px 0;
     word-break: break-all;
+}
+
+.param-value-code {
+    margin: 4px 0 0 0 !important;
+    background: #0c0c0c !important;
+    padding: 6px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-sm) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 9.5px !important;
+    color: #ce9178 !important;
+    white-space: pre-wrap !important;
+    overflow-x: auto !important;
+    word-break: break-all !important;
+}
+
+.param-value-code code {
+    background: none !important;
+    padding: 0 !important;
+    color: inherit !important;
 }
 
 .tool-no-params {
