@@ -452,7 +452,7 @@ var ArcEditor = {
      * @param {string} name Custom name for the new layer.
      * @param {Array} size Optional [width, height] array. Defaults to comp size.
      */
-    createLayer: function (type, name, size, color) {
+    createLayer: function (type, name, size, color, options) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
@@ -495,6 +495,18 @@ var ArcEditor = {
         } else {
             throw new Error("Unsupported layer type: " + type);
         }
+
+        // Post-creation configuration from options
+        if (options) {
+            if (options.startTime !== undefined && options.startTime !== null) layer.startTime = Number(options.startTime);
+            if (options.inPoint !== undefined && options.inPoint !== null) layer.inPoint = Number(options.inPoint);
+            if (options.outPoint !== undefined && options.outPoint !== null) {
+                layer.outPoint = Number(options.outPoint);
+            } else if (options.duration !== undefined && options.duration !== null) {
+                layer.outPoint = layer.inPoint + Number(options.duration);
+            }
+        }
+
         return layer;
     },
 
@@ -670,6 +682,10 @@ var ArcEditor = {
                 layer.startTime = Number(value);
                 return true;
             }
+            if (lowerPath === "duration" || lowerPath === "length") {
+                layer.outPoint = layer.inPoint + Number(value);
+                return true;
+            }
             if (lowerPath === "stretch") {
                 layer.stretch = Number(value);
                 return true;
@@ -817,7 +833,7 @@ var ArcEditor = {
     /**
      * Trims layer timing and start times on timeline.
      */
-    trimLayer: function (layerRef, inPoint, outPoint, startTime) {
+    trimLayer: function (layerRef, inPoint, outPoint, startTime, duration) {
         var comp = app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
         var layer = this.resolveLayer(layerRef);
@@ -825,7 +841,11 @@ var ArcEditor = {
 
         if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
         if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
-        if (outPoint !== undefined && outPoint !== null) layer.outPoint = outPoint;
+        if (outPoint !== undefined && outPoint !== null) {
+            layer.outPoint = outPoint;
+        } else if (duration !== undefined && duration !== null) {
+            layer.outPoint = layer.inPoint + duration;
+        }
         return true;
     },
 
