@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     try {
         await loadChats();
+        initializeProjectSessions();
     } catch (e) {
         console.error("Failed to load chats:", e);
     }
