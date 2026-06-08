@@ -40,12 +40,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch (e) {
             console.error("Failed to sync project path:", e);
         }
-
-        try {
-            loadInstalledEffects();
-        } catch (e) {
-            console.error("Failed to load installed effects:", e);
-        }
     }, 2000);
 
     try {
@@ -54,8 +48,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.error("Failed to update context size:", e);
     }
 
-    // Auto-sync active AE project file path periodically
-    setInterval(syncProjectPath, 5000);
+    // Sync active AE project file path when the panel gets focus
+    window.addEventListener("focus", syncProjectPath);
 });
 
 // --- SECTION 8: USER INTERFACE RENDERERS & EVENT BINDINGS ---
@@ -372,6 +366,9 @@ function switchTab(tab) {
 
 function sendUserMessage(userText, isFromWelcome = false) {
     if (!userText || isExecuting) return;
+
+    // Sync project path on demand before starting agent loop
+    syncProjectPath();
 
     window._userToggledReasoning = false;
     window._userReasoningState = false;

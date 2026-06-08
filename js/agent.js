@@ -494,7 +494,8 @@ async function runAgenticExecutionLoop(userText) {
 
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                    const openTurnNums = getOpenTurnNums(aiBubble);
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
                         formatMarkdown(chunkText) +
                         `</div>`;
@@ -575,7 +576,8 @@ async function runAgenticExecutionLoop(userText) {
                     if (actionKey) {
                         if (executedActions.indexOf(actionKey) !== -1) {
                             console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
-                            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) + formatMarkdown(llmResponse) +
+                            const openTurnNums = getOpenTurnNums(aiBubble);
+                            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse) +
                                 `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
                             if (typeof scrollToBottom === "function") scrollToBottom();
                             isCompleted = true;
@@ -594,7 +596,8 @@ async function runAgenticExecutionLoop(userText) {
                     executedAnything = true;
                     toolTurns++;
                     updateConsolePane(jsonBlock);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                    const openTurnNums = getOpenTurnNums(aiBubble);
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
                         formatMarkdown(llmResponse) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
@@ -631,7 +634,8 @@ async function runAgenticExecutionLoop(userText) {
                             observations: toolObservations
                         });
 
-                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                        const openTurnNums = getOpenTurnNums(aiBubble);
+                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
                         if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -657,7 +661,9 @@ async function runAgenticExecutionLoop(userText) {
                     }
 
                     // Append observations to local context history and master history (handling multi-modal visual observations!)
+                    let turnImages = null;
                     if (capturedFrameDataDuringLoop) {
+                        turnImages = capturedFrameDataDuringLoop;
                         const contentParts = [
                             { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
                         ];
@@ -707,12 +713,14 @@ async function runAgenticExecutionLoop(userText) {
                         turnNum: completedTurns.length + 1,
                         turnTitle: turnTitle,
                         llmResponse: llmResponse,
-                        observations: observations
+                        observations: observations,
+                        images: turnImages
                     });
 
                     // Show feedback in UI and prepare next turn
                     const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                    const openTurnNums = getOpenTurnNums(aiBubble);
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                         (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -723,7 +731,8 @@ async function runAgenticExecutionLoop(userText) {
                         writeToDebugLog("Auto-Verification Intercept", "State was modified but no frame was captured. Automatically capturing active frame for validation...");
 
                         // 1. Show feedback in UI that verification is in progress
-                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+                        const openTurnNums = getOpenTurnNums(aiBubble);
+                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                             `<div class="active-turn-container">` +
                             formatMarkdown(llmResponse) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Verifying timeline canvas changes...</div>` +
@@ -756,7 +765,8 @@ async function runAgenticExecutionLoop(userText) {
                                 turnNum: completedTurns.length + 1,
                                 turnTitle: "Visual verification frame captured",
                                 llmResponse: llmResponse,
-                                observations: "Success: Canvas frame automatically captured and attached for visual inspection."
+                                observations: "Success: Canvas frame automatically captured and attached for visual inspection.",
+                                images: base64Data
                             });
 
                             capturedFrameDataDuringLoop = null; // Reset for next potential loop turn
@@ -770,7 +780,8 @@ async function runAgenticExecutionLoop(userText) {
                     }
 
                     isCompleted = true;
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) + formatMarkdown(llmResponse);
+                    const openTurnNums = getOpenTurnNums(aiBubble);
+                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
@@ -789,19 +800,22 @@ async function runAgenticExecutionLoop(userText) {
         }
 
         if (isStopped) {
-            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns) +
+            const openTurnNums = getOpenTurnNums(aiBubble);
+            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                 `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
                 `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
                 `Execution stopped by user.</div>`;
             if (typeof scrollToBottom === "function") scrollToBottom();
         } else {
             if (loopRetries >= maxRetries) {
-                aiBubble.querySelector(".message-content").innerHTML +=
+                const openTurnNums = getOpenTurnNums(aiBubble);
+                aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
             if (toolTurns >= maxToolTurns && !isCompleted) {
-                aiBubble.querySelector(".message-content").innerHTML +=
+                const openTurnNums = getOpenTurnNums(aiBubble);
+                aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
@@ -997,9 +1011,15 @@ async function executeToolCalls(jsonStr) {
                 observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
                 continue;
             } else if (toolName === "getInstalledEffects") {
+                if (!installedEffects || Object.keys(installedEffects).length === 0) {
+                    await loadInstalledEffects();
+                }
                 observations.push(`- Tool "getInstalledEffects": ${JSON.stringify(installedEffects)}`);
                 continue;
             } else if (toolName === "searchInstalledEffects") {
+                if (!installedEffects || Object.keys(installedEffects).length === 0) {
+                    await loadInstalledEffects();
+                }
                 const keyword = (params.keyword || "").toLowerCase();
                 const matched = {};
                 for (const category in installedEffects) {
@@ -1275,20 +1295,55 @@ function tryFormatToolCall(code, isStreaming) {
 }
 
 
-function renderTurnsHtml(turns) {
+function getOpenTurnNums(aiBubble) {
+    const openTurnNums = [];
+    if (aiBubble) {
+        const detailsElems = aiBubble.querySelectorAll(".agent-turn-details");
+        for (let j = 0; j < detailsElems.length; j++) {
+            const elem = detailsElems[j];
+            if (elem.hasAttribute("open")) {
+                const idMatch = elem.id.match(/details-turn-(\d+)/);
+                if (idMatch) {
+                    openTurnNums.push(parseInt(idMatch[1], 10));
+                }
+            }
+        }
+    }
+    return openTurnNums;
+}
+
+function renderTurnImagesHtml(images) {
+    if (!images) return "";
+    const imagesArray = Array.isArray(images) ? images : [images];
+    if (imagesArray.length === 0) return "";
+
+    let imgHtml = `<div class="bubble-images-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; margin-bottom: 6px;">`;
+    for (let i = 0; i < imagesArray.length; i++) {
+        imgHtml += `<div class="bubble-image-wrap" style="margin-top: 0;"><img src="data:image/png;base64,${imagesArray[i]}" alt="Turn capture ${i + 1}" /></div>`;
+    }
+    imgHtml += `</div>`;
+    return imgHtml;
+}
+
+function renderTurnsHtml(turns, openTurnNums) {
     if (!turns || turns.length === 0) return "";
     let html = "";
     for (let i = 0; i < turns.length; i++) {
         const turn = turns[i];
+        const isOpen = openTurnNums && openTurnNums.indexOf(turn.turnNum) !== -1;
+        const openAttr = isOpen ? " open" : "";
+        const imagesHtml = renderTurnImagesHtml(turn.images);
+
         if (turn.type === "failed") {
             html += `
-            <details class="agent-turn-details" style="border-color: var(--text-error);">
+            <details class="agent-turn-details" id="details-turn-${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
                 <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
                     <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turn.turnNum}</span>
                     <span class="turn-title" style="color: var(--text-error);">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
                     ${formatMarkdown(turn.llmResponse)}
+                    ${imagesHtml}
                     <div class="turn-observations">
                         <strong style="color: var(--text-error);">Error Observation:</strong>
                         <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${turn.observations}</pre>
@@ -1298,13 +1353,14 @@ function renderTurnsHtml(turns) {
             `;
         } else {
             html += `
-            <details class="agent-turn-details">
+            <details class="agent-turn-details" id="details-turn-${turn.turnNum}"${openAttr}>
                 <summary class="agent-turn-summary">
                     <span class="turn-index-badge">Turn ${turn.turnNum}</span>
                     <span class="turn-title">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
                     ${formatMarkdown(turn.llmResponse)}
+                    ${imagesHtml}
                     <div class="turn-observations">
                         <strong>Observations:</strong>
                         <pre class="observation-pre">${turn.observations}</pre>

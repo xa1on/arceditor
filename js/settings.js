@@ -122,12 +122,44 @@ async function loadChats() {
     }
 }
 
+function stripImagesForDisk(obj) {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj !== "object") return obj;
+
+    if (Array.isArray(obj)) {
+        var newArr = [];
+        for (var i = 0; i < obj.length; i++) {
+            newArr.push(stripImagesForDisk(obj[i]));
+        }
+        return newArr;
+    }
+
+    var copy = {};
+    for (var key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            if (key === "images" && (typeof obj[key] === "string" || Array.isArray(obj[key]))) {
+                copy[key] = null;
+            } else if (key === "image_url" && typeof obj[key] === "object" && obj[key] && typeof obj[key].url === "string") {
+                if (obj[key].url.indexOf("data:image/") === 0) {
+                    copy[key] = { url: "data:image/png;base64,[Base64 Image Omitted]" };
+                } else {
+                    copy[key] = stripImagesForDisk(obj[key]);
+                }
+            } else {
+                copy[key] = stripImagesForDisk(obj[key]);
+            }
+        }
+    }
+    return copy;
+}
+
 async function saveChats() {
     if (fs) {
         try {
             const chatsToSave = { ...allProjectChats };
             delete chatsToSave["Unsaved Project"];
-            await fs.promises.writeFile(chatsConfigPath, JSON.stringify(chatsToSave, null, 2), 'utf8');
+            const cleanedChats = stripImagesForDisk(chatsToSave);
+            await fs.promises.writeFile(chatsConfigPath, JSON.stringify(cleanedChats, null, 2), 'utf8');
         } catch (err) {
             console.error("Failed to save chats database to disk:", err);
         }
