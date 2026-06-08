@@ -5,25 +5,37 @@
  */
 
 :root {
-    --bg-base: #1c1c1c;         /* Standard AE dark workspace background */
-    --bg-surface: #232323;      /* Secondary dark panels */
-    --bg-input: #141414;        /* Input backgrounds */
-    --bg-tab-active: #3e3e3e;   /* Active UI items */
+    --bg-base: #1c1c1c;
+    /* Standard AE dark workspace background */
+    --bg-surface: #232323;
+    /* Secondary dark panels */
+    --bg-input: #141414;
+    /* Input backgrounds */
+    --bg-tab-active: #3e3e3e;
+    /* Active UI items */
     --bg-tab-hover: #353535;
-    
-    --border-color: #2b2b2b;    /* Crisp UI separation lines */
-    --border-focus: #4f4f4f;    /* Focus outlines */
-    
-    --text-primary: #d5d5d5;    /* Standard AE crisp light grey text */
-    --text-secondary: #8e8e8e;  /* Muted metadata labels */
-    --text-accent: #1473e6;     /* Adobe After Effects Blue Accent */
-    --text-warning: #ffb300;    /* Amber warning colors */
+
+    --border-color: #2b2b2b;
+    /* Crisp UI separation lines */
+    --border-focus: #4f4f4f;
+    /* Focus outlines */
+
+    --text-primary: #d5d5d5;
+    /* Standard AE crisp light grey text */
+    --text-secondary: #8e8e8e;
+    /* Muted metadata labels */
+    --text-accent: #1473e6;
+    /* Adobe After Effects Blue Accent */
+    --text-warning: #ffb300;
+    /* Amber warning colors */
     --text-error: #ff4444;
-    --text-success: #00c851;    /* Vibrant success green */
-    
+    --text-success: #00c851;
+    /* Vibrant success green */
+
     --font-sans: "Adobe Clean", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono", Consolas, monospace;
-    --border-radius-sm: 2px;    /* Boxy native feel */
+    --border-radius-sm: 2px;
+    /* Boxy native feel */
     --border-radius-md: 3px;
 }
 
@@ -37,7 +49,8 @@ body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 11px;            /* Muted compact font size matching AE panels */
+    font-size: 11px;
+    /* Muted compact font size matching AE panels */
     line-height: 1.4;
     height: 100vh;
     overflow: hidden;
@@ -165,11 +178,13 @@ body {
     width: 6px;
     height: 6px;
 }
+
 .chat-scroller::-webkit-scrollbar-thumb,
 .code-viewport::-webkit-scrollbar-thumb {
     background: #3a3a3a;
     border-radius: 0;
 }
+
 .chat-scroller::-webkit-scrollbar-track,
 .code-viewport::-webkit-scrollbar-track {
     background: var(--bg-input);
@@ -264,6 +279,7 @@ body {
 .message.ai p {
     margin-bottom: 4px;
 }
+
 .message.ai p:last-child {
     margin-bottom: 0;
 }
@@ -335,6 +351,7 @@ body {
     cursor: pointer;
     font-size: 10px;
 }
+
 .txt-btn:hover {
     color: var(--text-error);
 }
@@ -365,7 +382,8 @@ textarea.code-viewport {
     outline: none !important;
     padding: 12px !important;
     box-sizing: border-box !important;
-    color: #ce9178 !important; /* Premium string color for editing scripts */
+    color: #ce9178 !important;
+    /* Premium string color for editing scripts */
 }
 
 /* ATTACHMENT PREVIEW DOCK */
@@ -682,10 +700,15 @@ select.form-input {
 }
 
 @keyframes dots-pulse {
-    0%, 80%, 100% { 
+
+    0%,
+    80%,
+    100% {
         transform: scale(0);
         opacity: 0.35;
-    } 40% { 
+    }
+
+    40% {
         transform: scale(1.0);
         opacity: 1;
     }
@@ -732,18 +755,21 @@ select.form-input {
     margin: 10px 0 6px 0;
     color: var(--text-primary);
 }
+
 .message-content h2 {
     font-size: 12px;
     font-weight: 600;
     margin: 8px 0 4px 0;
     color: var(--text-primary);
 }
+
 .message-content h3 {
     font-size: 11px;
     font-weight: 600;
     margin: 6px 0 3px 0;
     color: var(--text-accent);
 }
+
 .message-content h4,
 .message-content h5,
 .message-content h6 {
@@ -752,6 +778,7 @@ select.form-input {
     margin: 6px 0 3px 0;
     color: var(--text-primary);
 }
+
 .bullet-item {
     padding-left: 12px;
     text-indent: -12px;
@@ -857,7 +884,7 @@ select.form-input {
     height: 100%;
     object-fit: contain;
     background-color: #242424;
-    background-image: 
+    background-image:
         linear-gradient(45deg, #1e1e1e 25%, transparent 25%, transparent 75%, #1e1e1e 75%, #1e1e1e),
         linear-gradient(45deg, #1e1e1e 25%, transparent 25%, transparent 75%, #1e1e1e 75%, #1e1e1e);
     background-size: 16px 16px;
@@ -1148,7 +1175,7 @@ select.form-input {
 }
 
 .welcome-logo {
-    width: 64px;
+    width: 48px;
     height: auto;
     object-fit: contain;
 }
@@ -1209,4 +1236,3 @@ select.form-input {
 .app-footer.fade-in-start {
     opacity: 0 !important;
 }
-
