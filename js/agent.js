@@ -1046,17 +1046,17 @@ async function executeToolCalls(jsonStr) {
                 continue;
             } else if (toolName === "setPlayheadTime") {
                 const serializedTime = typeof params.time === "string" ? `"${params.time.replace(/"/g, '\\"')}"` : params.time;
-                jsxCommand = `(function() { return ArcEditor.setPlayheadTime(${serializedTime}); })()`;
+                jsxCommand = `(function() { return $._com_arceditor_.ArcEditor.setPlayheadTime(${serializedTime}); })()`;
             } else if (toolName === "selectLayers") {
                 const refs = params.layerRefs !== undefined ? params.layerRefs : params.layerIndices;
                 const serializedRefs = typeof refs === "string" || typeof refs === "number" ? (typeof refs === "string" ? `"${refs.replace(/"/g, '\\"')}"` : refs) : JSON.stringify(refs);
-                jsxCommand = `(function() { return ArcEditor.selectLayers(${serializedRefs}, ${params.deselectOthers !== false}); })()`;
+                jsxCommand = `(function() { return $._com_arceditor_.ArcEditor.selectLayers(${serializedRefs}, ${params.deselectOthers !== false}); })()`;
             } else if (toolName === "switchComposition") {
                 const serializedCompRef = typeof params.compRef === "string" ? `"${params.compRef.replace(/"/g, '\\"')}"` : params.compRef;
-                jsxCommand = `(function() { return ArcEditor.switchComposition(${serializedCompRef}); })()`;
+                jsxCommand = `(function() { return $._com_arceditor_.ArcEditor.switchComposition(${serializedCompRef}); })()`;
             } else if (toolName === "getLayerProperties") {
                 const groupFilterVal = params.groupFilter ? `"${params.groupFilter.replace(/"/g, '\\"')}"` : "null";
-                jsxCommand = `ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
+                jsxCommand = `$._com_arceditor_.ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
             } else if (toolName === "executeExtendScript") {
                 const script = params.script;
                 jsxCommand = `(function() {

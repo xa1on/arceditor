@@ -125,7 +125,9 @@ async function loadChats() {
 async function saveChats() {
     if (fs) {
         try {
-            await fs.promises.writeFile(chatsConfigPath, JSON.stringify(allProjectChats, null, 2), 'utf8');
+            const chatsToSave = { ...allProjectChats };
+            delete chatsToSave["Unsaved Project"];
+            await fs.promises.writeFile(chatsConfigPath, JSON.stringify(chatsToSave, null, 2), 'utf8');
         } catch (err) {
             console.error("Failed to save chats database to disk:", err);
         }
