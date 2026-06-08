@@ -1,6 +1,6 @@
 # ArcEditor
 
-[![arceditorbanner|2560x720](assets/arceditorbanner.png)](https://github.com/xa1on/arceditor)
+<img class="trimmed-cover" src="assets/arceditor-header.png">
 
 ArcEditor is a context-aware AI co-pilot and editing harness built as a self-contained Adobe After Effects CEP Extension. It integrates a native dark theme HTML5 panel with an embedded Node.js execution loop to communicate with local models (via Lemonade) or cloud APIs (Gemini, OpenAI, Anthropic).
 
