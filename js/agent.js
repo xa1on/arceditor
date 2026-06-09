@@ -935,14 +935,12 @@ function writeToDebugLog(category, text) {
     }
 
     if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && typeof loggedText === "string") {
-        // Replace base64 data URIs (robust matching for standard/escaped characters up to quote or whitespace)
-        loggedText = loggedText.replace(/data:image\/[^;]+;base64,[^"'\s\r\n]+/g, "data:image/png;base64,[Base64 Image Data (Omitted)]");
-        // Replace JSON base64 payloads (e.g., "data": "iVBORw...")
-        loggedText = loggedText.replace(/"data":\s*"[^"]{100,}"/g, '"data": "[Base64 Image Data (Omitted)]"');
-        // Replace JSON "url": "data:image..." payloads
-        loggedText = loggedText.replace(/"url":\s*"data:image\/[^;]+;base64,[^"]+"/g, '"url": "data:image/png;base64,[Base64 Image Data (Omitted)]"');
-        // Replace any quoted base64 string (> 100 chars of base64-valid set) to prevent leaks in custom keys like images
-        loggedText = loggedText.replace(/"[A-Za-z0-9+/=\s\r\n\-_]{100,}"/g, '"[Base64 Image Data (Omitted)]"');
+        // Replace base64 data URIs (escaped or unescaped)
+        loggedText = loggedText.replace(/(\\*")data:image\/[^;]+;base64,[^"'\s\r\n\\]+(\\*")/g, '$1data:image/png;base64,[Base64 Image Data (Omitted)]$2');
+        // Replace any raw base64 data URIs not inside quotes
+        loggedText = loggedText.replace(/data:image\/[^;]+;base64,[^"'\s\r\n]+/g, 'data:image/png;base64,[Base64 Image Data (Omitted)]');
+        // Replace any quoted base64 string (escaped or unescaped, > 100 chars of base64-valid set) to prevent leaks in keys like data, images, etc.
+        loggedText = loggedText.replace(/(\\*")[A-Za-z0-9+/=\s\r\n_\-]{100,}(\\*")/g, '$1[Base64 Image Data (Omitted)]$2');
     }
 
     const timestamp = new Date().toISOString();

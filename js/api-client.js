@@ -17,7 +17,7 @@ function sanitizePayload(obj) {
             if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
                 return "data:image/png;base64,[Base64 Image Data (Omitted)]";
             }
-            if (obj.length > 50 && /^[a-zA-Z0-9+/=\s\r\n\-_]+$/.test(obj)) {
+            if (obj.length > 50 && /^[a-zA-Z0-9+/=\s\r\n_\-]+$/.test(obj)) {
                 return "[Base64 Image Data (Omitted)]";
             }
         }
