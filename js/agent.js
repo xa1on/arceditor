@@ -939,8 +939,8 @@ function writeToDebugLog(category, text) {
         loggedText = loggedText.replace(/(\\*")data:image\/[^;]+;base64,[^"'\s\r\n\\]+(\\*")/g, '$1data:image/png;base64,[Base64 Image Data (Omitted)]$2');
         // Replace any raw base64 data URIs not inside quotes
         loggedText = loggedText.replace(/data:image\/[^;]+;base64,[^"'\s\r\n]+/g, 'data:image/png;base64,[Base64 Image Data (Omitted)]');
-        // Replace any quoted base64 string (escaped or unescaped, > 100 chars of base64-valid set) to prevent leaks in keys like data, images, etc.
-        loggedText = loggedText.replace(/(\\*")[A-Za-z0-9+/=\s\r\n_\-]{100,}(\\*")/g, '$1[Base64 Image Data (Omitted)]$2');
+        // Replace any quoted base64 string (escaped or unescaped, > 1000 chars of base64-valid set) to prevent leaks in keys like data, images, etc.
+        loggedText = loggedText.replace(/(\\*")[A-Za-z0-9+\/=\r\n_\-]{1000,}(\\*")/g, '$1[Base64 Image Data (Omitted)]$2');
     }
 
     const timestamp = new Date().toISOString();

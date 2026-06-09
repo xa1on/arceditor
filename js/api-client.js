@@ -17,7 +17,7 @@ function sanitizePayload(obj) {
             if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
                 return "data:image/png;base64,[Base64 Image Data (Omitted)]";
             }
-            if (obj.length > 50 && /^[a-zA-Z0-9+/=\s\r\n_\-]+$/.test(obj)) {
+            if (obj.length > 1000 && /^[a-zA-Z0-9+\/=\r\n_\-]+$/.test(obj)) {
                 return "[Base64 Image Data (Omitted)]";
             }
         }
@@ -358,6 +358,8 @@ Here is the ExtendScript to build it:
     // Deep clone and clean past assistant reasoning blocks to prevent pattern contamination
     const cleanedMessages = messages.map(m => {
         const copy = { ...m };
+        delete copy.isIntermediate;
+        delete copy.intermediateTurns;
         if (m.role === "assistant" || m.role === "model") {
             if (typeof m.content === "string") {
                 copy.content = m.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "[Thinking Collapsed]");
