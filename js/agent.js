@@ -831,73 +831,133 @@ function pruneBase64Images(context, maxKeep) {
     }
 }
 
+function estimateMessagesTokenCount(messagesArray) {
+    if (!messagesArray || !Array.isArray(messagesArray)) return 0;
+    let textForEstimation = "";
+    let imageBlocksCount = 0;
+    for (var i = 0; i < messagesArray.length; i++) {
+        var msg = messagesArray[i];
+        if (!msg) continue;
+        if (typeof msg.content === "string") {
+            textForEstimation += msg.content + "\n";
+        } else if (Array.isArray(msg.content)) {
+            for (var j = 0; j < msg.content.length; j++) {
+                var part = msg.content[j];
+                if (part) {
+                    if (part.type === "text" && part.text) {
+                        textForEstimation += part.text + "\n";
+                    } else if (part.type === "image_url") {
+                        imageBlocksCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    let estTokens = 0;
+    if (typeof estimateTrueTokens === "function") {
+        estTokens = estimateTrueTokens(textForEstimation);
+    } else {
+        // Fallback high-fidelity BPE approximation if estimateTrueTokens is not available
+        const spaces = textForEstimation.match(/ {2,4}/g) || [];
+        let count = spaces.length;
+        const cleanedText = textForEstimation.replace(/ {2,4}/g, '');
+        const words = cleanedText.match(/[\w]+|[^\s\w]/g) || [];
+        for (var k = 0; k < words.length; k++) {
+            var token = words[k];
+            if (/^[^\s\w]$/.test(token)) {
+                count += 1;
+            } else {
+                if (token.length > 4) {
+                    count += Math.ceil(token.length / 3.5);
+                } else {
+                    count += 1;
+                }
+            }
+        }
+        const newlines = (textForEstimation.match(/\n/g) || []).length;
+        count += newlines * 0.5;
+        estTokens = Math.round(count);
+    }
+
+    estTokens += imageBlocksCount * 258;
+    return estTokens;
+}
+
 async function pruneHistoryContexts(contextArray) {
     if (!contextArray) return [];
 
-    // 1. If history length is greater than 24 messages, trigger memory condensation
-    const maxThreshold = 24;
-    if (contextArray.length > maxThreshold) {
-        // Keep the last 8 messages (4 turns) completely raw as active transactional context
+    // 1. Trigger memory condensation if the estimated token count exceeds 15000 tokens
+    const maxThresholdTokens = 15000;
+    if (estimateMessagesTokenCount(contextArray) > maxThresholdTokens) {
+        // Keep at least the last 8 messages (4 turns) completely raw as active transactional context
         const rawTurnsCount = 8;
-        const cutIndex = contextArray.length - rawTurnsCount;
-
-        // Retrieve the older turns to be compressed
-        const olderMessages = contextArray.slice(0, cutIndex);
-        const youngerMessages = contextArray.slice(cutIndex);
-
-        // Collect and merge all older system compression summaries, filtering them out of raw messages to condense
-        const existingSummaries = [];
-        const messagesToCondense = olderMessages.filter(msg => {
-            if (msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0) {
-                existingSummaries.push(msg.content);
-                return false;
+        if (contextArray.length > rawTurnsCount) {
+            let cutIndex = contextArray.length - rawTurnsCount;
+            // Adjust cutIndex so that the younger messages start with a 'user' message.
+            // Walk backward to include slightly more raw messages if needed to start with a user message.
+            while (cutIndex > 0 && contextArray[cutIndex].role !== "user") {
+                cutIndex--;
             }
-            return true;
-        });
-        const existingSummaryText = existingSummaries.join("\n");
 
-        if (messagesToCondense.length > 0) {
-            try {
-                console.log("[ArcEditor] Initiating background memory condensation...");
+            // Retrieve the older turns to be compressed
+            const olderMessages = contextArray.slice(0, cutIndex);
+            const youngerMessages = contextArray.slice(cutIndex);
 
-                // Deep clone and strip base64 payloads to save memory/tokens
-                const messagesClean = JSON.parse(JSON.stringify(messagesToCondense));
-                for (var i = 0; i < messagesClean.length; i++) {
-                    var msg = messagesClean[i];
-                    if (msg && Array.isArray(msg.content)) {
-                        for (var j = 0; j < msg.content.length; j++) {
-                            if (msg.content[j] && msg.content[j].type === "image_url") {
-                                msg.content[j] = { type: "text", text: "[Image Attachment (Base64 Payload Stripped for Condensation)]" };
+            // Collect and merge all older system compression summaries, filtering them out of raw messages to condense
+            const existingSummaries = [];
+            const messagesToCondense = olderMessages.filter(msg => {
+                if (msg.role === "system" && msg.content.indexOf("[Condensed Session History:") === 0) {
+                    existingSummaries.push(msg.content);
+                    return false;
+                }
+                return true;
+            });
+            const existingSummaryText = existingSummaries.join("\n");
+
+            if (messagesToCondense.length > 0) {
+                try {
+                    console.log("[ArcEditor] Initiating background memory condensation...");
+
+                    // Deep clone and strip base64 payloads to save memory/tokens
+                    const messagesClean = JSON.parse(JSON.stringify(messagesToCondense));
+                    for (var i = 0; i < messagesClean.length; i++) {
+                        var msg = messagesClean[i];
+                        if (msg && Array.isArray(msg.content)) {
+                            for (var j = 0; j < msg.content.length; j++) {
+                                if (msg.content[j] && msg.content[j].type === "image_url") {
+                                    msg.content[j] = { type: "text", text: "[Image Attachment (Base64 Payload Stripped for Condensation)]" };
+                                }
                             }
                         }
                     }
+
+                    // Formulate the condensation request prompt
+                    const systemPrompt = "You are a memory compressor. Summarize the following video editing dialog history into a single-paragraph log of creative intents, assets added, and controller rigs configured. Keep it extremely concise (under 60 words). " +
+                        (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
+                        "\nDo NOT output any technical ExtendScript JSX code or observation JSON logs; summarize only the high-level accomplishments.";
+
+                    const compressionMessages = [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: JSON.stringify(messagesClean) }
+                    ];
+
+                    // Call LLM API (non-streaming, direct response, skip system instructions)
+                    const summaryText = await callLLMApi(compressionMessages, null, true);
+                    const condensedBlock = {
+                        role: "system",
+                        content: `[Condensed Session History: ${summaryText.trim()}]`
+                    };
+
+                    // Reconstruct and return the chat history
+                    const resultHistory = [condensedBlock, ...youngerMessages];
+                    console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", resultHistory.length);
+                    return resultHistory;
+                } catch (err) {
+                    console.error("[ArcEditor] Background memory condensation failed:", err);
+                    // Fallback to sliding window pruner if LLM call fails
+                    return fallbackSlidingWindowPrune(contextArray);
                 }
-
-                // Formulate the condensation request prompt
-                const systemPrompt = "You are a memory compressor. Summarize the following video editing dialog history into a single-paragraph log of creative intents, assets added, and controller rigs configured. Keep it extremely concise (under 60 words). " +
-                    (existingSummaryText ? "Incorporate this existing history summary: " + existingSummaryText : "") +
-                    "\nDo NOT output any technical ExtendScript JSX code or observation JSON logs; summarize only the high-level accomplishments.";
-
-                const compressionMessages = [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: JSON.stringify(messagesClean) }
-                ];
-
-                // Call LLM API (non-streaming, direct response, skip system instructions)
-                const summaryText = await callLLMApi(compressionMessages, null, true);
-                const condensedBlock = {
-                    role: "system",
-                    content: `[Condensed Session History: ${summaryText.trim()}]`
-                };
-
-                // Reconstruct and return the chat history
-                const resultHistory = [condensedBlock, ...youngerMessages];
-                console.log("[ArcEditor] Background memory condensation completed successfully. New history size:", resultHistory.length);
-                return resultHistory;
-            } catch (err) {
-                console.error("[ArcEditor] Background memory condensation failed:", err);
-                // Fallback to sliding window pruner if LLM call fails
-                return fallbackSlidingWindowPrune(contextArray);
             }
         }
     }
@@ -906,15 +966,40 @@ async function pruneHistoryContexts(contextArray) {
 
 function fallbackSlidingWindowPrune(contextArray) {
     if (!contextArray) return [];
-    const maxHistoryMessages = 28;
-    if (contextArray.length > maxHistoryMessages) {
-        let cutIndex = contextArray.length - maxHistoryMessages;
-        while (cutIndex < contextArray.length && contextArray[cutIndex].role !== "user") {
-            cutIndex++;
+    
+    const maxTokens = 20000;
+    if (estimateMessagesTokenCount(contextArray) <= maxTokens) {
+        return contextArray;
+    }
+
+    const minKeep = Math.min(8, contextArray.length);
+    const maxCut = contextArray.length - minKeep;
+
+    let cutIndex = 0;
+    while (cutIndex < maxCut) {
+        if (estimateMessagesTokenCount(contextArray.slice(cutIndex)) <= maxTokens) {
+            break;
         }
-        if (cutIndex < contextArray.length) {
-            return contextArray.slice(cutIndex);
+        cutIndex++;
+    }
+
+    // Adjust cutIndex so that the younger messages start with a 'user' message.
+    // We can walk forward first (up to maxCut) to find a user message.
+    while (cutIndex < maxCut && contextArray[cutIndex].role !== "user") {
+        cutIndex++;
+    }
+
+    // If we pruned everything or kept too few, make sure we keep at least the last minKeep messages
+    if (contextArray.length - cutIndex < minKeep) {
+        // Fallback: just cut at maxCut, and adjust to the nearest user message by walking backward
+        cutIndex = maxCut;
+        while (cutIndex > 0 && contextArray[cutIndex].role !== "user") {
+            cutIndex--;
         }
+    }
+
+    if (cutIndex < contextArray.length) {
+        return contextArray.slice(cutIndex);
     }
     return contextArray;
 }
