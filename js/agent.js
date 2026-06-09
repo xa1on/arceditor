@@ -640,7 +640,8 @@ async function executeToolCalls(jsonStr) {
             }
             observations.push(`- Tool "${toolName}": ${result}`);
 
-            if (result && (result.toLowerCase().indexOf("error:") === 0 || result.toLowerCase().indexOf("evalscript error") === 0)) {
+            const trimmedResult = result ? result.trim().toLowerCase() : "";
+            if (trimmedResult && (trimmedResult.indexOf("error:") === 0 || trimmedResult.indexOf("evalscript error") === 0)) {
                 if (undoGroupActive) {
                     await evalScriptAsync(`app.endUndoGroup()`);
                     undoGroupActive = false;
@@ -656,6 +657,9 @@ async function executeToolCalls(jsonStr) {
         if (undoGroupActive) {
             try {
                 await evalScriptAsync(`app.endUndoGroup()`);
+            } catch (e) { }
+            try {
+                await evalScriptAsync("app.executeCommand(16)"); // Ensure rollback on exception if transaction was open
             } catch (e) { }
         }
         observations.push(`- Tool execution exception: ${err.message}`);
