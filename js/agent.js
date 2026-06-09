@@ -47,15 +47,13 @@ async function runAgenticExecutionLoop(userText) {
 
         let isCompleted = false;
         let loopRetries = 0;
-        const maxRetries = 3;
-        let toolTurns = 0;
-        const maxToolTurns = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 15;
+        const maxRetries = typeof maxToolRetryLimit !== "undefined" ? maxToolRetryLimit : 3;
         let finalLlmResponse = "";
         const executedActions = [];
         const completedTurns = [];
         let stateModifiedSinceLastCapture = false;
 
-        while (!isCompleted && loopRetries < maxRetries && toolTurns < maxToolTurns) {
+        while (!isCompleted && loopRetries < maxRetries) {
             if (executionId !== currentExecutionId || isStopped) {
                 isCompleted = true;
                 break;
@@ -169,7 +167,6 @@ async function runAgenticExecutionLoop(userText) {
 
                 if (jsonBlock) {
                     executedAnything = true;
-                    toolTurns++;
                     updateConsolePane(jsonBlock);
                     const openTurnNums = getOpenTurnNums(aiBubble);
                     aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
@@ -298,7 +295,7 @@ async function runAgenticExecutionLoop(userText) {
                     });
 
                     // Show feedback in UI and prepare next turn
-                    const isNextTurnAllowed = (loopRetries < maxRetries && toolTurns < maxToolTurns);
+                    const isNextTurnAllowed = (loopRetries < maxRetries);
                     const openTurnNums = getOpenTurnNums(aiBubble);
                     aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
                         (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
@@ -393,12 +390,6 @@ async function runAgenticExecutionLoop(userText) {
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
-            if (toolTurns >= maxToolTurns && !isCompleted) {
-                const openTurnNums = getOpenTurnNums(aiBubble);
-                aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max agent tool turns reached to prevent looping.</div>`;
-                if (typeof scrollToBottom === "function") scrollToBottom();
-            }
         }
 
         // Set the intermediateTurns property on the last assistant message in history, and remove isIntermediate if failed or stopped
@@ -406,7 +397,7 @@ async function runAgenticExecutionLoop(userText) {
         if (lastAssistantMsg) {
             lastAssistantMsg.intermediateTurns = completedTurns;
             delete lastAssistantMsg.intermediateTurnsHtml;
-            if (isStopped || loopRetries >= maxRetries || (toolTurns >= maxToolTurns && !isCompleted)) {
+            if (isStopped || loopRetries >= maxRetries) {
                 delete lastAssistantMsg.isIntermediate;
             }
         }
