@@ -1549,6 +1549,9 @@ var ArcEditor = {
                 fillRGB = typeof props.fillColor === "string" ? this.hexToRgb(props.fillColor) : props.fillColor;
             }
             if (fill) fill.property("Color").setValue(fillRGB);
+            if (fill && props.fillOpacity !== undefined && props.fillOpacity !== null) {
+                fill.property("Opacity").setValue(Number(props.fillOpacity));
+            }
         }
 
         // 4. Add Stroke with default thin black outline if specified or by default
@@ -1563,13 +1566,27 @@ var ArcEditor = {
             if (stroke) {
                 stroke.property("Color").setValue(strokeRGB);
                 stroke.property("Stroke Width").setValue(sWidth);
+                if (props.strokeOpacity !== undefined && props.strokeOpacity !== null) {
+                    stroke.property("Opacity").setValue(Number(props.strokeOpacity));
+                }
             }
         }
 
-        // 5. Set local position offsets if defined
-        if (props.position) {
-            var tf = group.property("Transform");
-            if (tf) tf.property("Position").setValue(props.position);
+        // 5. Set local position offsets, scale, rotation, and group opacity if defined
+        var tf = group.property("Transform") || group.property("Transform - Group") || group.property("ADBE Vector Transform Group");
+        if (tf) {
+            if (props.position) {
+                tf.property("Position").setValue(props.position);
+            }
+            if (props.scale !== undefined && props.scale !== null) {
+                tf.property("Scale").setValue(props.scale);
+            }
+            if (props.rotation !== undefined && props.rotation !== null) {
+                tf.property("Rotation").setValue(Number(props.rotation));
+            }
+            if (props.opacity !== undefined && props.opacity !== null) {
+                tf.property("Opacity").setValue(Number(props.opacity));
+            }
         }
 
         return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "'";
