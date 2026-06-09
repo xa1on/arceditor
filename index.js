@@ -176,7 +176,14 @@ ${code}`;
     // Auto-resize chat input textarea and update context count
     chatInput.addEventListener("input", function () {
         this.style.height = "auto";
-        this.style.height = (this.scrollHeight - 6) + "px";
+        const scrollHeight = this.scrollHeight;
+        if (scrollHeight > 52) {
+            this.style.height = "52px";
+            this.style.overflowY = "auto";
+        } else {
+            this.style.height = scrollHeight + "px";
+            this.style.overflowY = "hidden";
+        }
         btnSend.disabled = !this.value.trim();
         updateContextSizeInfo();
     });
@@ -203,7 +210,14 @@ ${code}`;
     if (welcomeChatInput && welcomeBtnSend) {
         welcomeChatInput.addEventListener("input", function () {
             this.style.height = "auto";
-            this.style.height = (this.scrollHeight - 6) + "px";
+            const scrollHeight = this.scrollHeight;
+            if (scrollHeight > 52) {
+                this.style.height = "52px";
+                this.style.overflowY = "auto";
+            } else {
+                this.style.height = scrollHeight + "px";
+                this.style.overflowY = "hidden";
+            }
             welcomeBtnSend.disabled = !this.value.trim();
         });
         
@@ -386,11 +400,13 @@ function sendUserMessage(userText, isFromWelcome = false) {
     const welcomeInput = document.getElementById("welcome-chat-input");
     if (mainInput) {
         mainInput.value = "";
-        mainInput.style.height = "auto";
+        mainInput.style.height = "20px";
+        mainInput.style.overflowY = "hidden";
     }
     if (welcomeInput) {
         welcomeInput.value = "";
-        welcomeInput.style.height = "auto";
+        welcomeInput.style.height = "20px";
+        welcomeInput.style.overflowY = "hidden";
     }
 
     isExecuting = true;

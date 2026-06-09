@@ -492,9 +492,25 @@ textarea#chat-input {
     color: var(--text-primary);
     font-family: var(--font-sans);
     font-size: 11px;
+    line-height: 16px;
     resize: none;
-    max-height: 80px;
-    padding: 2px;
+    height: 20px; /* 1 line */
+    max-height: 52px; /* 3 lines */
+    padding: 2px 0;
+    box-sizing: border-box;
+    overflow-y: hidden;
+}
+
+/* Custom Scrollbar for chat input */
+textarea#chat-input::-webkit-scrollbar {
+    width: 4px;
+}
+textarea#chat-input::-webkit-scrollbar-thumb {
+    background: #3e3e3e;
+    border-radius: 2px;
+}
+textarea#chat-input::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 textarea::placeholder {
@@ -1220,9 +1236,25 @@ select.form-input {
     color: var(--text-primary);
     font-family: var(--font-sans);
     font-size: 11px;
+    line-height: 16px;
     resize: none;
-    max-height: 80px;
-    padding: 2px;
+    height: 20px; /* 1 line */
+    max-height: 52px; /* 3 lines */
+    padding: 2px 0;
+    box-sizing: border-box;
+    overflow-y: hidden;
+}
+
+/* Custom Scrollbar for welcome chat input */
+.welcome-input-wrapper textarea::-webkit-scrollbar {
+    width: 4px;
+}
+.welcome-input-wrapper textarea::-webkit-scrollbar-thumb {
+    background: #3e3e3e;
+    border-radius: 2px;
+}
+.welcome-input-wrapper textarea::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 /* Transitions for chat messages and footer */
