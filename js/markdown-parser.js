@@ -276,8 +276,8 @@ function formatMarkdown(text) {
 
     // Inline formatting: Bold, Italic, Code
     result = result
-        .replace(/\*\*([\s\S]*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*([\s\S]*?)\*/g, "<em>$1</em>")
+        .replace(/\*\*((?:(?!<br>)[^\*])+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*((?:(?!<br>)[^\*])+?)\*/g, "<em>$1</em>")
         .replace(/`([^`]+)`/g, "<code>$1</code>");
 
     // Clean up empty paragraphs

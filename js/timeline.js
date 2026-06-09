@@ -120,7 +120,7 @@ function evalScriptAsync(script) {
 }
 
 async function captureCompositionFrame(isAgentCall) {
-    if (!csInterface) {
+    if (!csInterface || !path || !fs) {
         if (isAgentCall !== true) {
             addSystemMessage("Visual capture not supported outside After Effects.");
         }
@@ -256,7 +256,7 @@ async function captureFrameAtTime(time, tempPath) {
 }
 
 async function captureCompositionSequence(startTime, endTime, numFrames, isAgentCall) {
-    if (!csInterface) {
+    if (!csInterface || !path || !fs) {
         if (isAgentCall !== true) {
             addSystemMessage("Visual capture not supported outside After Effects.");
         }

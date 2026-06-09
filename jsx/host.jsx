@@ -1138,19 +1138,6 @@ var ArcEditor = {
 
         var textDocument = sourceTextProp.value;
 
-        var hexToRgb = function (hex) {
-            if (!hex) return [0, 0, 0];
-            var s = hex.replace("#", "");
-            if (s.length === 3) {
-                s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
-            }
-            if (s.length !== 6) return [0, 0, 0];
-            var r = parseInt(s.substring(0, 2), 16) / 255;
-            var g = parseInt(s.substring(2, 4), 16) / 255;
-            var b = parseInt(s.substring(4, 6), 16) / 255;
-            return [Math.round(r * 100) / 100, Math.round(g * 100) / 100, Math.round(b * 100) / 100];
-        };
-
         if (properties.text !== undefined && properties.text !== null) {
             textDocument.text = String(properties.text);
         }
@@ -1161,11 +1148,11 @@ var ArcEditor = {
             textDocument.fontSize = Number(properties.fontSize);
         }
         if (properties.fillColor !== undefined && properties.fillColor !== null) {
-            textDocument.fillColor = hexToRgb(properties.fillColor);
+            textDocument.fillColor = this.hexToRgb(properties.fillColor);
             textDocument.applyFill = true;
         }
         if (properties.strokeColor !== undefined && properties.strokeColor !== null) {
-            textDocument.strokeColor = hexToRgb(properties.strokeColor);
+            textDocument.strokeColor = this.hexToRgb(properties.strokeColor);
             textDocument.applyStroke = true;
         }
         if (properties.strokeWidth !== undefined && properties.strokeWidth !== null) {
@@ -1367,15 +1354,7 @@ var ArcEditor = {
      * Recursively inspects layer properties and effects, returning exact paths and matchNames.
      */
     inspectLayerProperties: function (layerRef, groupFilter) {
-        var layer = this.resolveLayer(layerRef);
-        if (!layer) return ArcJSON.stringify({ error: "Layer not found for reference: " + layerRef });
-
-        var result = {
-            layerName: layer.name,
-            layerId: layer.id,
-            properties: []
-        };
-
+        var result;
         function crawl(propGroup, currentPath, depth) {
             if (depth > 4) return;
             if (!propGroup) return;
@@ -1414,6 +1393,15 @@ var ArcEditor = {
         }
 
         try {
+            var layer = this.resolveLayer(layerRef);
+            if (!layer) return ArcJSON.stringify({ error: "Layer not found for reference: " + layerRef });
+
+            result = {
+                layerName: layer.name,
+                layerId: layer.id,
+                properties: []
+            };
+
             if (groupFilter) {
                 // Map standard user/agent display names directly to language-independent matchNames
                 var matchNameMap = {
@@ -1439,7 +1427,7 @@ var ArcEditor = {
             }
             return ArcJSON.stringify(result);
         } catch (err) {
-            return ArcJSON.stringify({ error: "Failed to crawl properties: " + err.toString() });
+            return ArcJSON.stringify({ error: "Failed to inspect layer properties: " + err.toString() });
         }
     },
 
