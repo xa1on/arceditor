@@ -392,12 +392,12 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
 
-        // Set the intermediateTurns property on the last assistant message in history, and remove isIntermediate if failed or stopped
+        // Set the intermediateTurns property on the last assistant message in history, and remove isIntermediate if failed, stopped, or completed
         const lastAssistantMsg = chatHistory.filter(m => m.role === "assistant").pop();
         if (lastAssistantMsg) {
             lastAssistantMsg.intermediateTurns = completedTurns;
             delete lastAssistantMsg.intermediateTurnsHtml;
-            if (isStopped || loopRetries >= maxRetries) {
+            if (isStopped || loopRetries >= maxRetries || isCompleted) {
                 delete lastAssistantMsg.isIntermediate;
             }
         }
@@ -441,44 +441,6 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
     }
-}
-
-function extractJSXCode(text) {
-    if (!text) return null;
-    const parts = text.split("```");
-    // If the last block is unclosed (even number of parts), ignore it to prevent executing truncated code that deadlocks AE
-    const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
-    for (let i = 1; i < limit; i += 2) {
-        let block = parts[i];
-        let lines = block.split("\n");
-        if (lines.length > 0) {
-            const lang = lines[0].trim().toLowerCase();
-            if (lang === "json") {
-                continue;
-            }
-            if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx" || lang === "") {
-                const code = lines.slice(1).join("\n").trim();
-                if (code) {
-                    return code;
-                }
-            } else {
-                const nonJsLangs = ["python", "py", "html", "css", "bash", "sh", "txt", "markdown", "md"];
-                if (nonJsLangs.indexOf(lang) === -1) {
-                    const code = block.trim();
-                    if (code) {
-                        if (code.startsWith("{") && code.endsWith("}")) {
-                            try {
-                                JSON.parse(code);
-                                continue;
-                            } catch (e) { }
-                        }
-                        return code;
-                    }
-                }
-            }
-        }
-    }
-    return null;
 }
 
 function extractJSONToolCalls(text) {
@@ -656,7 +618,6 @@ async function executeToolCalls(jsonStr) {
                     var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
                     var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
                     var JSON = ArcJSON;
-                    app.beginUndoGroup("ArcEditor Action");
                     var _arcEditorTempFolder;
                     try {
                         _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
@@ -664,13 +625,8 @@ async function executeToolCalls(jsonStr) {
                     } catch (dummyErr) {}
                     try {
                         ${script}
-                        app.endUndoGroup();
                         return "Success";
                     } catch (err) {
-                        app.endUndoGroup();
-                        try {
-                            app.executeCommand(16); // Auto-rollback on script failure!
-                        } catch (e) {}
                         return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
                 })()`;
@@ -685,6 +641,11 @@ async function executeToolCalls(jsonStr) {
             observations.push(`- Tool "${toolName}": ${result}`);
 
             if (result && (result.toLowerCase().indexOf("error:") === 0 || result.toLowerCase().indexOf("evalscript error") === 0)) {
+                if (undoGroupActive) {
+                    await evalScriptAsync(`app.endUndoGroup()`);
+                    undoGroupActive = false;
+                }
+                await evalScriptAsync("app.executeCommand(16)"); // Centrally trigger rollback on error!
                 break;
             }
         }
@@ -785,39 +746,30 @@ function repairJSON(jsonStr) {
 function pruneBase64Images(context, maxKeep) {
     if (!context) return;
     var maxToKeep = typeof maxKeep === "number" ? maxKeep : 2;
-    var imageMessageIndices = [];
-    for (var i = 0; i < context.length; i++) {
+    var imageCount = 0;
+
+    // Walk backwards from the newest message to the oldest
+    for (var i = context.length - 1; i >= 0; i--) {
         var msg = context[i];
         if (msg && Array.isArray(msg.content)) {
-            var hasImage = false;
-            for (var j = 0; j < msg.content.length; j++) {
-                if (msg.content[j] && msg.content[j].type === "image_url") {
-                    hasImage = true;
-                    break;
-                }
-            }
-            if (hasImage) {
-                imageMessageIndices.push(i);
-            }
-        }
-    }
-    if (imageMessageIndices.length > maxToKeep) {
-        var toStripCount = imageMessageIndices.length - maxToKeep;
-        for (var k = 0; k < toStripCount; k++) {
-            var msgIndex = imageMessageIndices[k];
-            var msg = context[msgIndex];
-            if (msg && Array.isArray(msg.content)) {
-                var newContent = [];
-                for (var j = 0; j < msg.content.length; j++) {
-                    var part = msg.content[j];
-                    if (part && part.type === "text") {
-                        newContent.push(part);
-                    } else if (part && part.type === "image_url") {
-                        newContent.push({ type: "text", text: "[Obsolete Intermediate Frame Capture Stripped to Save Context]" });
+            var newContent = [];
+            // Walk backwards through content parts in this message to maintain chronology and reverse count
+            for (var j = msg.content.length - 1; j >= 0; j--) {
+                var part = msg.content[j];
+                if (part) {
+                    if (part.type === "image_url") {
+                        imageCount++;
+                        if (imageCount > maxToKeep) {
+                            newContent.unshift({ type: "text", text: "[Obsolete Intermediate Frame Capture Stripped to Save Context]" });
+                        } else {
+                            newContent.unshift(part);
+                        }
+                    } else {
+                        newContent.unshift(part);
                     }
                 }
-                msg.content = newContent;
             }
+            msg.content = newContent;
         }
     }
 }

@@ -50,6 +50,39 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Sync active AE project file path when the panel gets focus
     window.addEventListener("focus", syncProjectPath);
+
+    // Dynamic model dropdown and provider listeners
+    const providerSelect = document.getElementById("setting-provider");
+    if (providerSelect) {
+        providerSelect.addEventListener("change", handleProviderChange);
+    }
+
+    const modelSelect = document.getElementById("setting-model-select");
+    if (modelSelect) {
+        modelSelect.addEventListener("change", handleModelSelectChange);
+
+        // Fetch models when user focuses or mousedowns the dropdown (to fulfill dynamic query once)
+        modelSelect.addEventListener("mousedown", async function () {
+            const provider = document.getElementById("setting-provider").value;
+            if (!cachedModels[provider]) {
+                const url = document.getElementById("setting-url").value;
+                const key = document.getElementById("setting-key").value;
+                const currentModelVal = document.getElementById("setting-model").value;
+
+                const select = this;
+                const loadingOption = document.createElement("option");
+                loadingOption.text = "Fetching models...";
+                loadingOption.disabled = true;
+                select.add(loadingOption, select.options[0]);
+
+                try {
+                    await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
+                } finally {
+                    try { select.remove(loadingOption); } catch (e) { }
+                }
+            }
+        });
+    }
 });
 
 // --- SECTION 8: USER INTERFACE RENDERERS & EVENT BINDINGS ---
@@ -139,7 +172,7 @@ ${code}`;
 
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
 
-    chipCapture.addEventListener("click", captureCompositionFrame);
+    chipCapture.addEventListener("click", () => captureCompositionFrame(false));
 
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     if (chipCaptureSequence) {

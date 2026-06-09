@@ -260,9 +260,13 @@ var ArcInspector = {
     safePropertyValue: function (prop) {
         if (!prop) return null;
         var info = {
-            hasExpression: prop.expressionEnabled,
-            expression: prop.expression
+            hasExpression: false,
+            expression: ""
         };
+        try {
+            info.hasExpression = prop.expressionEnabled;
+            info.expression = prop.expression;
+        } catch (exprErr) { }
         try {
             if (prop.value instanceof Array) {
                 info.value = [];
@@ -1575,16 +1579,16 @@ var ArcEditor = {
         // 5. Set local position offsets, scale, rotation, and group opacity if defined
         var tf = group.property("Transform") || group.property("Transform - Group") || group.property("ADBE Vector Transform Group");
         if (tf) {
-            if (props.position) {
+            if (props.position && tf.property("Position")) {
                 tf.property("Position").setValue(props.position);
             }
-            if (props.scale !== undefined && props.scale !== null) {
+            if (props.scale !== undefined && props.scale !== null && tf.property("Scale")) {
                 tf.property("Scale").setValue(props.scale);
             }
-            if (props.rotation !== undefined && props.rotation !== null) {
+            if (props.rotation !== undefined && props.rotation !== null && tf.property("Rotation")) {
                 tf.property("Rotation").setValue(Number(props.rotation));
             }
-            if (props.opacity !== undefined && props.opacity !== null) {
+            if (props.opacity !== undefined && props.opacity !== null && tf.property("Opacity")) {
                 tf.property("Opacity").setValue(Number(props.opacity));
             }
         }
