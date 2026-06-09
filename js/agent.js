@@ -196,9 +196,14 @@ async function runAgenticExecutionLoop(userText) {
                         break;
                     }
 
-                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 || toolObservations.toLowerCase().indexOf("evalscript error") !== -1 || toolObservations.indexOf("Unsupported tool name:") !== -1) {
+                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 || 
+                        toolObservations.toLowerCase().indexOf("evalscript error") !== -1 || 
+                        toolObservations.toLowerCase().indexOf("exception:") !== -1 || 
+                        toolObservations.indexOf("Unsupported tool name:") !== -1) {
                         scriptFailed = true;
                         loopRetries++;
+
+                        writeToDebugLog("Tool Execution Error", toolObservations);
 
                         // Package failed turn
                         completedTurns.push({
@@ -829,11 +834,11 @@ function pruneBase64Images(context, maxKeep) {
 async function pruneHistoryContexts(contextArray) {
     if (!contextArray) return [];
 
-    // 1. If history length is greater than 10 messages (5 turns), trigger memory condensation
-    const maxThreshold = 10;
+    // 1. If history length is greater than 24 messages, trigger memory condensation
+    const maxThreshold = 24;
     if (contextArray.length > maxThreshold) {
-        // Keep the last 6 messages (3 turns) completely raw as active transactional context
-        const rawTurnsCount = 6;
+        // Keep the last 8 messages (4 turns) completely raw as active transactional context
+        const rawTurnsCount = 8;
         const cutIndex = contextArray.length - rawTurnsCount;
 
         // Retrieve the older turns to be compressed
@@ -901,7 +906,7 @@ async function pruneHistoryContexts(contextArray) {
 
 function fallbackSlidingWindowPrune(contextArray) {
     if (!contextArray) return [];
-    const maxHistoryMessages = 12;
+    const maxHistoryMessages = 28;
     if (contextArray.length > maxHistoryMessages) {
         let cutIndex = contextArray.length - maxHistoryMessages;
         while (cutIndex < contextArray.length && contextArray[cutIndex].role !== "user") {
@@ -920,10 +925,11 @@ function stripCodeBlocks(text) {
 }
 
 function writeToDebugLog(category, text) {
-    // Only allow API Request and API Response categories in the debug log
+    // Allow API Request, API Response, and Tool Execution Error categories in the debug log
     const isRequest = category.indexOf("API Request Sent") === 0;
     const isResponse = category.indexOf("API Response Received") === 0;
-    if (!isRequest && !isResponse) {
+    const isError = category.indexOf("Tool Execution Error") === 0;
+    if (!isRequest && !isResponse && !isError) {
         return;
     }
 

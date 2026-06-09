@@ -34,9 +34,9 @@ function sanitizePayload(obj) {
 
                 if (key === "messages" && Array.isArray(obj[key])) {
                     copy[key] = obj[key].filter(msg => msg.role !== "system").map(sanitizePayload);
-                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && 
-                           (key === "data" || key === "url" || key === "image" || key === "images" || key === "base64") && 
-                           typeof obj[key] === "string" && obj[key].length > 50) {
+                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog &&
+                    (key === "data" || key === "url" || key === "image" || key === "images" || key === "base64") &&
+                    typeof obj[key] === "string" && obj[key].length > 50) {
                     copy[key] = obj[key].indexOf("data:image/") === 0 ? "data:image/png;base64,[Base64 Image Data (Omitted)]" : "[Base64 Image Data (Omitted)]";
                 } else {
                     copy[key] = sanitizePayload(obj[key]);
