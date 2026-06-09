@@ -355,23 +355,11 @@ Here is the ExtendScript to build it:
     let payload = {};
     let targetUrl = apiUrl.replace(/\/$/, "");
 
-    // Deep clone and clean past assistant reasoning blocks to prevent pattern contamination
+    // Deep clone and clean past assistant reasoning blocks
     const cleanedMessages = messages.map(m => {
         const copy = { ...m };
         delete copy.isIntermediate;
         delete copy.intermediateTurns;
-        if (m.role === "assistant" || m.role === "model") {
-            if (typeof m.content === "string") {
-                copy.content = m.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "[Thinking Collapsed]");
-            } else if (Array.isArray(m.content)) {
-                copy.content = m.content.map(part => {
-                    if (part && part.type === "text" && typeof part.text === "string") {
-                        return { ...part, text: part.text.replace(/<thinking>[\s\S]*?<\/thinking>/g, "[Thinking Collapsed]") };
-                    }
-                    return part;
-                });
-            }
-        }
         return copy;
     });
 
