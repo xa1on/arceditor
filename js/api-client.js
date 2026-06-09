@@ -17,7 +17,7 @@ function sanitizePayload(obj) {
             if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
                 return "data:image/png;base64,[Base64 Image Data (Omitted)]";
             }
-            if (obj.length > 100 && /^[a-zA-Z0-9+/=\s\r\n]+$/.test(obj)) {
+            if (obj.length > 50 && /^[a-zA-Z0-9+/=\s\r\n\-_]+$/.test(obj)) {
                 return "[Base64 Image Data (Omitted)]";
             }
         }
@@ -34,10 +34,10 @@ function sanitizePayload(obj) {
 
                 if (key === "messages" && Array.isArray(obj[key])) {
                     copy[key] = obj[key].filter(msg => msg.role !== "system").map(sanitizePayload);
-                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "data" && typeof obj[key] === "string" && obj[key].length > 50) {
-                    copy[key] = "[Base64 Image Data (Omitted)]";
-                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && key === "url" && typeof obj[key] === "string" && obj[key].indexOf("data:image/") === 0) {
-                    copy[key] = "data:image/png;base64,[Base64 Image Data (Omitted)]";
+                } else if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && 
+                           (key === "data" || key === "url" || key === "image" || key === "images" || key === "base64") && 
+                           typeof obj[key] === "string" && obj[key].length > 50) {
+                    copy[key] = obj[key].indexOf("data:image/") === 0 ? "data:image/png;base64,[Base64 Image Data (Omitted)]" : "[Base64 Image Data (Omitted)]";
                 } else {
                     copy[key] = sanitizePayload(obj[key]);
                 }
@@ -430,9 +430,6 @@ Here is the ExtendScript to build it:
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (OpenAI/Lemonade)", responseText);
-            }
             const responseData = JSON.parse(responseText);
             if (responseData.usage) {
                 lastApiUsage = {
@@ -441,7 +438,11 @@ Here is the ExtendScript to build it:
                     totalTokens: responseData.usage.total_tokens
                 };
             }
-            return responseData.choices[0].message.content;
+            const content = responseData.choices && responseData.choices[0] && responseData.choices[0].message ? responseData.choices[0].message.content : "";
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (OpenAI/Lemonade)", content);
+            }
+            return content;
         }
 
     } else if (currentProvider === "gemini") {
@@ -516,9 +517,6 @@ Here is the ExtendScript to build it:
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Gemini)", responseText);
-            }
             const responseData = JSON.parse(responseText);
             if (responseData.usageMetadata) {
                 lastApiUsage = {
@@ -527,7 +525,11 @@ Here is the ExtendScript to build it:
                     totalTokens: responseData.usageMetadata.totalTokenCount
                 };
             }
-            return responseData.candidates[0].content.parts[0].text;
+            const content = responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content && responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] ? responseData.candidates[0].content.parts[0].text : "";
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Gemini)", content);
+            }
+            return content;
         }
 
     } else if (currentProvider === "anthropic") {
@@ -616,9 +618,6 @@ Here is the ExtendScript to build it:
             return accumulatedText;
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Anthropic)", responseText);
-            }
             const responseData = JSON.parse(responseText);
             if (responseData.usage) {
                 lastApiUsage = {
@@ -627,7 +626,11 @@ Here is the ExtendScript to build it:
                     totalTokens: (responseData.usage.input_tokens || 0) + (responseData.usage.output_tokens || 0)
                 };
             }
-            return responseData.content[0].text;
+            const content = responseData.content && responseData.content[0] ? responseData.content[0].text : "";
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Response Received (Anthropic)", content);
+            }
+            return content;
         }
     }
 }

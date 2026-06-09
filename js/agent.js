@@ -914,15 +914,35 @@ function fallbackSlidingWindowPrune(contextArray) {
     return contextArray;
 }
 
+function stripCodeBlocks(text) {
+    if (!text) return "";
+    return text.replace(/```[\s\S]*?(?:```|$)/g, "").trim();
+}
+
 function writeToDebugLog(category, text) {
+    // Only allow API Request and API Response categories in the debug log
+    const isRequest = category.indexOf("API Request Sent") === 0;
+    const isResponse = category.indexOf("API Response Received") === 0;
+    if (!isRequest && !isResponse) {
+        return;
+    }
+
     let loggedText = text;
+
+    if (isResponse) {
+        // Only keep reasoning and text blocks of the response, strip code blocks
+        loggedText = stripCodeBlocks(loggedText);
+    }
+
     if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && typeof loggedText === "string") {
-        // Replace base64 data URIs
-        loggedText = loggedText.replace(/data:image\/[a-zA-Z+.-]+;base64,[a-zA-Z0-9+/=\s\r\n]{50,}/g, "data:image/png;base64,[Base64 Image Data (Omitted)]");
-        // Replace JSON base64 payloads (e.g. "data": "iVBORw...")
-        loggedText = loggedText.replace(/"data":\s*"[a-zA-Z0-9+/=\s\r\n]{100,}"/g, '"data": "[Base64 Image Data (Omitted)]"');
+        // Replace base64 data URIs (robust matching for standard/escaped characters up to quote or whitespace)
+        loggedText = loggedText.replace(/data:image\/[^;]+;base64,[^"'\s\r\n]+/g, "data:image/png;base64,[Base64 Image Data (Omitted)]");
+        // Replace JSON base64 payloads (e.g., "data": "iVBORw...")
+        loggedText = loggedText.replace(/"data":\s*"[^"]{100,}"/g, '"data": "[Base64 Image Data (Omitted)]"');
         // Replace JSON "url": "data:image..." payloads
-        loggedText = loggedText.replace(/"url":\s*"data:image\/[a-zA-Z+.-]+;base64,[a-zA-Z0-9+/=\s\r\n]{50,}"/g, '"url": "data:image/png;base64,[Base64 Image Data (Omitted)]"');
+        loggedText = loggedText.replace(/"url":\s*"data:image\/[^;]+;base64,[^"]+"/g, '"url": "data:image/png;base64,[Base64 Image Data (Omitted)]"');
+        // Replace any quoted base64 string (> 100 chars of base64-valid set) to prevent leaks in custom keys like images
+        loggedText = loggedText.replace(/"[A-Za-z0-9+/=\s\r\n\-_]{100,}"/g, '"[Base64 Image Data (Omitted)]"');
     }
 
     const timestamp = new Date().toISOString();
