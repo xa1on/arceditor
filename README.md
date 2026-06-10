@@ -111,7 +111,8 @@ To simplify timeline manipulations, the host environment exposes a global API na
 
 | Method | Description |
 | :--- | :--- |
-| `createLayer(type, name, size, color)` | Creates a new layer in the active composition (`type` can be `"Solid"`, `"Text"`, `"Shape"`, `"Null"`, `"Adjustment"`, `"Camera"`, `"Light"`). |
+| `createLayer(type, name, size, color, options)` | Creates a new layer in the active composition (`type` can be `"Solid"`, `"Text"`, `"Shape"`, `"Null"`, `"Adjustment"`, `"Camera"`, `"Light"`; `options` supports `startTime`, `inPoint`, `outPoint`, `duration`, `index`, `position`, `relativeTo`). |
+| `moveLayer(layerRef, position, relativeToLayerRef)` | Reorganizes layer order (index) in the timeline stack (`position` can be `"top"`, `"bottom"`, `"before"`, `"after"`). |
 | `applyEffect(layerRef, effectMatchName, effectDisplayName)` | Applies an effect using its native matchName. |
 | `setPropertyValue(layerRef, propPath, value, time)` | Unified API to set native layer fields, solid colors, blending modes, and timeline property values. |
 | `setPropertyExpression(layerRef, propPath, expressionStr)` | Binds a javascript expression string to a target property. |

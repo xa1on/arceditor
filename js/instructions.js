@@ -279,6 +279,9 @@ Layer Referencing (Avoid Fragile Indexes!):
        - \`inPoint\`: (Optional) Number inPoint in seconds.
        - \`outPoint\`: (Optional) Number outPoint in seconds.
        - \`duration\`: (Optional) Number duration in seconds (sets outPoint relative to inPoint).
+       - \`index\`: (Optional) Number index in timeline layer stack (1 is top/front).
+       - \`position\`: (Optional) String position: \`"top"\` | \`"beginning"\` | \`"bottom"\` | \`"end"\` | \`"before"\` | \`"above"\` | \`"after"\` | \`"below"\`. (Takes precedence over 'index' if both are set).
+       - \`relativeTo\`: (Optional) Reference layer ID, name, or index (required for relative positions).
    - Returns: The created Layer object.
 
 2. \`ArcEditor.applyEffect(layerRef, effectMatchName, effectDisplayName)\`

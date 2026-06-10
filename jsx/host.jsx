@@ -509,6 +509,43 @@ var ArcEditor = {
             } else if (options.duration !== undefined && options.duration !== null) {
                 layer.outPoint = layer.inPoint + Number(options.duration);
             }
+
+            // Layer relative or index positioning
+            var hasRelativePosition = (options.position !== undefined && options.position !== null);
+            if (hasRelativePosition) {
+                var pos = String(options.position).toLowerCase();
+                var rel = options.relativeTo || options.relativeToLayerRef;
+                try {
+                    // Try to resolve reference layer first
+                    if (pos === "before" || pos === "above" || pos === "after" || pos === "below") {
+                        if (!rel) {
+                            throw new Error("Missing relativeTo parameter for relative positioning.");
+                        }
+                        this.resolveLayer(rel); // verify target exists
+                    }
+                    this.moveLayer(layer, pos, rel);
+                } catch (posErr) {
+                    // Graceful fallback to top and console warning as decided in design alignment
+                    if (typeof $.writeln === "function") {
+                        $.writeln("[ArcEditor] Relative positioning failed (" + posErr.message + "). Placed layer at top.");
+                    }
+                }
+            } else if (options.index !== undefined && options.index !== null) {
+                var targetIdx = Number(options.index);
+                try {
+                    if (targetIdx <= 1) {
+                        layer.moveToBeginning();
+                    } else if (targetIdx >= comp.numLayers) {
+                        layer.moveToEnd();
+                    } else {
+                        layer.moveBefore(comp.layer(targetIdx));
+                    }
+                } catch (idxErr) {
+                    if (typeof $.writeln === "function") {
+                        $.writeln("[ArcEditor] Index positioning failed (" + idxErr.message + "). Placed layer at top.");
+                    }
+                }
+            }
         }
 
         return layer;
