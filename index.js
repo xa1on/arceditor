@@ -56,11 +56,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (chatModelSelect) {
         chatModelSelect.addEventListener("change", handleChatModelChange);
         chatModelSelect.addEventListener("mousedown", handleChatModelMousedown);
+    } else {
+        alert("Debug Error: #chat-model-select not found in DOM!");
     }
     const welcomeChatModelSelect = document.getElementById("welcome-chat-model-select");
     if (welcomeChatModelSelect) {
         welcomeChatModelSelect.addEventListener("change", handleChatModelChange);
         welcomeChatModelSelect.addEventListener("mousedown", handleChatModelMousedown);
+    } else {
+        alert("Debug Error: #welcome-chat-model-select not found in DOM!");
     }
 });
 
@@ -835,23 +839,37 @@ function setUIReadyState(ready) {
 }
 
 async function handleChatModelMousedown() {
-    const provider = currentProvider;
-    if (!cachedModels[provider]) {
-        const url = apiUrl;
-        const key = apiKey;
-        const currentModelVal = modelName;
+    try {
+        const provider = currentProvider;
+        if (!cachedModels[provider]) {
+            const url = apiUrl;
+            const key = apiKey;
+            const currentModelVal = modelName;
 
-        const select = this;
-        const loadingOption = document.createElement("option");
-        loadingOption.text = "Fetching models...";
-        loadingOption.disabled = true;
-        select.add(loadingOption, select.options[0]);
+            const select = this;
+            const loadingOption = document.createElement("option");
+            loadingOption.text = "Fetching models...";
+            loadingOption.disabled = true;
 
-        try {
-            await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
-        } finally {
-            try { select.remove(loadingOption); } catch (e) { }
+            // Safe append
+            if (select.options.length > 0) {
+                select.insertBefore(loadingOption, select.options[0]);
+            } else {
+                select.appendChild(loadingOption);
+            }
+
+            try {
+                await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
+            } finally {
+                try {
+                    if (loadingOption.parentNode) {
+                        loadingOption.parentNode.removeChild(loadingOption);
+                    }
+                } catch (e) { }
+            }
         }
+    } catch (err) {
+        console.error("Error in handleChatModelMousedown:", err);
     }
 }
 
@@ -882,7 +900,8 @@ async function handleChatModelChange() {
             opt = document.createElement("option");
             opt.value = val;
             opt.text = val;
-            footerSelect.insertBefore(opt, footerSelect.options[footerSelect.options.length - 1]);
+            const refOpt = footerSelect.options.length > 0 ? footerSelect.options[footerSelect.options.length - 1] : null;
+            footerSelect.insertBefore(opt, refOpt);
         }
         footerSelect.value = val;
     }
@@ -892,7 +911,8 @@ async function handleChatModelChange() {
             opt = document.createElement("option");
             opt.value = val;
             opt.text = val;
-            welcomeSelect.insertBefore(opt, welcomeSelect.options[welcomeSelect.options.length - 1]);
+            const refOpt = welcomeSelect.options.length > 0 ? welcomeSelect.options[welcomeSelect.options.length - 1] : null;
+            welcomeSelect.insertBefore(opt, refOpt);
         }
         welcomeSelect.value = val;
     }

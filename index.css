@@ -34,7 +34,7 @@
 
     --font-sans: "Adobe Clean", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: "JetBrains Mono", Consolas, monospace;
-    --border-radius-sm: 2px;
+    --border-radius-sm: 4px;
     /* Boxy native feel */
     --border-radius-md: 3px;
 }
@@ -494,9 +494,11 @@ textarea#chat-input {
     font-size: 11px;
     line-height: 16px;
     resize: none;
-    height: 20px; /* 1 line */
-    max-height: 52px; /* 3 lines */
-    padding: 2px 0;
+    height: 20px;
+    /* 1 line */
+    max-height: 52px;
+    /* 3 lines */
+    padding: 4px 4px;
     box-sizing: border-box;
     overflow-y: hidden;
 }
@@ -505,10 +507,12 @@ textarea#chat-input {
 textarea#chat-input::-webkit-scrollbar {
     width: 4px;
 }
+
 textarea#chat-input::-webkit-scrollbar-thumb {
     background: #3e3e3e;
     border-radius: 2px;
 }
+
 textarea#chat-input::-webkit-scrollbar-track {
     background: transparent;
 }
@@ -1277,7 +1281,7 @@ select.form-input {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
-    padding: 4px 6px;
+    padding: 8px 8px;
     width: 100%;
     max-width: 340px;
 }
@@ -1296,8 +1300,10 @@ select.form-input {
     font-size: 11px;
     line-height: 16px;
     resize: none;
-    height: 20px; /* 1 line */
-    max-height: 52px; /* 3 lines */
+    height: 20px;
+    /* 1 line */
+    max-height: 52px;
+    /* 3 lines */
     padding: 2px 0;
     box-sizing: border-box;
     overflow-y: hidden;
@@ -1307,10 +1313,12 @@ select.form-input {
 .welcome-input-wrapper textarea::-webkit-scrollbar {
     width: 4px;
 }
+
 .welcome-input-wrapper textarea::-webkit-scrollbar-thumb {
     background: #3e3e3e;
     border-radius: 2px;
 }
+
 .welcome-input-wrapper textarea::-webkit-scrollbar-track {
     background: transparent;
 }

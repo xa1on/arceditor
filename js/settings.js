@@ -22,7 +22,7 @@ async function loadSettings() {
             const dataStr = await fs.promises.readFile(configPath, 'utf8');
             const data = JSON.parse(dataStr);
             currentProvider = data.provider || "lemonade";
-            
+
             if (data.providerSettings) {
                 providerSettings = {
                     lemonade: { ...providerSettings.lemonade, ...data.providerSettings.lemonade },
@@ -66,7 +66,7 @@ async function loadSettings() {
 
     // Sync into settings DOM
     document.getElementById("setting-provider").value = currentProvider;
-    
+
     // Sync each provider section inputs
     for (const prov in providerSettings) {
         const urlEl = document.getElementById(`setting-url-${prov}`);
@@ -88,7 +88,7 @@ async function saveSettings(e) {
     if (e) e.preventDefault();
 
     currentProvider = document.getElementById("setting-provider").value;
-    
+
     // Read from each provider's inputs
     for (const prov in providerSettings) {
         const urlEl = document.getElementById(`setting-url-${prov}`);
@@ -129,6 +129,8 @@ async function saveSettings(e) {
     }
 
     updateProviderSectionsUI();
+    // Clear models cache to trigger a fresh query on next use
+    cachedModels = {};
     populateAndQueryModels();
     toggleSettingsDrawer(false);
     validateConnection();
@@ -143,10 +145,6 @@ function getDefaultUrl(provider) {
 }
 
 function getDefaultModel(provider) {
-    if (provider === "lemonade") return "qwen2.5-coder-7b";
-    if (provider === "gemini") return "gemini-1.5-flash";
-    if (provider === "openai") return "gpt-4o";
-    if (provider === "anthropic") return "claude-3-5-sonnet-20241022";
     return "";
 }
 
@@ -459,20 +457,25 @@ function deleteSession() {
 let cachedModels = {};
 
 async function fetchModelsForProvider(provider, url, key) {
-    if (cachedModels[provider]) {
+    const debugTextarea = document.getElementById("debug-output");
+    if (debugTextarea) {
+        const timestamp = new Date().toISOString();
+        debugTextarea.value += `\n[${timestamp}] [DEBUG] Fetching models for ${provider} from URL: ${url} (Key length: ${key ? key.length : 0})\n`;
+        debugTextarea.scrollTop = debugTextarea.scrollHeight;
+    }
+
+    if (cachedModels[provider] && cachedModels[provider].length > 0) {
         return cachedModels[provider];
     }
 
-    const presets = {
-        lemonade: [],
-        gemini: [],
-        openai: [],
-        anthropic: []
-    };
-
-    if (!httpsClient && !httpClient) {
-        cachedModels[provider] = presets[provider];
-        return presets[provider];
+    if (!httpsClient && !httpClient && typeof fetch === "undefined") {
+        const errorMsg = "Cannot dynamically fetch models: Node.js network modules and browser fetch are both unavailable.";
+        if (debugTextarea) {
+            const timestamp = new Date().toISOString();
+            debugTextarea.value += `\n[${timestamp}] [ERROR] ${errorMsg}\n`;
+            debugTextarea.scrollTop = debugTextarea.scrollHeight;
+        }
+        return [];
     }
 
     try {
@@ -513,36 +516,37 @@ async function fetchModelsForProvider(provider, url, key) {
         }
 
         if (models && models.length > 0) {
+            const successMsg = `Successfully fetched ${models.length} models for ${provider}: ${models.join(", ")}`;
+            if (debugTextarea) {
+                const timestamp = new Date().toISOString();
+                debugTextarea.value += `\n[${timestamp}] [DEBUG] ${successMsg}\n`;
+                debugTextarea.scrollTop = debugTextarea.scrollHeight;
+            }
             cachedModels[provider] = models;
             return models;
         } else {
-            cachedModels[provider] = presets[provider];
-            return presets[provider];
+            const emptyMsg = `Fetch models returned no models (empty list) for provider: ${provider}`;
+            if (debugTextarea) {
+                const timestamp = new Date().toISOString();
+                debugTextarea.value += `\n[${timestamp}] [DEBUG] ${emptyMsg}\n`;
+                debugTextarea.scrollTop = debugTextarea.scrollHeight;
+            }
+            return [];
         }
     } catch (e) {
         console.warn(`[ArcEditor] Failed to fetch models for ${provider}:`, e);
-        cachedModels[provider] = presets[provider];
-        return presets[provider];
+        const errorMsg = `Failed to fetch models for ${provider}: ${e.message || e}`;
+        if (debugTextarea) {
+            const timestamp = new Date().toISOString();
+            debugTextarea.value += `\n[${timestamp}] [ERROR] ${errorMsg}\n`;
+            debugTextarea.scrollTop = debugTextarea.scrollHeight;
+        }
+        return [];
     }
 }
 
 function getFriendlyModelName(modelId) {
-    const mapping = {
-        "gemini-1.5-flash": "Gemini 1.5 Flash",
-        "gemini-1.5-pro": "Gemini 1.5 Pro",
-        "gemini-1.0-pro": "Gemini 1.0 Pro",
-        "gpt-4o": "GPT-4o",
-        "gpt-4o-mini": "GPT-4o mini",
-        "gpt-4-turbo": "GPT-4 Turbo",
-        "gpt-3.5-turbo": "GPT-3.5 Turbo",
-        "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
-        "claude-3-5-haiku-20241022": "Claude 3.5 Haiku",
-        "claude-3-opus-20240229": "Claude 3 Opus",
-        "qwen2.5-coder-7b": "Qwen 2.5 Coder 7B",
-        "deepseek-coder-6.7b": "DeepSeek Coder 6.7B",
-        "llama3": "Llama 3"
-    };
-    return mapping[modelId] || modelId;
+    return modelId || "";
 }
 
 async function updateModelDropdownOptions(provider, url, key, selectedModel, forceQuery = false) {
@@ -554,19 +558,17 @@ async function updateModelDropdownOptions(provider, url, key, selectedModel, for
     if (forceQuery) {
         models = await fetchModelsForProvider(provider, url, key);
     } else {
-        const presets = {
-            lemonade: ["qwen2.5-coder-7b", "deepseek-coder-6.7b", "llama3"],
-            gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"],
-            openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-            anthropic: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"]
-        };
-        models = cachedModels[provider] || presets[provider] || [];
+        models = cachedModels[provider] || [];
+    }
+
+    if (!models || models.length === 0) {
+        models = cachedModels[provider] || [];
     }
 
     const populateSelect = (select) => {
         if (!select) return;
         select.innerHTML = "";
-        
+
         models.forEach(m => {
             const opt = document.createElement("option");
             opt.value = m;
@@ -584,7 +586,7 @@ async function updateModelDropdownOptions(provider, url, key, selectedModel, for
         } else if (selectedModel) {
             const customModelOpt = document.createElement("option");
             customModelOpt.value = selectedModel;
-            customModelOpt.text = selectedModel;
+            customModelOpt.text = getFriendlyModelName(selectedModel);
             select.insertBefore(customModelOpt, customOpt);
             select.value = selectedModel;
         } else {
@@ -600,8 +602,8 @@ async function populateAndQueryModels() {
     const provider = document.getElementById("setting-provider").value;
     const urlEl = document.getElementById(`setting-url-${provider}`);
     const keyEl = document.getElementById(`setting-key-${provider}`);
-    const url = urlEl ? urlEl.value : getDefaultUrl(provider);
-    const key = keyEl ? keyEl.value : "";
+    const url = (urlEl && urlEl.value.trim()) ? urlEl.value.trim() : getDefaultUrl(provider);
+    const key = (keyEl && keyEl.value.trim()) ? keyEl.value.trim() : "";
     const currentModelVal = providerSettings[provider] ? providerSettings[provider].model : getDefaultModel(provider);
 
     await updateModelDropdownOptions(provider, url, key, currentModelVal);

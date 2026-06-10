@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,9 +9,10 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
 </head>
+
 <body class="dark-theme">
     <div id="arc-root" class="glass-container">
-        
+
 
 
         <!-- CHAT SESSIONS CONTROL BAR -->
@@ -22,8 +24,13 @@
                 <select id="select-chat-session" class="session-select">
                     <option value="new">+ New Chat...</option>
                 </select>
-                <button id="btn-delete-session" class="icon-btn" title="Delete current chat" style="padding: 2px; margin-left: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
-                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <button id="btn-delete-session" class="icon-btn" title="Delete current chat"
+                    style="padding: 2px; margin-left: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
+                    <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.5" fill="none"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
                 </button>
             </div>
         </div>
@@ -34,7 +41,13 @@
             <button id="tab-console" class="tab-btn">JSX Console</button>
             <button id="tab-debug" class="tab-btn">Debug Log</button>
             <button id="btn-settings" class="icon-btn" title="API Settings">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                </svg>
             </button>
         </div>
 
@@ -48,12 +61,20 @@
                         <h1 class="welcome-title">ArcEditor</h1>
                     </div>
                     <p class="welcome-subtext">Ask Arc to edit, splice, or animate your compositions</p>
-                    <div class="welcome-input-wrapper" style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
-                        <textarea id="welcome-chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1" style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
-                        <div class="input-controls-row" style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+                    <div class="welcome-input-wrapper"
+                        style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
+                        <textarea id="welcome-chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1"
+                            style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
+                        <div class="input-controls-row"
+                            style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
                             <div class="input-controls-left" style="display: flex; align-items: center; gap: 6px;">
-                                <button id="welcome-btn-plus" class="icon-btn" title="Add attachment" type="button" style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
-                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <button id="welcome-btn-plus" class="icon-btn" title="Add attachment" type="button"
+                                    style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor"
+                                        stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
                                 </button>
                                 <select id="welcome-chat-model-select" class="chat-model-select-dropdown">
                                     <!-- Options populated dynamically -->
@@ -61,7 +82,11 @@
                             </div>
                             <div class="input-controls-right">
                                 <button id="welcome-btn-send" class="send-btn" disabled>
-                                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor"
+                                        stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
                                 </button>
                             </div>
                         </div>
@@ -84,11 +109,14 @@
                     <div class="console-header">
                         <span>JSX Console</span>
                         <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
-                            <button id="btn-run-console" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Execute Script</button>
+                            <button id="btn-run-console" class="txt-btn"
+                                style="color: var(--text-accent); font-weight: 600;">Execute Script</button>
                             <button id="btn-clear-console" class="txt-btn">Clear</button>
                         </div>
                     </div>
-                    <textarea id="console-output" class="code-viewport" spellcheck="false" placeholder="// Paste or edit ExtendScript code here, then click Execute Script..." style="border: none; background: transparent; outline: none; resize: none;"></textarea>
+                    <textarea id="console-output" class="code-viewport" spellcheck="false"
+                        placeholder="// Paste or edit ExtendScript code here, then click Execute Script..."
+                        style="border: none; background: transparent; outline: none; resize: none;"></textarea>
                 </div>
             </div>
 
@@ -98,11 +126,14 @@
                     <div class="console-header">
                         <span>Debug Log</span>
                         <div class="console-actions" style="display: flex; align-items: center; gap: 8px;">
-                            <button id="btn-copy-debug" class="txt-btn" style="color: var(--text-accent); font-weight: 600;">Copy Log</button>
+                            <button id="btn-copy-debug" class="txt-btn"
+                                style="color: var(--text-accent); font-weight: 600;">Copy Log</button>
                             <button id="btn-clear-debug" class="txt-btn">Clear Log</button>
                         </div>
                     </div>
-                    <textarea id="debug-output" class="code-viewport" spellcheck="false" readonly placeholder="// Agent debug logs (Prompts, LLM Raw Responses, and executed Tool Calls) will appear here..." style="border: none; background: transparent; outline: none; resize: none; font-family: 'JetBrains Mono', monospace; font-size: 11px;"></textarea>
+                    <textarea id="debug-output" class="code-viewport" spellcheck="false" readonly
+                        placeholder="// Agent debug logs (Prompts, LLM Raw Responses, and executed Tool Calls) will appear here..."
+                        style="border: none; background: transparent; outline: none; resize: none; font-family: 'JetBrains Mono', monospace; font-size: 11px;"></textarea>
                 </div>
             </div>
         </main>
@@ -112,30 +143,47 @@
             <div id="dock-thumbnails" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <!-- Thumbnails will be injected dynamically -->
             </div>
-            <button id="btn-remove-attachment" class="close-badge" style="position: static; margin-left: auto; width: auto; height: auto; padding: 2px 6px; border-radius: var(--border-radius-sm); font-size: 9px; line-height: 1.2;">Clear All</button>
+            <button id="btn-remove-attachment" class="close-badge"
+                style="position: static; margin-left: auto; width: auto; height: auto; padding: 2px 6px; border-radius: var(--border-radius-sm); font-size: 9px; line-height: 1.2;">Clear
+                All</button>
             <span class="dock-label" style="margin-left: 8px;">Captured frames</span>
         </div>
 
         <!-- QUICK CHIPS & UTILITIES -->
         <div class="quick-utilities">
             <button id="chip-capture" class="chip" title="Capture the active frame from After Effects">
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                </svg>
                 <span>Capture Frame</span>
             </button>
             <button id="chip-capture-sequence" class="chip" title="Capture a sequence of 5 frames from the composition">
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none"><rect x="2" y="2" width="20" height="20" rx="2.5" ry="2.5"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line></svg>
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
+                    <rect x="2" y="2" width="20" height="20" rx="2.5" ry="2.5"></rect>
+                    <line x1="7" y1="2" x2="7" y2="22"></line>
+                    <line x1="17" y1="2" x2="17" y2="22"></line>
+                </svg>
                 <span>Capture Sequence</span>
             </button>
         </div>
 
         <!-- FOOTER INPUT -->
         <footer class="app-footer" style="display: flex; flex-direction: column;">
-            <div class="input-glow-wrapper" style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
-                <textarea id="chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1" style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
-                <div class="input-controls-row" style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+            <div class="input-glow-wrapper"
+                style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
+                <textarea id="chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1"
+                    style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
+                <div class="input-controls-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
                     <div class="input-controls-left" style="display: flex; align-items: center; gap: 6px;">
-                        <button id="btn-plus" class="icon-btn" title="Add attachment" type="button" style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
-                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <button id="btn-plus" class="icon-btn" title="Add attachment" type="button"
+                            style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
                         </button>
                         <select id="chat-model-select" class="chat-model-select-dropdown">
                             <!-- Options populated dynamically -->
@@ -143,10 +191,17 @@
                     </div>
                     <div class="input-controls-right">
                         <button id="btn-send" class="send-btn" disabled>
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
                         </button>
                         <button id="btn-stop" class="stop-btn hidden" title="Stop execution">
-                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5"
+                                fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -163,7 +218,7 @@
                 </div>
                 <div class="drawer-body">
                     <form id="form-settings">
-                        
+
                         <div class="field-group">
                             <label for="setting-provider">Active AI Provider</label>
                             <select id="setting-provider" class="form-input">
@@ -175,72 +230,103 @@
                         </div>
 
                         <!-- Provider specific sections -->
-                        <div class="provider-sections-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 10px;">
-                            
+                        <div class="provider-sections-container"
+                            style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+
                             <!-- Lemonade Section -->
-                            <div class="provider-section" data-provider="lemonade" style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
-                                <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">Lemonade (Local)</div>
+                            <div class="provider-section" data-provider="lemonade"
+                                style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
+                                <div
+                                    style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">
+                                    Lemonade (Local)</div>
                                 <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-url-lemonade" style="font-size: 9px;">Base URL</label>
-                                    <input type="text" id="setting-url-lemonade" class="form-input" placeholder="http://localhost:1337/v1" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="text" id="setting-url-lemonade" class="form-input"
+                                        placeholder="http://localhost:1337/v1"
+                                        style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                                 <div class="field-group" style="margin-bottom: 0;">
                                     <label for="setting-key-lemonade" style="font-size: 9px;">API Key (Optional)</label>
-                                    <input type="password" id="setting-key-lemonade" class="form-input" placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="password" id="setting-key-lemonade" class="form-input"
+                                        placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                             </div>
 
                             <!-- Gemini Section -->
-                            <div class="provider-section" data-provider="gemini" style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
-                                <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">Google Gemini</div>
+                            <div class="provider-section" data-provider="gemini"
+                                style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
+                                <div
+                                    style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">
+                                    Google Gemini</div>
                                 <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-url-gemini" style="font-size: 9px;">Base URL</label>
-                                    <input type="text" id="setting-url-gemini" class="form-input" placeholder="https://generativelanguage.googleapis.com" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="text" id="setting-url-gemini" class="form-input"
+                                        placeholder="https://generativelanguage.googleapis.com"
+                                        style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                                 <div class="field-group" style="margin-bottom: 0;">
                                     <label for="setting-key-gemini" style="font-size: 9px;">API Key</label>
-                                    <input type="password" id="setting-key-gemini" class="form-input" placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="password" id="setting-key-gemini" class="form-input"
+                                        placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                             </div>
 
                             <!-- OpenAI Section -->
-                            <div class="provider-section" data-provider="openai" style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
-                                <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">OpenAI (ChatGPT)</div>
+                            <div class="provider-section" data-provider="openai"
+                                style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
+                                <div
+                                    style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">
+                                    OpenAI (ChatGPT)</div>
                                 <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-url-openai" style="font-size: 9px;">Base URL</label>
-                                    <input type="text" id="setting-url-openai" class="form-input" placeholder="https://api.openai.com/v1" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="text" id="setting-url-openai" class="form-input"
+                                        placeholder="https://api.openai.com/v1"
+                                        style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                                 <div class="field-group" style="margin-bottom: 0;">
                                     <label for="setting-key-openai" style="font-size: 9px;">API Key</label>
-                                    <input type="password" id="setting-key-openai" class="form-input" placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="password" id="setting-key-openai" class="form-input"
+                                        placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                             </div>
 
                             <!-- Anthropic Section -->
-                            <div class="provider-section" data-provider="anthropic" style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
-                                <div style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">Anthropic Claude</div>
+                            <div class="provider-section" data-provider="anthropic"
+                                style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
+                                <div
+                                    style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">
+                                    Anthropic Claude</div>
                                 <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-url-anthropic" style="font-size: 9px;">Base URL</label>
-                                    <input type="text" id="setting-url-anthropic" class="form-input" placeholder="https://api.anthropic.com/v1" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="text" id="setting-url-anthropic" class="form-input"
+                                        placeholder="https://api.anthropic.com/v1"
+                                        style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                                 <div class="field-group" style="margin-bottom: 0;">
                                     <label for="setting-key-anthropic" style="font-size: 9px;">API Key</label>
-                                    <input type="password" id="setting-key-anthropic" class="form-input" placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                    <input type="password" id="setting-key-anthropic" class="form-input"
+                                        placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                             </div>
                         </div>
 
                         <div class="field-group">
                             <label for="setting-max-tool-retry">Max Tool Turns Limit</label>
-                            <input type="number" id="setting-max-tool-retry" class="form-input" min="1" max="100" placeholder="15">
+                            <input type="number" id="setting-max-tool-retry" class="form-input" min="1" max="100"
+                                placeholder="15">
                         </div>
 
-                        <div class="field-group check-group" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
-                            <input type="checkbox" id="setting-include-base64" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--text-accent);">
-                            <label for="setting-include-base64" style="margin: 0; cursor: pointer; user-select: none;">Include Base64 in Debug Logs</label>
+                        <div class="field-group check-group"
+                            style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+                            <input type="checkbox" id="setting-include-base64"
+                                style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--text-accent);">
+                            <label for="setting-include-base64"
+                                style="margin: 0; cursor: pointer; user-select: none;">Include Base64 in Debug
+                                Logs</label>
                         </div>
 
-                        <div class="drawer-actions" style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
+                        <div class="drawer-actions"
+                            style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
                             <button type="submit" id="btn-save-settings" class="btn-primary">Save & Apply</button>
                             <button type="button" id="btn-inspect-comp" class="btn-secondary">Test Connection</button>
                         </div>
@@ -264,4 +350,5 @@
     <!-- Entry UI Bindings -->
     <script src="index.js"></script>
 </body>
+
 </html>
