@@ -51,37 +51,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Sync active AE project file path when the panel gets focus
     window.addEventListener("focus", syncProjectPath);
 
-    // Dynamic model dropdown and provider listeners
-    const providerSelect = document.getElementById("setting-provider");
-    if (providerSelect) {
-        providerSelect.addEventListener("change", handleProviderChange);
+    // Bind chat model select dropdown events
+    const chatModelSelect = document.getElementById("chat-model-select");
+    if (chatModelSelect) {
+        chatModelSelect.addEventListener("change", handleChatModelChange);
+        chatModelSelect.addEventListener("mousedown", handleChatModelMousedown);
     }
-
-    const modelSelect = document.getElementById("setting-model-select");
-    if (modelSelect) {
-        modelSelect.addEventListener("change", handleModelSelectChange);
-
-        // Fetch models when user focuses or mousedowns the dropdown (to fulfill dynamic query once)
-        modelSelect.addEventListener("mousedown", async function () {
-            const provider = document.getElementById("setting-provider").value;
-            if (!cachedModels[provider]) {
-                const url = document.getElementById("setting-url").value;
-                const key = document.getElementById("setting-key").value;
-                const currentModelVal = document.getElementById("setting-model").value;
-
-                const select = this;
-                const loadingOption = document.createElement("option");
-                loadingOption.text = "Fetching models...";
-                loadingOption.disabled = true;
-                select.add(loadingOption, select.options[0]);
-
-                try {
-                    await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
-                } finally {
-                    try { select.remove(loadingOption); } catch (e) { }
-                }
-            }
-        });
+    const welcomeChatModelSelect = document.getElementById("welcome-chat-model-select");
+    if (welcomeChatModelSelect) {
+        welcomeChatModelSelect.addEventListener("change", handleChatModelChange);
+        welcomeChatModelSelect.addEventListener("mousedown", handleChatModelMousedown);
     }
 });
 
@@ -173,6 +152,15 @@ ${code}`;
     btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
 
     chipCapture.addEventListener("click", () => captureCompositionFrame(false));
+
+    const btnPlus = document.getElementById("btn-plus");
+    if (btnPlus) {
+        btnPlus.addEventListener("click", () => captureCompositionFrame(false));
+    }
+    const welcomeBtnPlus = document.getElementById("welcome-btn-plus");
+    if (welcomeBtnPlus) {
+        welcomeBtnPlus.addEventListener("click", () => captureCompositionFrame(false));
+    }
 
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     if (chipCaptureSequence) {
@@ -781,6 +769,10 @@ function setUIReadyState(ready) {
     const btnInspectComp = document.getElementById("btn-inspect-comp");
     const welcomeInput = document.getElementById("welcome-chat-input");
     const welcomeBtnSend = document.getElementById("welcome-btn-send");
+    const chatModelSelect = document.getElementById("chat-model-select");
+    const welcomeModelSelect = document.getElementById("welcome-chat-model-select");
+    const btnPlus = document.getElementById("btn-plus");
+    const welcomeBtnPlus = document.getElementById("welcome-btn-plus");
 
     if (chatInput) {
         chatInput.disabled = !ready;
@@ -799,6 +791,11 @@ function setUIReadyState(ready) {
             welcomeInput.placeholder = "Ask Arc to edit, splice, or animate...";
         }
     }
+
+    if (chatModelSelect) chatModelSelect.disabled = !ready;
+    if (welcomeModelSelect) welcomeModelSelect.disabled = !ready;
+    if (btnPlus) btnPlus.disabled = !ready;
+    if (welcomeBtnPlus) welcomeBtnPlus.disabled = !ready;
 
     const btnStop = document.getElementById("btn-stop");
     if (ready) {
@@ -833,6 +830,87 @@ function setUIReadyState(ready) {
         } else {
             quickUtilities.style.opacity = "1";
             quickUtilities.style.pointerEvents = "auto";
+        }
+    }
+}
+
+async function handleChatModelMousedown() {
+    const provider = currentProvider;
+    if (!cachedModels[provider]) {
+        const url = apiUrl;
+        const key = apiKey;
+        const currentModelVal = modelName;
+
+        const select = this;
+        const loadingOption = document.createElement("option");
+        loadingOption.text = "Fetching models...";
+        loadingOption.disabled = true;
+        select.add(loadingOption, select.options[0]);
+
+        try {
+            await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
+        } finally {
+            try { select.remove(loadingOption); } catch (e) { }
+        }
+    }
+}
+
+async function handleChatModelChange() {
+    const select = this;
+    let val = select.value;
+    if (val === "custom") {
+        const custom = prompt("Enter custom model name:");
+        if (custom && custom.trim()) {
+            val = custom.trim();
+        } else {
+            select.value = modelName;
+            return;
+        }
+    }
+
+    modelName = val;
+    if (providerSettings[currentProvider]) {
+        providerSettings[currentProvider].model = val;
+    }
+
+    // Update both select values
+    const footerSelect = document.getElementById("chat-model-select");
+    const welcomeSelect = document.getElementById("welcome-chat-model-select");
+    if (footerSelect) {
+        let opt = footerSelect.querySelector(`option[value="${val}"]`);
+        if (!opt) {
+            opt = document.createElement("option");
+            opt.value = val;
+            opt.text = val;
+            footerSelect.insertBefore(opt, footerSelect.options[footerSelect.options.length - 1]);
+        }
+        footerSelect.value = val;
+    }
+    if (welcomeSelect) {
+        let opt = welcomeSelect.querySelector(`option[value="${val}"]`);
+        if (!opt) {
+            opt = document.createElement("option");
+            opt.value = val;
+            opt.text = val;
+            welcomeSelect.insertBefore(opt, welcomeSelect.options[welcomeSelect.options.length - 1]);
+        }
+        welcomeSelect.value = val;
+    }
+
+    // Save settings immediately
+    const config = {
+        provider: currentProvider,
+        providerSettings: providerSettings,
+        model: modelName,
+        includeBase64InDebugLog: includeBase64InDebugLog,
+        maxToolRetryLimit: maxToolRetryLimit
+    };
+
+    if (fs) {
+        try {
+            await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+        } catch (err) {
+            console.error("Failed to save settings auto-change:", err);
         }
     }
 }

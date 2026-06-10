@@ -555,6 +555,64 @@ textarea::placeholder {
     background: var(--bg-tab-hover);
 }
 
+/* Inline Model Dropdown & Controls Row */
+.input-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.input-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chat-model-select-dropdown {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    padding: 2px 4px;
+    border-radius: var(--border-radius-sm);
+    transition: background-color 0.15s, color 0.15s;
+    max-width: 180px;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238e8e8e' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0px center;
+    background-size: 8px;
+    padding-right: 12px;
+}
+
+.chat-model-select-dropdown:hover {
+    background: var(--bg-tab-hover);
+    color: var(--text-primary);
+}
+
+.chat-model-select-dropdown option {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+/* Provider Sections in Settings Drawer */
+.provider-section {
+    opacity: 0.55;
+    transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.provider-section.active {
+    opacity: 1 !important;
+    border-color: var(--text-accent) !important;
+    background: rgba(20, 115, 230, 0.04) !important;
+}
+
 .hidden {
     display: none !important;
 }

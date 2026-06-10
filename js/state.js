@@ -12,6 +12,13 @@ let isConnected = false;
 let includeBase64InDebugLog = false;
 let maxToolRetryLimit = 15;
 
+let providerSettings = {
+    lemonade: { url: "http://localhost:1337/v1", key: "", model: "qwen2.5-coder-7b" },
+    gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "gemini-1.5-flash" },
+    openai: { url: "https://api.openai.com/v1", key: "", model: "gpt-4o" },
+    anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "claude-3-5-sonnet-20241022" }
+};
+
 let chatHistory = [];
 let attachedFrames = [];
 let installedEffects = {};

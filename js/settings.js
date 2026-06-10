@@ -3,6 +3,18 @@
  * Handles local user configurations, provider presets, and disk settings serialization.
  */
 
+function updateProviderSectionsUI() {
+    const activeProv = document.getElementById("setting-provider").value;
+    const sections = document.querySelectorAll(".provider-section");
+    sections.forEach(sec => {
+        if (sec.getAttribute("data-provider") === activeProv) {
+            sec.classList.add("active");
+        } else {
+            sec.classList.remove("active");
+        }
+    });
+}
+
 async function loadSettings() {
     let loaded = false;
     if (fs) {
@@ -10,9 +22,29 @@ async function loadSettings() {
             const dataStr = await fs.promises.readFile(configPath, 'utf8');
             const data = JSON.parse(dataStr);
             currentProvider = data.provider || "lemonade";
-            apiUrl = data.url || getDefaultUrl(currentProvider);
-            modelName = data.model || getDefaultModel(currentProvider);
-            apiKey = data.key || "";
+            
+            if (data.providerSettings) {
+                providerSettings = {
+                    lemonade: { ...providerSettings.lemonade, ...data.providerSettings.lemonade },
+                    gemini: { ...providerSettings.gemini, ...data.providerSettings.gemini },
+                    openai: { ...providerSettings.openai, ...data.providerSettings.openai },
+                    anthropic: { ...providerSettings.anthropic, ...data.providerSettings.anthropic }
+                };
+            } else {
+                // Migrate legacy settings
+                if (data.provider) {
+                    providerSettings[data.provider].url = data.url || getDefaultUrl(data.provider);
+                    providerSettings[data.provider].key = data.key || "";
+                }
+                if (data.model) {
+                    providerSettings[currentProvider].model = data.model;
+                }
+            }
+
+            apiUrl = providerSettings[currentProvider].url;
+            apiKey = providerSettings[currentProvider].key;
+            modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
+
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             loaded = true;
@@ -24,26 +56,31 @@ async function loadSettings() {
     }
 
     if (!loaded) {
-        // Apply defaults
         currentProvider = "lemonade";
-        apiUrl = getDefaultUrl(currentProvider);
-        modelName = getDefaultModel(currentProvider);
-        apiKey = "";
+        apiUrl = providerSettings.lemonade.url;
+        apiKey = providerSettings.lemonade.key;
+        modelName = providerSettings.lemonade.model;
         includeBase64InDebugLog = false;
         maxToolRetryLimit = 15;
     }
 
     // Sync into settings DOM
     document.getElementById("setting-provider").value = currentProvider;
-    document.getElementById("setting-url").value = apiUrl;
-    document.getElementById("setting-model").value = modelName;
-    document.getElementById("setting-key").value = apiKey;
+    
+    // Sync each provider section inputs
+    for (const prov in providerSettings) {
+        const urlEl = document.getElementById(`setting-url-${prov}`);
+        const keyEl = document.getElementById(`setting-key-${prov}`);
+        if (urlEl) urlEl.value = providerSettings[prov].url;
+        if (keyEl) keyEl.value = providerSettings[prov].key;
+    }
+
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
 
-    // Initialize model dropdown options based on current settings
+    updateProviderSectionsUI();
     populateAndQueryModels();
 }
 
@@ -51,9 +88,19 @@ async function saveSettings(e) {
     if (e) e.preventDefault();
 
     currentProvider = document.getElementById("setting-provider").value;
-    apiUrl = document.getElementById("setting-url").value || getDefaultUrl(currentProvider);
-    modelName = document.getElementById("setting-model").value || getDefaultModel(currentProvider);
-    apiKey = document.getElementById("setting-key").value;
+    
+    // Read from each provider's inputs
+    for (const prov in providerSettings) {
+        const urlEl = document.getElementById(`setting-url-${prov}`);
+        const keyEl = document.getElementById(`setting-key-${prov}`);
+        if (urlEl) providerSettings[prov].url = urlEl.value || getDefaultUrl(prov);
+        if (keyEl) providerSettings[prov].key = keyEl.value;
+    }
+
+    // Sync active provider variables
+    apiUrl = providerSettings[currentProvider].url;
+    apiKey = providerSettings[currentProvider].key;
+    modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
 
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) includeBase64InDebugLog = base64Checkbox.checked;
@@ -63,9 +110,8 @@ async function saveSettings(e) {
 
     const config = {
         provider: currentProvider,
-        url: apiUrl,
+        providerSettings: providerSettings,
         model: modelName,
-        key: apiKey,
         includeBase64InDebugLog: includeBase64InDebugLog,
         maxToolRetryLimit: maxToolRetryLimit
     };
@@ -82,6 +128,8 @@ async function saveSettings(e) {
         addSystemMessage("Settings applied locally (Running in browser mode).");
     }
 
+    updateProviderSectionsUI();
+    populateAndQueryModels();
     toggleSettingsDrawer(false);
     validateConnection();
 }
@@ -478,10 +526,29 @@ async function fetchModelsForProvider(provider, url, key) {
     }
 }
 
+function getFriendlyModelName(modelId) {
+    const mapping = {
+        "gemini-1.5-flash": "Gemini 1.5 Flash",
+        "gemini-1.5-pro": "Gemini 1.5 Pro",
+        "gemini-1.0-pro": "Gemini 1.0 Pro",
+        "gpt-4o": "GPT-4o",
+        "gpt-4o-mini": "GPT-4o mini",
+        "gpt-4-turbo": "GPT-4 Turbo",
+        "gpt-3.5-turbo": "GPT-3.5 Turbo",
+        "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
+        "claude-3-5-haiku-20241022": "Claude 3.5 Haiku",
+        "claude-3-opus-20240229": "Claude 3 Opus",
+        "qwen2.5-coder-7b": "Qwen 2.5 Coder 7B",
+        "deepseek-coder-6.7b": "DeepSeek Coder 6.7B",
+        "llama3": "Llama 3"
+    };
+    return mapping[modelId] || modelId;
+}
+
 async function updateModelDropdownOptions(provider, url, key, selectedModel, forceQuery = false) {
-    const select = document.getElementById("setting-model-select");
-    const input = document.getElementById("setting-model");
-    if (!select || !input) return;
+    const footerSelect = document.getElementById("chat-model-select");
+    const welcomeSelect = document.getElementById("welcome-chat-model-select");
+    if (!footerSelect && !welcomeSelect) return;
 
     let models = [];
     if (forceQuery) {
@@ -496,113 +563,64 @@ async function updateModelDropdownOptions(provider, url, key, selectedModel, for
         models = cachedModels[provider] || presets[provider] || [];
     }
 
-    select.innerHTML = "";
-    models.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.text = m;
-        select.appendChild(opt);
-    });
+    const populateSelect = (select) => {
+        if (!select) return;
+        select.innerHTML = "";
+        
+        models.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m;
+            opt.text = getFriendlyModelName(m);
+            select.appendChild(opt);
+        });
 
-    const customOpt = document.createElement("option");
-    customOpt.value = "custom";
-    customOpt.text = "Custom (type manually)...";
-    select.appendChild(customOpt);
+        const customOpt = document.createElement("option");
+        customOpt.value = "custom";
+        customOpt.text = "Custom model...";
+        select.appendChild(customOpt);
 
-    if (selectedModel && models.includes(selectedModel)) {
-        select.value = selectedModel;
-        input.value = selectedModel;
-        input.classList.add("hidden");
-    } else {
-        select.value = "custom";
-        input.value = selectedModel || "";
-        input.classList.remove("hidden");
-    }
+        if (selectedModel && models.includes(selectedModel)) {
+            select.value = selectedModel;
+        } else if (selectedModel) {
+            const customModelOpt = document.createElement("option");
+            customModelOpt.value = selectedModel;
+            customModelOpt.text = selectedModel;
+            select.insertBefore(customModelOpt, customOpt);
+            select.value = selectedModel;
+        } else {
+            select.value = models[0] || "custom";
+        }
+    };
+
+    populateSelect(footerSelect);
+    populateSelect(welcomeSelect);
 }
 
 async function populateAndQueryModels() {
     const provider = document.getElementById("setting-provider").value;
-    const url = document.getElementById("setting-url").value;
-    const key = document.getElementById("setting-key").value;
-    const currentModelVal = document.getElementById("setting-model").value;
+    const urlEl = document.getElementById(`setting-url-${provider}`);
+    const keyEl = document.getElementById(`setting-key-${provider}`);
+    const url = urlEl ? urlEl.value : getDefaultUrl(provider);
+    const key = keyEl ? keyEl.value : "";
+    const currentModelVal = providerSettings[provider] ? providerSettings[provider].model : getDefaultModel(provider);
 
     await updateModelDropdownOptions(provider, url, key, currentModelVal);
 
     if (!cachedModels[provider]) {
         fetchModelsForProvider(provider, url, key).then(() => {
-            updateModelDropdownOptions(provider, url, key, document.getElementById("setting-model").value);
+            const currentVal = providerSettings[provider] ? providerSettings[provider].model : getDefaultModel(provider);
+            updateModelDropdownOptions(provider, url, key, currentVal);
         });
     }
 }
 
 function handleProviderChange() {
-    const provider = document.getElementById("setting-provider").value;
-    const urlInput = document.getElementById("setting-url");
-    const keyInput = document.getElementById("setting-key");
-
-    const defaultUrls = [
-        "http://localhost:1337/v1",
-        "https://api.openai.com/v1",
-        "https://api.anthropic.com/v1",
-        "https://generativelanguage.googleapis.com"
-    ];
-    if (!urlInput.value || defaultUrls.includes(urlInput.value)) {
-        urlInput.value = getDefaultUrl(provider);
-    }
-
-    if (provider === "lemonade") {
-        keyInput.placeholder = "API access key (Optional)";
-    } else {
-        keyInput.placeholder = "API access key";
-    }
-
-    populateAndQueryModels();
-}
-
-function handleModelSelectChange() {
-    const select = document.getElementById("setting-model-select");
-    const input = document.getElementById("setting-model");
-    if (!select || !input) return;
-
-    if (select.value === "custom") {
-        input.classList.remove("hidden");
-        input.focus();
-    } else {
-        input.classList.add("hidden");
-        input.value = select.value;
-    }
+    updateProviderSectionsUI();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     const providerSelect = document.getElementById("setting-provider");
     if (providerSelect) {
         providerSelect.addEventListener("change", handleProviderChange);
-    }
-
-    const modelSelect = document.getElementById("setting-model-select");
-    if (modelSelect) {
-        modelSelect.addEventListener("change", handleModelSelectChange);
-
-        // Fetch models when user focuses or mousedowns the dropdown (to fulfill dynamic query once)
-        modelSelect.addEventListener("mousedown", async function () {
-            const provider = document.getElementById("setting-provider").value;
-            if (!cachedModels[provider]) {
-                const url = document.getElementById("setting-url").value;
-                const key = document.getElementById("setting-key").value;
-                const currentModelVal = document.getElementById("setting-model").value;
-
-                const select = this;
-                const loadingOption = document.createElement("option");
-                loadingOption.text = "Fetching models...";
-                loadingOption.disabled = true;
-                select.add(loadingOption, select.options[0]);
-
-                try {
-                    await updateModelDropdownOptions(provider, url, key, currentModelVal, true);
-                } finally {
-                    try { select.remove(loadingOption); } catch (e) { }
-                }
-            }
-        });
     }
 });
