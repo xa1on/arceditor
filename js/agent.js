@@ -148,20 +148,6 @@ async function runAgenticExecutionLoop(userText) {
 
                 if (jsonBlock) {
                     assistantMsg.isIntermediate = true;
-                    const significantJson = getSignificantJsonActionKey(jsonBlock);
-                    const actionKey = significantJson ? `json:${significantJson}` : "";
-                    if (actionKey) {
-                        if (executedActions.indexOf(actionKey) !== -1) {
-                            console.warn("[ArcEditor] Loop detected! Agent is repeating identical actions:", actionKey);
-                            const openTurnNums = getOpenTurnNums(aiBubble);
-                            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse) +
-                                `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Execution loop detected (agent repeated identical actions). Terminating to prevent quota burn.</div>`;
-                            if (typeof scrollToBottom === "function") scrollToBottom();
-                            isCompleted = true;
-                            break;
-                        }
-                        executedActions.push(actionKey);
-                    }
                 }
                 chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
                 agentHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
