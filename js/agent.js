@@ -224,7 +224,7 @@ async function runAgenticExecutionLoop(userText) {
                         // Push error feedback to local context history and master history
                         const errFeedbackMsg = {
                             role: "user",
-                            content: `System execution failed with error: "${toolObservations}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised JSON tool call.`,
+                            content: `[System Observation - Error]: System execution failed with error: "${toolObservations}". Please analyze the After Effects error, correct the syntax or API mismatch, and output a complete revised JSON tool call.`,
                             isIntermediate: true
                         };
                         activeContext.push(errFeedbackMsg);
@@ -248,7 +248,7 @@ async function runAgenticExecutionLoop(userText) {
                     if (capturedFrameDataDuringLoop) {
                         turnImages = capturedFrameDataDuringLoop;
                         const contentParts = [
-                            { type: "text", text: `Observation:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
+                            { type: "text", text: `[System Observation - Visual Tool Output]:\n${observations}\n\nPlease analyze the visual state of the composition and proceed with your next planned steps.` }
                         ];
                         if (Array.isArray(capturedFrameDataDuringLoop)) {
                             capturedFrameDataDuringLoop.forEach(img => {
@@ -269,7 +269,7 @@ async function runAgenticExecutionLoop(userText) {
                     } else {
                         const obsMsg = {
                             role: "user",
-                            content: `Observation:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
+                            content: `[System Observation - Tool Output]:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
                             isIntermediate: true
                         };
                         activeContext.push(obsMsg);
@@ -330,9 +330,18 @@ async function runAgenticExecutionLoop(userText) {
                             capturedFrameDataDuringLoop = base64Data;
                             stateModifiedSinceLastCapture = false; // Reset the flag since we've now provided a capture
 
+                            // Mark the intercepted assistant message as intermediate in history since we are continuing the loop
+                            assistantMsg.isIntermediate = true;
+                            if (chatHistory.length > 0) {
+                                chatHistory[chatHistory.length - 1].isIntermediate = true;
+                            }
+                            if (agentHistory.length > 0) {
+                                agentHistory[agentHistory.length - 1].isIntermediate = true;
+                            }
+
                             // 3. Inject the observation message with the image to prompt the LLM
                             const contentParts = [
-                                { type: "text", text: `[System Verification Observation]: You have modified the composition but did not request a visual capture to inspect your changes. The system has automatically captured the active frame. Please analyze this attached canvas frame to visually verify that all layout coordinates, typography styles, shape sizes, colors, and blend modes are perfectly aligned and correct.\n\n- If everything looks correct: please summarize your changes and finalize your response to the user.\n- If you spot any layout bugs, rendering defects, or alignment issues: execute a corrected ExtendScript to fix them before finalizing.` }
+                                { type: "text", text: `[System Observation - Visual Verification]: You have modified the composition but did not request a visual capture to inspect your changes. The system has automatically captured the active frame. Please analyze this attached canvas frame to visually verify that all layout coordinates, typography styles, shape sizes, colors, and blend modes are perfectly aligned and correct.\n\n- If everything looks correct: finalize your response as per the Detailed Final Conclusion guidelines in the System Instructions.\n- If you spot any layout bugs, rendering defects, or alignment issues: execute a corrected ExtendScript to fix them before finalizing.` }
                             ];
                             contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
 
