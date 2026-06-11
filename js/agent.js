@@ -607,7 +607,7 @@ async function executeToolCalls(jsonStr) {
                     await evalScriptAsync(`app.endUndoGroup()`);
                     undoGroupActive = false;
                 }
-                await evalScriptAsync("app.executeCommand(16)");
+                await evalScriptAsync("app.activate(); app.executeCommand(16);");
                 observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
             } else if (toolName === "setPlayheadTime") {
@@ -659,7 +659,7 @@ async function executeToolCalls(jsonStr) {
                     await evalScriptAsync(`app.endUndoGroup()`);
                     undoGroupActive = false;
                 }
-                await evalScriptAsync("app.executeCommand(16)"); // Centrally trigger rollback on error!
+                await evalScriptAsync("app.activate(); app.executeCommand(16);"); // Centrally trigger rollback on error!
                 break;
             }
         }
@@ -672,7 +672,7 @@ async function executeToolCalls(jsonStr) {
                 await evalScriptAsync(`app.endUndoGroup()`);
             } catch (e) { }
             try {
-                await evalScriptAsync("app.executeCommand(16)"); // Ensure rollback on exception if transaction was open
+                await evalScriptAsync("app.activate(); app.executeCommand(16);"); // Ensure rollback on exception if transaction was open
             } catch (e) { }
         }
         observations.push(`- Tool execution exception: ${err.message}`);
