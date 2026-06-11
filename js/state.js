@@ -5,7 +5,7 @@
 
 // Global state variables
 let currentProvider = "lemonade";
-let apiUrl = "http://localhost:1337/v1";
+let apiUrl = "http://localhost:13305/v1";
 let modelName = "";
 let apiKey = "";
 let isConnected = false;
@@ -13,19 +13,20 @@ let includeBase64InDebugLog = false;
 let maxToolRetryLimit = 15;
 
 let providerSettings = {
-    lemonade: { url: "http://localhost:1337/v1", key: "", model: "" },
+    lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
     gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
     openai: { url: "https://api.openai.com/v1", key: "", model: "" },
     anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "" }
 };
 
 let chatHistory = [];
+let agentHistory = [];
 let attachedFrames = [];
 let installedEffects = {};
 let lastApiUsage = null; // { promptTokens, completionTokens, totalTokens }
 
 // Safe Node.js loading (allows mockup testing inside standalone browsers)
-let fs = null, path = null, os = null, httpsClient = null, httpClient = null;
+let fs = null, path = null, os = null, httpsClient = null, httpClient = null, url = null;
 let csInterface = null;
 let extensionPath = "./";
 let configPath = "./config.json";
@@ -38,6 +39,7 @@ try {
         os = require('os');
         httpsClient = require('https');
         httpClient = require('http');
+        url = require('url');
     }
 } catch (e) {
     console.warn("[ArcEditor] Node.js context not detected. Running in mockup browser mode.");
@@ -53,10 +55,47 @@ try {
     console.error("CSInterface initialization failed:", e);
 }
 
-// Set writable config path in user home directory (avoids Program Files read-only permission issues!)
-if (os && path) {
-    configPath = path.join(os.homedir(), '.arceditor_config.json');
-    chatsConfigPath = path.join(os.homedir(), '.arceditor_chats.json');
+// Set writable config path in dynamic Documents/ArcEditor folder (avoids Program Files read-only permission issues!)
+if (os && path && fs) {
+    let appConfigDir = "";
+    try {
+        let docsPath = "";
+        if (csInterface && typeof csInterface.getSystemPath === "function") {
+            docsPath = csInterface.getSystemPath("myDocuments");
+        }
+        if (docsPath) {
+            // Normalize path if it starts with file:// scheme
+            if (docsPath.indexOf("file://") === 0) {
+                if (url && typeof url.fileURLToPath === "function") {
+                    docsPath = url.fileURLToPath(docsPath);
+                } else {
+                    // Manual parsing fallback if url module is unavailable
+                    if (/^file:\/\/\/[a-zA-Z]:/.test(docsPath)) {
+                        docsPath = docsPath.replace(/^file:\/\/\//, ""); // Remove file:///
+                    } else {
+                        docsPath = docsPath.replace(/^file:\/\//, ""); // Remove file://, keeping root /
+                    }
+                    docsPath = decodeURIComponent(docsPath);
+                    if (path && os && os.platform() === "win32") {
+                        docsPath = docsPath.replace(/\//g, "\\");
+                    }
+                }
+            }
+        }
+        if (!docsPath) {
+            docsPath = path.join(os.homedir(), 'Documents');
+        }
+
+        appConfigDir = path.join(docsPath, 'ArcEditor');
+        if (!fs.existsSync(appConfigDir)) {
+            fs.mkdirSync(appConfigDir, { recursive: true });
+        }
+    } catch (e) {
+        console.error("Failed to dynamically locate or create ArcEditor Documents folder:", e);
+        appConfigDir = os.homedir(); // Safe fallback to user home directory
+    }
+    configPath = path.join(appConfigDir, 'config.json');
+    chatsConfigPath = path.join(appConfigDir, 'chats.json');
 } else {
     configPath = "./config.json";
     chatsConfigPath = "./chats.json";

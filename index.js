@@ -647,7 +647,7 @@ function updateContextSizeInfo() {
     const inputText = document.getElementById("chat-input").value;
 
     // Reconstruct prospective messages payload (including text input and attachments)
-    const prospectiveHistory = [...chatHistory];
+    const prospectiveHistory = [...agentHistory];
     if (inputText.trim()) {
         if (attachedFrames && attachedFrames.length > 0) {
             const contentParts = [{ type: "text", text: inputText }];

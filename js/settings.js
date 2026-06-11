@@ -137,7 +137,7 @@ async function saveSettings(e) {
 }
 
 function getDefaultUrl(provider) {
-    if (provider === "lemonade") return "http://localhost:1337/v1";
+    if (provider === "lemonade") return "http://localhost:13305/v1";
     if (provider === "openai") return "https://api.openai.com/v1";
     if (provider === "anthropic") return "https://api.anthropic.com/v1";
     if (provider === "gemini") return "https://generativelanguage.googleapis.com";
@@ -269,6 +269,7 @@ function initializeProjectSessions() {
             id: "session_" + Date.now(),
             title: "New Chat",
             history: [],
+            agentHistory: [],
             created: Date.now()
         };
         sessions.push(newSession);
@@ -303,6 +304,7 @@ function loadSessionHistory(sessionId) {
 
     activeSessionId = sessionId;
     chatHistory = session.history || [];
+    agentHistory = session.agentHistory || [];
 
     // Clear Chat Scroller and re-render messages!
     const scroller = document.getElementById("chat-messages");
@@ -356,6 +358,7 @@ function updateCurrentSessionHistory() {
     const session = sessions.find(s => s.id === activeSessionId);
     if (session) {
         session.history = chatHistory;
+        session.agentHistory = agentHistory;
 
         // Auto-generate title from the first user prompt if the title is still "New Chat"
         if (session.title === "New Chat" && chatHistory.length > 0) {
@@ -395,6 +398,7 @@ function createNewSession() {
         id: "session_" + Date.now(),
         title: "New Chat",
         history: [],
+        agentHistory: [],
         created: Date.now()
     };
 

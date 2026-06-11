@@ -18,21 +18,25 @@ async function runAgenticExecutionLoop(userText) {
         // Reset attachments
         clearAttachmentDock();
 
+        let userMsg;
         if (visualFrameInputs && visualFrameInputs.length > 0) {
             const contentParts = [{ type: "text", text: userText }];
             visualFrameInputs.forEach(img => {
                 contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
             });
-            chatHistory.push({
+            userMsg = {
                 role: "user",
                 content: contentParts
-            });
+            };
         } else {
-            chatHistory.push({ role: "user", content: userText });
+            userMsg = { role: "user", content: userText };
         }
 
+        chatHistory.push(JSON.parse(JSON.stringify(userMsg)));
+        agentHistory.push(JSON.parse(JSON.stringify(userMsg)));
+
         // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
-        let activeContext = JSON.parse(JSON.stringify(chatHistory));
+        let activeContext = JSON.parse(JSON.stringify(agentHistory));
         activeContext = fallbackSlidingWindowPrune(activeContext); // Instant local pruning to protect context size
         pruneBase64Images(activeContext, 2); // Initial sliding window pruning
 
@@ -160,6 +164,7 @@ async function runAgenticExecutionLoop(userText) {
                     }
                 }
                 chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
+                agentHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
 
                 var observations = "";
                 var executedAnything = false;
@@ -224,6 +229,7 @@ async function runAgenticExecutionLoop(userText) {
                         };
                         activeContext.push(errFeedbackMsg);
                         chatHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
+                        agentHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
 
                         // Don't send the base64 image again to save bandwidth
                         visualFrameInputs = null;
@@ -258,6 +264,7 @@ async function runAgenticExecutionLoop(userText) {
                         };
                         activeContext.push(obsMsg);
                         chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                        agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                         capturedFrameDataDuringLoop = null; // Reset for next potential capture
                     } else {
                         const obsMsg = {
@@ -267,6 +274,7 @@ async function runAgenticExecutionLoop(userText) {
                         };
                         activeContext.push(obsMsg);
                         chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                        agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                     }
 
                     // Package successful turn
@@ -335,6 +343,7 @@ async function runAgenticExecutionLoop(userText) {
                             };
                             activeContext.push(obsMsg);
                             chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                            agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
 
                             // Add a successful verification turn to completedTurns
                             completedTurns.push({
@@ -402,6 +411,15 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
 
+        const lastAgentAssistantMsg = agentHistory.filter(m => m.role === "assistant").pop();
+        if (lastAgentAssistantMsg) {
+            lastAgentAssistantMsg.intermediateTurns = completedTurns;
+            delete lastAgentAssistantMsg.intermediateTurnsHtml;
+            if (isStopped || loopRetries >= maxRetries || isCompleted) {
+                delete lastAgentAssistantMsg.isIntermediate;
+            }
+        }
+
         // Update persistent history size information
         updateCurrentSessionHistory();
         updateContextSizeInfo();
@@ -409,9 +427,9 @@ async function runAgenticExecutionLoop(userText) {
         // Trigger memory condensation asynchronously in the background so the user does not wait
         setTimeout(async () => {
             try {
-                const condensedContext = await pruneHistoryContexts(chatHistory);
-                if (condensedContext && condensedContext.length < chatHistory.length) {
-                    chatHistory = condensedContext;
+                const condensedContext = await pruneHistoryContexts(agentHistory);
+                if (condensedContext && condensedContext.length < agentHistory.length) {
+                    agentHistory = condensedContext;
                     updateCurrentSessionHistory();
                     updateContextSizeInfo();
                 }
