@@ -97,6 +97,33 @@ async function runAgenticExecutionLoop(userText) {
                     isCompleted = true;
                     break;
                 }
+                if (!llmResponse || !llmResponse.trim()) {
+                    loopRetries++;
+                    writeToDebugLog("LLM Response Empty Error", "LLM returned an empty or whitespace-only response. The local model context might be overloaded, or it encountered a generation failure.");
+
+                    completedTurns.push({
+                        type: "failed",
+                        turnNum: completedTurns.length + 1,
+                        turnTitle: "Empty response from agent (Retrying...)",
+                        llmResponse: "",
+                        observations: "Error: The model returned an empty response. This usually indicates a generation failure or context window overflow."
+                    });
+
+                    const openTurnNums = getOpenTurnNums(aiBubble);
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Empty response detected. Retrying generation... (Attempt ${loopRetries}/${maxRetries})</div>`);
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+
+                    const retryMsg = {
+                        role: "user",
+                        content: "[System Observation - Error]: You returned an empty or whitespace-only response. If your context window is overloaded, please resolve the task immediately or output a concise, corrected JSON tool call without conversational preamble.",
+                        isIntermediate: true
+                    };
+                    activeContext.push(retryMsg);
+                    chatHistory.push(JSON.parse(JSON.stringify(retryMsg)));
+                    agentHistory.push(JSON.parse(JSON.stringify(retryMsg)));
+                    continue;
+                }
                 aiBubble.setAttribute("data-raw-text", llmResponse);
                 const assistantMsg = { role: "assistant", content: llmResponse };
                 activeContext.push(assistantMsg);
@@ -393,8 +420,16 @@ async function runAgenticExecutionLoop(userText) {
         } else {
             if (loopRetries >= maxRetries) {
                 const openTurnNums = getOpenTurnNums(aiBubble);
+                let hasEmptyResponse = false;
+                for (let turnIdx = 0; turnIdx < completedTurns.length; turnIdx++) {
+                    if (completedTurns[turnIdx].turnTitle === "Empty response from agent (Retrying...)") {
+                        hasEmptyResponse = true;
+                        break;
+                    }
+                }
+                const extraMsg = hasEmptyResponse ? " (An empty response was detected, which could indicate a context window overflow on your local LLM server)." : " Check the JSX Console tab for syntax logs.";
                 updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`);
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached.${extraMsg}</div>`);
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
         }
@@ -636,6 +671,8 @@ async function executeToolCalls(jsonStr) {
             let result = await evalScriptAsync(jsxCommand);
             if (toolName === "executeExtendScript" && (!result || result.trim() === "")) {
                 result = "Error: ExtendScript execution returned an empty response. This usually indicates a global syntax or compilation error in After Effects (e.g., unescaped newlines, unmatched brackets, or quote mismatches) that prevented the script from parsing/compiling.";
+            } else if (toolName === "getLayerProperties" && result && result.length > 8000) {
+                result = result.substring(0, 8000) + "\n... [TRUNCATED to prevent context window overflow. If you need a specific property group, please use getLayerProperties with a specific groupFilter parameter, e.g. \"Transform\" or \"Effects\"] ...";
             }
             observations.push(`- Tool "${toolName}": ${result}`);
 

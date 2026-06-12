@@ -170,8 +170,11 @@ function formatMarkdown(text, turnNum) {
     if (!text) return "";
     const activeTurn = turnNum || "default";
 
+    // Normalize newlines to standard \n
+    const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
     // Escape HTML special characters safely
-    let html = text
+    let html = normalizedText
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
@@ -233,7 +236,7 @@ function formatMarkdown(text, turnNum) {
         }
     }
 
-    html = rebuiltHtml;
+    html = convertMarkdownTables(rebuiltHtml);
 
     // Process the text paragraph by paragraph
     const paragraphs = html.split(/\n\n+/);
@@ -243,6 +246,11 @@ function formatMarkdown(text, turnNum) {
 
         // Check if it's a pre-extracted block
         if (trimmed.indexOf("__PRE_BLOCK_") === 0) {
+            return trimmed;
+        }
+
+        // Check if it's a pre-parsed HTML table
+        if (trimmed.indexOf("<table") === 0) {
             return trimmed;
         }
 
@@ -265,7 +273,7 @@ function formatMarkdown(text, turnNum) {
             return `<blockquote>${quoteContent}</blockquote>`;
         }
 
-        // Process tables
+        // Process tables (fallback)
         const tableHtml = parseMarkdownTable(trimmed);
         if (tableHtml) {
             return tableHtml;
@@ -313,20 +321,57 @@ function formatMarkdown(text, turnNum) {
     return result;
 }
 
-function parseMarkdownTable(blockText) {
-    const lines = blockText.trim().split("\n");
+function convertMarkdownTables(text) {
+    if (!text) return "";
+    const lines = text.split("\n");
+    const processedLines = [];
+    let i = 0;
+    while (i < lines.length) {
+        if (i + 1 < lines.length) {
+            const currentLine = lines[i];
+            const nextLine = lines[i + 1];
+            const dividerRow = nextLine.trim();
+            const dividerRegex = /^\|?\s*[:-]+\s*\|(\s*[:-]+\s*\|)*\s*[:-]*\s*$/;
+
+            if (dividerRegex.test(dividerRow)) {
+                // Table detected!
+                const tableLines = [currentLine, nextLine];
+                let j = i + 2;
+                while (j < lines.length) {
+                    const dataLine = lines[j];
+                    const trimmedData = dataLine.trim();
+                    // A line belongs to the table if it is not empty and has at least one pipe character
+                    if (trimmedData === "" || trimmedData.indexOf("|") === -1) {
+                        break;
+                    }
+                    tableLines.push(dataLine);
+                    j++;
+                }
+
+                const tableHtml = parseTableLines(tableLines);
+                if (tableHtml) {
+                    processedLines.push("");
+                    processedLines.push(tableHtml);
+                    processedLines.push("");
+                    i = j;
+                    continue;
+                }
+            }
+        }
+        processedLines.push(lines[i]);
+        i++;
+    }
+    return processedLines.join("\n");
+}
+
+function parseTableLines(lines) {
     if (lines.length < 2) return null;
 
     const dividerRow = lines[1].trim();
-    // A regex that matches a standard divider row containing pipes, dashes, colons, and spaces
-    const dividerRegex = /^\|?\s*[:-]+\s*\|(\s*[:-]+\s*\|)*\s*[:-]*\s*$/;
-    if (!dividerRegex.test(dividerRow)) {
-        return null;
-    }
 
     let html = '<table class="markdown-table">';
 
-    // Parse Headers (first line)
+    // Parse Headers
     let headerCols = lines[0].split("|").map(col => col.trim());
     if (lines[0].trim().startsWith("|")) headerCols.shift();
     if (lines[0].trim().endsWith("|")) headerCols.pop();
@@ -337,7 +382,7 @@ function parseMarkdownTable(blockText) {
     });
     html += '</tr></thead>';
 
-    // Parse Alignments from divider row
+    // Parse Alignments
     let alignCols = dividerRow.split("|").map(col => {
         const c = col.trim();
         const startColon = c.indexOf(":") === 0;
@@ -350,7 +395,7 @@ function parseMarkdownTable(blockText) {
     if (dividerRow.startsWith("|")) alignCols.shift();
     if (dividerRow.endsWith("|")) alignCols.pop();
 
-    // Parse Data rows (from index 2 onwards)
+    // Parse Data rows
     html += '<tbody>';
     for (let i = 2; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -369,4 +414,17 @@ function parseMarkdownTable(blockText) {
     }
     html += '</tbody></table>';
     return html;
+}
+
+function parseMarkdownTable(blockText) {
+    const lines = blockText.trim().split("\n");
+    if (lines.length < 2) return null;
+
+    const dividerRow = lines[1].trim();
+    const dividerRegex = /^\|?\s*[:-]+\s*\|(\s*[:-]+\s*\|)*\s*[:-]*\s*$/;
+    if (!dividerRegex.test(dividerRow)) {
+        return null;
+    }
+
+    return parseTableLines(lines);
 }
