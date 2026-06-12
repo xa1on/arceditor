@@ -517,7 +517,6 @@ async function executeToolCalls(jsonStr) {
     }
 
     let observations = [];
-    let undoGroupActive = false;
 
     try {
         for (let i = 0; i < toolCalls.length; i++) {
@@ -530,26 +529,6 @@ async function executeToolCalls(jsonStr) {
             const params = tc.parameters || {};
             const ref = params.layerRef !== undefined ? params.layerRef : params.layerIndex;
             const serializedRef = typeof ref === "string" ? `"${ref.replace(/"/g, '\\"')}"` : (ref !== undefined ? ref : 'null');
-
-            // Centralized classification: determine if the tool modifies the AE comp state
-            const isReadOnly = [
-                "captureActiveFrame",
-                "captureCompositionSequence",
-                "getTimelineContext",
-                "getInstalledEffects",
-                "searchInstalledEffects",
-                "getLayerProperties",
-                "selectLayers",
-                "switchComposition",
-                "setPlayheadTime",
-                "undoLastAction"
-            ].indexOf(toolName) !== -1;
-
-            // Lazily open the AE Undo Group only for state-modifying tools
-            if (!isReadOnly && !undoGroupActive) {
-                await evalScriptAsync(`app.beginUndoGroup("ArcEditor Agent Tools")`);
-                undoGroupActive = true;
-            }
 
             let jsxCommand = "";
             if (toolName === "getTimelineContext") {
@@ -603,10 +582,6 @@ async function executeToolCalls(jsonStr) {
                 }
                 continue;
             } else if (toolName === "undoLastAction") {
-                if (undoGroupActive) {
-                    await evalScriptAsync(`app.endUndoGroup()`);
-                    undoGroupActive = false;
-                }
                 await evalScriptAsync("app.activate(); app.executeCommand(16);");
                 observations.push(`- Tool "undoLastAction": Success: Rolled back the last ExtendScript action in After Effects.`);
                 continue;
@@ -636,10 +611,18 @@ async function executeToolCalls(jsonStr) {
                         _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
                         if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
                     } catch (dummyErr) {}
+                    
+                    app.beginUndoGroup("ArcEditor Agent Script");
                     try {
                         ${script}
+                        app.endUndoGroup();
                         return "Success";
                     } catch (err) {
+                        app.endUndoGroup();
+                        try {
+                            app.activate();
+                            app.executeCommand(16);
+                        } catch (undoErr) {}
                         return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
                 })()`;
@@ -655,26 +638,10 @@ async function executeToolCalls(jsonStr) {
 
             const trimmedResult = result ? result.trim().toLowerCase() : "";
             if (trimmedResult && (trimmedResult.indexOf("error:") === 0 || trimmedResult.indexOf("evalscript error") === 0)) {
-                if (undoGroupActive) {
-                    await evalScriptAsync(`app.endUndoGroup()`);
-                    undoGroupActive = false;
-                }
-                await evalScriptAsync("app.activate(); app.executeCommand(16);"); // Centrally trigger rollback on error!
                 break;
             }
         }
-        if (undoGroupActive) {
-            await evalScriptAsync(`app.endUndoGroup()`);
-        }
     } catch (err) {
-        if (undoGroupActive) {
-            try {
-                await evalScriptAsync(`app.endUndoGroup()`);
-            } catch (e) { }
-            try {
-                await evalScriptAsync("app.activate(); app.executeCommand(16);"); // Ensure rollback on exception if transaction was open
-            } catch (e) { }
-        }
         observations.push(`- Tool execution exception: ${err.message}`);
     }
 

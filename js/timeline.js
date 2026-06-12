@@ -55,27 +55,175 @@ async function validateConnection() {
     }
 }
 
+const defaultStandardEffects = {
+    "Blur & Sharpen": [
+        { displayName: "Gaussian Blur", matchName: "ADBE Gaussian Blur 2" },
+        { displayName: "Fast Box Blur", matchName: "ADBE Fast Blur" },
+        { displayName: "Directional Blur", matchName: "ADBE Direct Blur" },
+        { displayName: "Radial Blur", matchName: "ADBE Radial Blur" },
+        { displayName: "Camera Lens Blur", matchName: "ADBE Camera Lens Blur" },
+        { displayName: "Sharpen", matchName: "ADBE Sharpen" }
+    ],
+    "Channel": [
+        { displayName: "Invert", matchName: "ADBE Invert" },
+        { displayName: "Minimax", matchName: "ADBE Minimax" },
+        { displayName: "Shift Channels", matchName: "ADBE Shift Channels" }
+    ],
+    "Color Correction": [
+        { displayName: "Tint", matchName: "ADBE Tint" },
+        { displayName: "Curves", matchName: "ADBE CurvesCustom" },
+        { displayName: "Hue/Saturation", matchName: "ADBE Color Balance 2" },
+        { displayName: "Brightness & Contrast", matchName: "ADBE Brightness & Contrast 2" },
+        { displayName: "Levels", matchName: "ADBE Levels" },
+        { displayName: "Exposure", matchName: "ADBE Exposure" },
+        { displayName: "Color Balance", matchName: "ADBE Color Balance" },
+        { displayName: "Lumetri Color", matchName: "Adobe Lumetri Color" }
+    ],
+    "Distort": [
+        { displayName: "Turbulent Displace", matchName: "ADBE Turbulent Displace" },
+        { displayName: "Corner Pin", matchName: "ADBE Corner Pin" },
+        { displayName: "Magnify", matchName: "ADBE Magnify" },
+        { displayName: "Mesh Warp", matchName: "ADBE Mesh Warp" },
+        { displayName: "Mirror", matchName: "ADBE Mirror" },
+        { displayName: "Polar Coordinates", matchName: "ADBE Polar Coordinates" },
+        { displayName: "Ripple", matchName: "ADBE Ripple" },
+        { displayName: "Spherize", matchName: "ADBE Spherize" },
+        { displayName: "Wave Warp", matchName: "ADBE Wave Warp" },
+        { displayName: "Optics Compensation", matchName: "ADBE Optics Compensation" },
+        { displayName: "Transform", matchName: "ADBE Transform" }
+    ],
+    "Generate": [
+        { displayName: "Fill", matchName: "ADBE Fill" },
+        { displayName: "Gradient Ramp", matchName: "ADBE Gradient Ramp" },
+        { displayName: "Grid", matchName: "ADBE Grid" },
+        { displayName: "Lens Flare", matchName: "ADBE Lens Flare" },
+        { displayName: "Radio Waves", matchName: "ADBE Radio Waves" },
+        { displayName: "Stroke", matchName: "ADBE Stroke" },
+        { displayName: "Write-on", matchName: "ADBE Write-on" },
+        { displayName: "Circle", matchName: "ADBE Circle" },
+        { displayName: "Beam", matchName: "ADBE Beam" },
+        { displayName: "Audio Spectrum", matchName: "ADBE Audio Spectrum" },
+        { displayName: "Audio Waveform", matchName: "ADBE Audio Waveform" }
+    ],
+    "Keying": [
+        { displayName: "Keylight (1.2)", matchName: "Keylight (1.2)" },
+        { displayName: "Luma Key", matchName: "ADBE Luma Key" }
+    ],
+    "Perspective": [
+        { displayName: "Drop Shadow", matchName: "ADBE Drop Shadow" },
+        { displayName: "Radial Shadow", matchName: "ADBE Radial Shadow" }
+    ],
+    "Simulation": [
+        { displayName: "CC Particle World", matchName: "CC Particle World" },
+        { displayName: "CC Particle Systems II", matchName: "CC Particle Systems II" },
+        { displayName: "CC Snowfall", matchName: "CC Snowfall" },
+        { displayName: "CC Rainfall", matchName: "CC Rainfall" }
+    ],
+    "Stylize": [
+        { displayName: "Glow", matchName: "ADBE Glo2" },
+        { displayName: "Glow (Legacy)", matchName: "ADBE Glow" },
+        { displayName: "Find Edges", matchName: "ADBE Find Edges" },
+        { displayName: "Mosaic", matchName: "ADBE Mosaic" },
+        { displayName: "Posterize", matchName: "ADBE Posterize" },
+        { displayName: "Emboss", matchName: "ADBE Emboss" },
+        { displayName: "Roughen Edges", matchName: "ADBE Roughen Edges" }
+    ],
+    "Transition": [
+        { displayName: "Linear Wipe", matchName: "ADBE Linear Wipe" },
+        { displayName: "Radial Wipe", matchName: "ADBE Radial Wipe" },
+        { displayName: "Venetian Blinds", matchName: "ADBE Venetian Blinds" }
+    ],
+    "Expression Controls": [
+        { displayName: "Slider Control", matchName: "ADBE Slider Control" },
+        { displayName: "Color Control", matchName: "ADBE Color Control" },
+        { displayName: "Angle Control", matchName: "ADBE Angle Control" },
+        { displayName: "Point Control", matchName: "ADBE Point Control" },
+        { displayName: "3D Point Control", matchName: "ADBE 3D Point Control" },
+        { displayName: "Checkbox Control", matchName: "ADBE Checkbox Control" },
+        { displayName: "Layer Control", matchName: "ADBE Layer Control" }
+    ]
+};
+
 async function loadInstalledEffects() {
-    if (!csInterface) {
-        // Fallback mockup installed effects inside standalone browser
-        installedEffects = {
-            "Blur & Sharpen": [
-                { displayName: "Gaussian Blur", matchName: "ADBE Gaussian Blur 2" },
-                { displayName: "Fast Box Blur", matchName: "ADBE Fast Blur" }
-            ],
-            "Stylize": [
-                { displayName: "Glow", matchName: "ADBE Glow" }
-            ]
-        };
+    // 1. If already loaded in memory, return immediately
+    if (installedEffects && Object.keys(installedEffects).length > 0) {
         return;
     }
 
-    const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getInstalledEffects()");
+    // 2. Fallback check: Browser mode checks
+    if (!csInterface || !fs || !path) {
+        installedEffects = defaultStandardEffects;
+        console.log("[ArcEditor] Browser mode: loaded default standard effects catalog.");
+        return;
+    }
+
+    // 3. Try reading from the persistent cache file first
+    let cachedData = null;
+    let cachedCount = 0;
     try {
-        installedEffects = JSON.parse(result);
-        console.log("[ArcEditor] Loaded installed effects catalog:", Object.keys(installedEffects).length, "categories");
-    } catch (e) {
-        console.error("[ArcEditor] Failed to parse installed effects:", e, result);
+        if (fs.existsSync(effectsCachePath)) {
+            const fileContent = fs.readFileSync(effectsCachePath, 'utf8');
+            if (fileContent && fileContent.trim()) {
+                cachedData = JSON.parse(fileContent);
+                if (cachedData && cachedData._meta) {
+                    cachedCount = cachedData._meta.totalCount || 0;
+                }
+            }
+        }
+    } catch (cacheErr) {
+        console.error("[ArcEditor] Failed to read effects cache file:", cacheErr);
+    }
+
+    // Helper to run background crawl and update memory/disk
+    const triggerBackgroundCrawl = (delayMs) => {
+        setTimeout(async () => {
+            try {
+                console.log("[ArcEditor] Starting background crawl of After Effects installed effects...");
+                const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getInstalledEffects()");
+                if (result && result.trim() && result.indexOf("Error") !== 0) {
+                    const crawled = JSON.parse(result);
+                    if (crawled && Object.keys(crawled).length > 0) {
+                        const aeCountVal = await evalScriptAsync("app.effects ? app.effects.length : 0");
+                        const currentAECount = parseInt(aeCountVal, 10) || 0;
+                        crawled._meta = { totalCount: currentAECount };
+                        
+                        installedEffects = crawled;
+                        fs.writeFileSync(effectsCachePath, JSON.stringify(crawled, null, 2), 'utf8');
+                        console.log("[ArcEditor] Background crawl complete. Cached", Object.keys(installedEffects).length - 1, "categories to disk (total count: " + currentAECount + ").");
+                    }
+                }
+            } catch (crawlErr) {
+                console.error("[ArcEditor] Background effect crawling failed:", crawlErr);
+            }
+        }, delayMs);
+    };
+
+    // 4. Query current effect length from After Effects (extremely fast, ~5-10ms)
+    let currentAECount = 0;
+    try {
+        const aeCountVal = await evalScriptAsync("app.effects ? app.effects.length : 0");
+        currentAECount = parseInt(aeCountVal, 10) || 0;
+    } catch (aeErr) {
+        console.error("[ArcEditor] Failed to query app.effects.length:", aeErr);
+    }
+
+    // 5. Compare counts and decide
+    if (cachedData && currentAECount === cachedCount) {
+        installedEffects = cachedData;
+        console.log("[ArcEditor] Loaded installed effects from disk cache file (up-to-date, count:", currentAECount, ")");
+        return;
+    }
+
+    if (cachedData) {
+        // Cache exists but is out-of-date (total count changed from cachedCount to currentAECount)
+        installedEffects = cachedData; // Instantly load old cache for responsiveness first
+        console.log("[ArcEditor] Effect count changed from " + cachedCount + " to " + currentAECount + ". Re-indexing in background.");
+        triggerBackgroundCrawl(1000);
+    } else {
+        // No cache file exists
+        installedEffects = defaultStandardEffects; // Instantly load built-in fallback
+        console.log("[ArcEditor] No cache file found. Pre-populating and triggering background crawl.");
+        triggerBackgroundCrawl(1000);
     }
 }
 

@@ -31,6 +31,7 @@ let csInterface = null;
 let extensionPath = "./";
 let configPath = "./config.json";
 let chatsConfigPath = "./chats.json";
+let effectsCachePath = "./effects_cache.json";
 
 try {
     if (typeof require !== "undefined") {
@@ -96,9 +97,11 @@ if (os && path && fs) {
     }
     configPath = path.join(appConfigDir, 'config.json');
     chatsConfigPath = path.join(appConfigDir, 'chats.json');
+    effectsCachePath = path.join(appConfigDir, 'effects_cache.json');
 } else {
     configPath = "./config.json";
     chatsConfigPath = "./chats.json";
+    effectsCachePath = "./effects_cache.json";
 }
 
 // Project specific chat sessions state

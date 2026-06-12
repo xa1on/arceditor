@@ -288,8 +288,10 @@ var ArcInspector = {
     getInstalledEffects: function () {
         var list = {};
         if (typeof app.effects !== "undefined" && app.effects) {
-            for (var i = 0; i < app.effects.length; i++) {
-                var fx = app.effects[i];
+            var effectsList = app.effects;
+            var len = effectsList.length;
+            for (var i = 0; i < len; i++) {
+                var fx = effectsList[i];
                 if (!fx) continue;
                 var cat = fx.category || "Other";
                 if (!list[cat]) list[cat] = [];
