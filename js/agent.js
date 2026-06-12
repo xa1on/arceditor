@@ -72,10 +72,11 @@ async function runAgenticExecutionLoop(userText) {
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
                     const openTurnNums = getOpenTurnNums(aiBubble);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
+                    const activeTurnNum = completedTurns.length + 1;
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
-                        formatMarkdown(chunkText) +
-                        `</div>`;
+                        formatMarkdown(chunkText, activeTurnNum) +
+                        `</div>`);
 
                     // Restore user's manual expand/collapse state if they interacted with it
                     if (window._userToggledReasoning) {
@@ -160,11 +161,12 @@ async function runAgenticExecutionLoop(userText) {
                     executedAnything = true;
                     updateConsolePane(jsonBlock);
                     const openTurnNums = getOpenTurnNums(aiBubble);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
+                    const activeTurnNum = completedTurns.length + 1;
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
-                        formatMarkdown(llmResponse) +
+                        formatMarkdown(llmResponse, activeTurnNum) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
-                        `</div>`;
+                        `</div>`);
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
                     writeToDebugLog("Tool Calls Extracted", jsonBlock);
@@ -203,8 +205,8 @@ async function runAgenticExecutionLoop(userText) {
                         });
 
                         const openTurnNums = getOpenTurnNums(aiBubble);
-                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
-                            `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`;
+                        updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                            `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`);
                         if (typeof scrollToBottom === "function") scrollToBottom();
 
                         // Push error feedback to local context history and master history
@@ -291,8 +293,8 @@ async function runAgenticExecutionLoop(userText) {
                     // Show feedback in UI and prepare next turn
                     const isNextTurnAllowed = (loopRetries < maxRetries);
                     const openTurnNums = getOpenTurnNums(aiBubble);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
-                        (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : "");
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                        (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : ""));
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
                     continue; // Run next loop turn immediately
@@ -303,11 +305,12 @@ async function runAgenticExecutionLoop(userText) {
 
                         // 1. Show feedback in UI that verification is in progress
                         const openTurnNums = getOpenTurnNums(aiBubble);
-                        aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
+                        const activeTurnNum = completedTurns.length + 1;
+                        updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                             `<div class="active-turn-container">` +
-                            formatMarkdown(llmResponse) +
+                            formatMarkdown(llmResponse, activeTurnNum) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Verifying timeline canvas changes...</div>` +
-                            `</div>`;
+                            `</div>`);
                         if (typeof scrollToBottom === "function") scrollToBottom();
 
                         // 2. Perform the frame capture
@@ -362,14 +365,14 @@ async function runAgenticExecutionLoop(userText) {
 
                     isCompleted = true;
                     const openTurnNums = getOpenTurnNums(aiBubble);
-                    aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse);
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse, completedTurns.length + 1));
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
 
             } catch (err) {
                 console.error("Loop iteration failed:", err);
-                aiBubble.querySelector(".message-content").innerHTML = `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`;
+                updateBubbleContent(aiBubble, `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`);
                 if (typeof scrollToBottom === "function") scrollToBottom();
                 isCompleted = true;
             }
@@ -382,16 +385,16 @@ async function runAgenticExecutionLoop(userText) {
 
         if (isStopped) {
             const openTurnNums = getOpenTurnNums(aiBubble);
-            aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
+            updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                 `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
                 `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
-                `Execution stopped by user.</div>`;
+                `Execution stopped by user.</div>`);
             if (typeof scrollToBottom === "function") scrollToBottom();
         } else {
             if (loopRetries >= maxRetries) {
                 const openTurnNums = getOpenTurnNums(aiBubble);
-                aiBubble.querySelector(".message-content").innerHTML = renderTurnsHtml(completedTurns, openTurnNums) +
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`;
+                updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached. Check the JSX Console tab for syntax logs.</div>`);
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
         }
@@ -1030,4 +1033,40 @@ function stopAgentExecution() {
     }
 
     addSystemMessage("Execution stopped by user.");
+}
+
+function saveDetailsState(container) {
+    const states = {};
+    if (!container) return states;
+    const details = container.querySelectorAll("details");
+    for (let i = 0; i < details.length; i++) {
+        const d = details[i];
+        if (d.id) {
+            states[d.id] = d.hasAttribute("open");
+        }
+    }
+    return states;
+}
+
+function restoreDetailsState(container, states) {
+    if (!container || !states) return;
+    const details = container.querySelectorAll("details");
+    for (let i = 0; i < details.length; i++) {
+        const d = details[i];
+        if (d.id && states[d.id] !== undefined) {
+            if (states[d.id]) {
+                d.setAttribute("open", "");
+            } else {
+                d.removeAttribute("open");
+            }
+        }
+    }
+}
+
+function updateBubbleContent(aiBubble, html) {
+    const content = aiBubble.querySelector(".message-content");
+    if (!content) return;
+    const detailsState = saveDetailsState(content);
+    content.innerHTML = html;
+    restoreDetailsState(content, detailsState);
 }

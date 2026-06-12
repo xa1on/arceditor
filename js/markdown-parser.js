@@ -135,7 +135,7 @@ function renderTurnsHtml(turns, openTurnNums) {
                     <span class="turn-title" style="color: var(--text-error);">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
-                    ${formatMarkdown(turn.llmResponse)}
+                    ${formatMarkdown(turn.llmResponse, turn.turnNum)}
                     ${imagesHtml}
                     <div class="turn-observations">
                         <strong style="color: var(--text-error);">Error Observation:</strong>
@@ -152,7 +152,7 @@ function renderTurnsHtml(turns, openTurnNums) {
                     <span class="turn-title">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
-                    ${formatMarkdown(turn.llmResponse)}
+                    ${formatMarkdown(turn.llmResponse, turn.turnNum)}
                     ${imagesHtml}
                     <div class="turn-observations">
                         <strong>Observations:</strong>
@@ -166,8 +166,9 @@ function renderTurnsHtml(turns, openTurnNums) {
     return html;
 }
 
-function formatMarkdown(text) {
+function formatMarkdown(text, turnNum) {
     if (!text) return "";
+    const activeTurn = turnNum || "default";
 
     // Escape HTML special characters safely
     let html = text
@@ -178,6 +179,7 @@ function formatMarkdown(text) {
     const preBlocks = [];
     const parts = html.split("```");
     let rebuiltHtml = "";
+    let jsxBlockCount = 0;
 
     for (let i = 0; i < parts.length; i++) {
         if (i % 2 === 0) {
@@ -211,8 +213,9 @@ function formatMarkdown(text) {
                     renderedBlock = `<pre class="code-viewport"><code>${code}</code></pre>`;
                 }
             } else if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
+                jsxBlockCount++;
                 renderedBlock = `
-                <details class="jsx-code-details" ${!isClosed ? 'open' : ''}>
+                <details class="jsx-code-details" id="jsx-code-turn-${activeTurn}-${jsxBlockCount}" ${!isClosed ? 'open' : ''}>
                     <summary class="jsx-code-summary">ExtendScript JSX Code Block${!isClosed ? ' (Streaming...)' : ''}</summary>
                     <pre class="code-viewport"><code>${code}</code></pre>
                 </details>
@@ -285,11 +288,11 @@ function formatMarkdown(text) {
 
     // Process agent reasoning thinking blocks
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)&lt;\/thinking&gt;/g, (match, thoughts) => {
-        return `<details class="reasoning-details"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
+        return `<details class="reasoning-details" id="reasoning-turn-${activeTurn}"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
 
     result = result.replace(/&lt;thinking&gt;([\s\S]*?)$/g, (match, thoughts) => {
-        return `<details class="reasoning-details" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${thoughts}</div></details>`;
+        return `<details class="reasoning-details" id="reasoning-turn-${activeTurn}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${thoughts}</div></details>`;
     });
 
     return result;
