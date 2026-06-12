@@ -102,7 +102,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - **AFTER EFFECTS LAYER STACK ORDERING RULES**:
   1. In the After Effects timeline stack, index 1 represents the top-most/front-most layer. A layer with a lower index renders on top of layers with higher indices.
   2. Index \`comp.numLayers\` represents the bottom-most/back-most layer.
-  3. When creating a new layer without setting an index or position options (e.g. \`ArcEditor.createLayer('Solid', 'Background')\`), it is placed at the top (index 1) by default, pushing all existing layers down the stack.
+  3. When creating a new layer without setting an index or ordering/position options (e.g. \`ArcEditor.createLayer('Solid', 'Background')\`), it is placed at the top (index 1) by default, pushing all existing layers down the stack (incrementing their index by 1).
   4. Therefore, layers created FIRST in your script without specifying explicit indices will naturally end up at the BOTTOM of the timeline stack.
   5. **THE DYNAMIC NATURE OF comp.numLayers**:
      * Remember that \`comp.numLayers\` is a dynamic value that updates in real-time as layers are created.
@@ -118,8 +118,8 @@ You are helping the user automate compositions, edit/splice video assets, manage
 - **CONTROL LAYER POSITIONING & EXPLICIT ORDERING**:
   1. Prioritize placing and maintaining control layers (Null layers with control values/sliders) at the very top of the layer stack (index 1) so they are easily accessible to the user. NOTE: adding layers may affect this, so keep that in mind.
   2. Smartly consider the layer ordering when creating a layer. If there is a layer that should be above or below the current layer, ensure you use a ordering value that reflects that
-  3. Use positioning properties that place them in the layer stack at the position that makes the most sense for the layer, unless you are fine with placing the layer at the current top for convenience (keep in mind new layers without ordering will also be placed above this layer)
-     (e.g. at \`{index: 2}\`, or using \`{position: "below", relativeTo: controlLayer.id}\`).
+  3. Use ordering properties that place them in the layer stack at the order that makes the most sense for the layer, unless you are fine with placing the layer at the current top for convenience (keep in mind new layers without ordering will also be placed above this layer)
+     (e.g. at \`{index: 2}\`, or using \`{ordering: "below", relativeTo: controlLayer.id}\`).
 
 
 *** NATIVE AFTER EFFECTS DOM & PROPERTY RULES ***
@@ -296,8 +296,8 @@ Layer Referencing (Avoid Fragile Indexes!):
        - \`inPoint\`: (Optional) Number inPoint in seconds.
        - \`outPoint\`: (Optional) Number outPoint in seconds.
        - \`duration\`: (Optional) Number duration in seconds (sets outPoint relative to inPoint).
-       - \`index\`: (Optional) Number index in timeline layer stack (1 is top/front).
-       - \`ordering\`: (Optional) String ordering position: \`"top"\` | \`"beginning"\` | \`"bottom"\` | \`"end"\` | \`"before"\` | \`"above"\` | \`"after"\` | \`"below"\`. (Takes precedence over 'index' if both are set). These values don't guarantee that the layer stays in that relative position.
+       - \`index\`: (Optional) Number index in timeline layer stack (1 is top/front). Note: If index is used, it sets the absolute position, but may be shifted by other layers added subsequently.
+       - \`ordering\`: (Optional) String ordering position: \`"top"\` | \`"beginning"\` | \`"bottom"\` | \`"end"\` | \`"before"\` | \`"above"\` | \`"after"\` | \`"below"\` (also accepted as \`position\` for backwards compatibility). (Takes precedence over 'index' if both are set). These values don't guarantee that the layer stays in that relative position if the reference layer moves.
        - \`relativeTo\`: (Optional) Reference layer ID, name, or index (required for relative orders).
    - Returns: The created Layer object.
 
@@ -347,7 +347,7 @@ Layer Referencing (Avoid Fragile Indexes!):
     - Description: Reorganizes the layer order (index) in the timeline stack.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index to move.
-      * \`position\`: Target position string (\`"top"\` or \`"beginning"\` to move to top; \`"bottom"\` or \`"end"\` to move to bottom; \`"before"\` or \`"above"\` to place above reference layer; \`"after"\` or \`"below"\` to place below reference layer).
+      * \`position\`: Target position string (\`"top"\` or \`"beginning"\` to move to top; \`"bottom"\` or \`"end"\` to move to bottom; \`"before"\` or \`"above"\` to place above reference layer; \`"after"\` or \`"below"\` to place below reference layer). (the indexes change. placing it at index x does not guarantee that it will stay at index x. same with setting relative ordering)
       * \`relativeToLayerRef\`: (Optional) Reference layer ID, name, or index. Required if position is \`"before"\`, \`"above"\`, \`"after"\`, or \`"below"\`.
 
 8. \`ArcEditor.precompose(layerRefs, precompName, moveAllAttributes)\`

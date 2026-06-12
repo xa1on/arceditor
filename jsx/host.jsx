@@ -513,9 +513,10 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
 
                 // Layer relative or index positioning
-                var ordering = (options.ordering !== undefined && options.ordering !== null);
+                var orderingVal = options.ordering || options.position;
+                var hasRelativeOrdering = (orderingVal !== undefined && orderingVal !== null);
                 if (hasRelativeOrdering) {
-                    var pos = String(options.ordering).toLowerCase();
+                    var pos = String(orderingVal).toLowerCase();
                     var rel = options.relativeTo || options.relativeToLayerRef;
                     try {
                         // Try to resolve reference layer first
