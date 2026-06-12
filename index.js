@@ -51,6 +51,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Sync active AE project file path when the panel gets focus
     window.addEventListener("focus", syncProjectPath);
 
+    // Global link click handler for Markdown links
+    document.addEventListener("click", (e) => {
+        const link = e.target.closest("a");
+        if (link) {
+            const href = link.getAttribute("href");
+            if (href) {
+                e.preventDefault();
+                openExternalLink(href);
+            }
+        }
+    });
+
     // Bind chat model select dropdown events
     const chatModelSelect = document.getElementById("chat-model-select");
     if (chatModelSelect) {
@@ -932,5 +944,13 @@ async function handleChatModelChange() {
         } catch (err) {
             console.error("Failed to save settings auto-change:", err);
         }
+    }
+}
+
+function openExternalLink(url) {
+    if (window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser) {
+        window.cep.util.openURLInDefaultBrowser(url);
+    } else {
+        window.open(url, "_blank");
     }
 }

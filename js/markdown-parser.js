@@ -257,6 +257,20 @@ function formatMarkdown(text, turnNum) {
                 .replace(/^# (.*?)$/gm, "<h1>$1</h1>");
         }
 
+        // Process blockquotes
+        if (trimmed.indexOf("&gt;") === 0) {
+            const quoteContent = trimmed
+                .replace(/^&gt;\s?/gm, "")
+                .replace(/\n/g, "<br>");
+            return `<blockquote>${quoteContent}</blockquote>`;
+        }
+
+        // Process tables
+        const tableHtml = parseMarkdownTable(trimmed);
+        if (tableHtml) {
+            return tableHtml;
+        }
+
         // Process list items
         if (/^\s*[-*+]\s+/.test(trimmed) || /^\s*\d+\.\s+/.test(trimmed)) {
             return trimmed
@@ -277,11 +291,12 @@ function formatMarkdown(text, turnNum) {
         return preBlocks[parseInt(index, 10)];
     });
 
-    // Inline formatting: Bold, Italic, Code
+    // Inline formatting: Bold, Italic, Code, Links
     result = result
         .replace(/\*\*((?:(?!<br>)[^\*])+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*((?:(?!<br>)[^\*])+?)\*/g, "<em>$1</em>")
-        .replace(/`([^`]+)`/g, "<code>$1</code>");
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="markdown-link">$1</a>');
 
     // Clean up empty paragraphs
     result = result.replace(/<p><\/p>/g, "");
@@ -296,4 +311,62 @@ function formatMarkdown(text, turnNum) {
     });
 
     return result;
+}
+
+function parseMarkdownTable(blockText) {
+    const lines = blockText.trim().split("\n");
+    if (lines.length < 2) return null;
+
+    const dividerRow = lines[1].trim();
+    // A regex that matches a standard divider row containing pipes, dashes, colons, and spaces
+    const dividerRegex = /^\|?\s*[:-]+\s*\|(\s*[:-]+\s*\|)*\s*[:-]*\s*$/;
+    if (!dividerRegex.test(dividerRow)) {
+        return null;
+    }
+
+    let html = '<table class="markdown-table">';
+
+    // Parse Headers (first line)
+    let headerCols = lines[0].split("|").map(col => col.trim());
+    if (lines[0].trim().startsWith("|")) headerCols.shift();
+    if (lines[0].trim().endsWith("|")) headerCols.pop();
+
+    html += '<thead><tr>';
+    headerCols.forEach(col => {
+        html += `<th>${col}</th>`;
+    });
+    html += '</tr></thead>';
+
+    // Parse Alignments from divider row
+    let alignCols = dividerRow.split("|").map(col => {
+        const c = col.trim();
+        const startColon = c.indexOf(":") === 0;
+        const endColon = c.lastIndexOf(":") === c.length - 1 && c.length > 1;
+        if (startColon && endColon) return "center";
+        if (endColon) return "right";
+        if (startColon) return "left";
+        return "";
+    });
+    if (dividerRow.startsWith("|")) alignCols.shift();
+    if (dividerRow.endsWith("|")) alignCols.pop();
+
+    // Parse Data rows (from index 2 onwards)
+    html += '<tbody>';
+    for (let i = 2; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        let cols = line.split("|").map(col => col.trim());
+        if (line.startsWith("|")) cols.shift();
+        if (line.endsWith("|")) cols.pop();
+
+        html += '<tr>';
+        for (let j = 0; j < headerCols.length; j++) {
+            const val = cols[j] !== undefined ? cols[j] : "";
+            const align = alignCols[j] ? ` style="text-align: ${alignCols[j]};"` : "";
+            html += `<td${align}>${val}</td>`;
+        }
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
 }
