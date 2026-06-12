@@ -613,7 +613,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                         if (segment === "Effects" || segment === "Effect") {
                             next = curr.property("ADBE Effect Parade");
                         } else if (segment === "Transform") {
-                            next = curr.property("ADBE Transform Group");
+                            next = curr.property("ADBE Transform Group") || curr.property("ADBE Vector Transform Group");
                         } else if (segment === "Masks" || segment === "Mask" || segment === "Mask Parade") {
                             next = curr.property("ADBE Mask Parade");
                         } else if (segment === "Contents" || segment === "Content") {
