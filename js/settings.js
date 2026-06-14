@@ -204,6 +204,7 @@ async function saveChats() {
         try {
             const chatsToSave = { ...allProjectChats };
             delete chatsToSave["Unsaved Project"];
+            delete chatsToSave["settings_Unsaved Project"];
             const cleanedChats = stripImagesForDisk(chatsToSave);
             await fs.promises.writeFile(chatsConfigPath, JSON.stringify(cleanedChats, null, 2), 'utf8');
         } catch (err) {
@@ -246,6 +247,14 @@ async function syncProjectPath() {
                 if (!allProjectChats[path] || allProjectChats[path].length === 0) {
                     allProjectChats[path] = unsavedSessions;
                     delete allProjectChats["Unsaved Project"];
+                    
+                    // Also migrate project-specific settings (allowed tools)
+                    const unsavedSettings = allProjectChats["settings_Unsaved Project"];
+                    if (unsavedSettings) {
+                        allProjectChats["settings_" + path] = unsavedSettings;
+                        delete allProjectChats["settings_Unsaved Project"];
+                    }
+                    
                     saveChats();
                     console.log("[ArcEditor] Migrated active chat history from Unsaved Project to: " + path);
                 }

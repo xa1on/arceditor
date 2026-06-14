@@ -101,6 +101,9 @@ function initUI() {
         if (typeof populateAndQueryModels === "function") {
             populateAndQueryModels();
         }
+        if (typeof renderAllowedToolsList === "function") {
+            renderAllowedToolsList();
+        }
     });
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     formSettings.addEventListener("submit", saveSettings);
@@ -954,3 +957,164 @@ function openExternalLink(url) {
         window.open(url, "_blank");
     }
 }
+
+function renderAllowedToolsList() {
+    const listContainer = document.getElementById("settings-allowed-tools-list");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "";
+    const allowed = getProjectAllowedTools(currentProjectPath);
+
+    if (allowed.length === 0) {
+        listContainer.innerHTML = `<div style="font-size: 10px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 4px 0;">No tools allowed permanently yet.</div>`;
+        return;
+    }
+
+    allowed.forEach(tool => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.justifyContent = "space-between";
+        item.style.fontSize = "10px";
+        item.style.padding = "4px";
+        item.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+        item.innerHTML = `
+            <span style="font-family: var(--font-mono); color: var(--text-primary);">${tool}</span>
+            <button type="button" class="btn-remove-allowed-tool" data-tool="${tool}" style="background: none; border: none; color: var(--text-error); cursor: pointer; font-size: 12px; font-weight: bold; line-height: 1; padding: 0 4px;">&times;</button>
+        `;
+        listContainer.appendChild(item);
+    });
+
+    listContainer.querySelectorAll(".btn-remove-allowed-tool").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const tool = btn.getAttribute("data-tool");
+            let list = getProjectAllowedTools(currentProjectPath);
+            list = list.filter(t => t !== tool);
+            setProjectAllowedTools(currentProjectPath, list);
+            renderAllowedToolsList();
+        });
+    });
+}
+
+window.promptUserForToolConfirmation = function(tc) {
+    return new Promise((resolve) => {
+        const aiBubble = document.getElementById(activeAiBubbleId);
+        if (!aiBubble) {
+            resolve("allow");
+            return;
+        }
+
+        const contentDiv = aiBubble.querySelector(".message-content");
+        if (!contentDiv) {
+            resolve("allow");
+            return;
+        }
+
+        // Hide executing status loader temporarily
+        const activeContainer = contentDiv.querySelector(".active-turn-container");
+        let executingLoader = null;
+        if (activeContainer) {
+            executingLoader = Array.from(activeContainer.children).find(child => 
+                child.innerHTML.indexOf("dots-loader") !== -1 || child.innerText.indexOf("Executing Agent Tool Calls") !== -1
+            );
+            if (executingLoader) {
+                executingLoader.style.display = "none";
+            }
+        }
+
+        const toolName = tc.tool;
+        let paramString = "";
+        if (toolName === "executeExtendScript" && tc.parameters && tc.parameters.script) {
+            paramString = tc.parameters.script;
+        } else {
+            paramString = JSON.stringify(tc.parameters || {}, null, 2);
+        }
+
+        const cardId = "confirm-card-" + Date.now();
+        const cardDiv = document.createElement("div");
+        cardDiv.id = cardId;
+        cardDiv.className = "tool-confirm-card";
+        cardDiv.style.marginTop = "8px";
+        cardDiv.style.border = "1px solid var(--border-color)";
+        cardDiv.style.borderRadius = "var(--border-radius-sm)";
+        cardDiv.style.padding = "8px";
+        cardDiv.style.background = "var(--bg-surface)";
+
+        cardDiv.innerHTML = `
+            <div style="font-weight: 600; font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-warning)" stroke-width="2.5" fill="none">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>Confirm Tool Call</span>
+            </div>
+            <div style="font-size: 10px; color: var(--text-primary); margin-bottom: 6px;">
+                Arc wants to run <strong style="font-family: var(--font-mono); font-size: 10px; color: var(--text-accent);">${toolName}</strong>
+            </div>
+            <details style="margin-bottom: 8px;">
+                <summary style="font-size: 9px; color: var(--text-secondary); cursor: pointer; user-select: none;">View parameters</summary>
+                <pre style="font-family: var(--font-mono); font-size: 9px; margin-top: 4px; max-height: 120px; overflow: auto; background: var(--bg-input); padding: 4px; border: 1px solid var(--border-color); white-space: pre-wrap; word-break: break-all; color: var(--text-primary);">${paramString}</pre>
+            </details>
+            <div style="display: flex; gap: 4px;">
+                <button class="btn-confirm-allow" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--bg-tab-active); color: var(--text-primary);">Allow</button>
+                <button class="btn-confirm-allow-all" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(20, 115, 230, 0.2); color: var(--text-primary); border-color: var(--text-accent);">Allow All</button>
+                <button class="btn-confirm-deny" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(255, 68, 68, 0.15); color: var(--text-error); border-color: var(--text-error);">Deny</button>
+            </div>
+        `;
+
+        contentDiv.appendChild(cardDiv);
+        scrollToBottom(true);
+
+        const btnAllow = cardDiv.querySelector(".btn-confirm-allow");
+        const btnAllowAll = cardDiv.querySelector(".btn-confirm-allow-all");
+        const btnDeny = cardDiv.querySelector(".btn-confirm-deny");
+
+        btnAllow.addEventListener("click", () => {
+            cardDiv.innerHTML = `
+                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-success)" stroke-width="2.5" fill="none">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Allowed tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                </div>
+            `;
+            if (executingLoader) {
+                executingLoader.style.display = "";
+            }
+            resolve("allow");
+        });
+
+        btnAllowAll.addEventListener("click", () => {
+            cardDiv.innerHTML = `
+                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-accent)" stroke-width="2.5" fill="none">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Allowed permanently for project: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                </div>
+            `;
+            if (executingLoader) {
+                executingLoader.style.display = "";
+            }
+            resolve("allowAll");
+        });
+
+        btnDeny.addEventListener("click", () => {
+            cardDiv.innerHTML = `
+                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                </div>
+            `;
+            if (executingLoader) {
+                executingLoader.style.display = "";
+            }
+            resolve("deny");
+        });
+    });
+};

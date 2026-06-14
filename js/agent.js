@@ -213,9 +213,9 @@ async function runAgenticExecutionLoop(userText) {
                         break;
                     }
 
-                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 || 
-                        toolObservations.toLowerCase().indexOf("evalscript error") !== -1 || 
-                        toolObservations.toLowerCase().indexOf("exception:") !== -1 || 
+                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 ||
+                        toolObservations.toLowerCase().indexOf("evalscript error") !== -1 ||
+                        toolObservations.toLowerCase().indexOf("exception:") !== -1 ||
                         toolObservations.indexOf("Unsupported tool name:") !== -1) {
                         scriptFailed = true;
                         loopRetries++;
@@ -564,6 +564,45 @@ async function executeToolCalls(jsonStr) {
             }
             const tc = toolCalls[i];
             const toolName = tc.tool;
+
+            // Authorization Intercept for non-readonly tool calls
+            const isReadOnly = [
+                "captureActiveFrame",
+                "captureCompositionSequence",
+                "getTimelineContext",
+                "getInstalledEffects",
+                "searchInstalledEffects",
+                "getLayerProperties",
+                "selectLayers",
+                "switchComposition",
+                "setPlayheadTime"
+            ].indexOf(toolName) !== -1;
+
+            if (!isReadOnly) {
+                const allowed = getProjectAllowedTools(currentProjectPath);
+                if (!allowed.includes(toolName)) {
+                    if (typeof setUIReadyState === "function") {
+                        setUIReadyState(false);
+                    }
+                    
+                    let choice = "allow";
+                    if (typeof window !== "undefined" && typeof window.promptUserForToolConfirmation === "function") {
+                        choice = await window.promptUserForToolConfirmation(tc);
+                    }
+                    
+                    if (choice === "deny") {
+                        observations.push(`- Tool "${toolName}": Denied by user.`);
+                        continue;
+                    } else if (choice === "allowAll") {
+                        const updatedAllowed = [...allowed];
+                        if (!updatedAllowed.includes(toolName)) {
+                            updatedAllowed.push(toolName);
+                            setProjectAllowedTools(currentProjectPath, updatedAllowed);
+                        }
+                    }
+                }
+            }
+
             const params = tc.parameters || {};
             const ref = params.layerRef !== undefined ? params.layerRef : params.layerIndex;
             const serializedRef = typeof ref === "string" ? `"${ref.replace(/"/g, '\\"')}"` : (ref !== undefined ? ref : 'null');
@@ -933,7 +972,7 @@ async function pruneHistoryContexts(contextArray) {
 
 function fallbackSlidingWindowPrune(contextArray) {
     if (!contextArray) return [];
-    
+
     const maxTokens = 20000;
     if (estimateMessagesTokenCount(contextArray) <= maxTokens) {
         return contextArray;
