@@ -10,7 +10,7 @@ function getOpenTurnNums(aiBubble) {
         for (let j = 0; j < detailsElems.length; j++) {
             const elem = detailsElems[j];
             if (elem.hasAttribute("open")) {
-                const idMatch = elem.id.match(/details-turn-(\d+)/);
+                const idMatch = elem.id.match(/details-turn-(?:.*-)?(\d+)$/);
                 if (idMatch) {
                     openTurnNums.push(parseInt(idMatch[1], 10));
                 }
@@ -118,21 +118,22 @@ function tryFormatToolCall(code, isStreaming) {
     }
 }
 
-function renderTurnsHtml(turns, openTurnNums) {
+function renderTurnsHtml(turns, openTurnNums, bubbleId) {
     if (!turns || turns.length === 0) return "";
     let html = "";
+    const prefix = bubbleId ? `${bubbleId}-` : "";
     for (let i = 0; i < turns.length; i++) {
         const turn = turns[i];
         const isOpen = openTurnNums && openTurnNums.indexOf(turn.turnNum) !== -1;
         const openAttr = isOpen ? " open" : "";
         const imagesHtml = renderTurnImagesHtml(turn.images);
 
-        const reasoningHtml = turn.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${turn.turnNum}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(turn.reasoning, turn.turnNum)}</div></details>` : "";
+        const reasoningHtml = turn.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${prefix}${turn.turnNum}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(turn.reasoning, turn.turnNum)}</div></details>` : "";
         const contentHtml = formatMarkdown(turn.content !== undefined ? turn.content : turn.llmResponse, turn.turnNum);
 
         if (turn.type === "failed") {
             html += `
-            <details class="agent-turn-details" id="details-turn-${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
+            <details class="agent-turn-details" id="details-turn-${prefix}${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
                 <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
                     <span class="turn-index-badge" style="background-color: var(--text-error); color: white;">Turn ${turn.turnNum}</span>
                     <span class="turn-title" style="color: var(--text-error);">${turn.turnTitle}</span>
@@ -150,7 +151,7 @@ function renderTurnsHtml(turns, openTurnNums) {
             `;
         } else {
             html += `
-            <details class="agent-turn-details" id="details-turn-${turn.turnNum}"${openAttr}>
+            <details class="agent-turn-details" id="details-turn-${prefix}${turn.turnNum}"${openAttr}>
                 <summary class="agent-turn-summary">
                     <span class="turn-index-badge">Turn ${turn.turnNum}</span>
                     <span class="turn-title">${turn.turnTitle}</span>

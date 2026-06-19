@@ -71,13 +71,12 @@ async function runAgenticExecutionLoop(userText) {
 
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
-                    const openTurnNums = getOpenTurnNums(aiBubble);
                     const activeTurnNum = completedTurns.length + 1;
 
                     const parsed = parseStreamingReasoning(chunkText);
-                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
+                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
 
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                    updateAiBubbleTurns(aiBubble, completedTurns,
                         `<div class="active-turn-container">` +
                         reasoningHtml +
                         formatMarkdown(parsed.content, activeTurnNum) +
@@ -85,7 +84,7 @@ async function runAgenticExecutionLoop(userText) {
 
                     // Restore user's manual expand/collapse state if they interacted with it
                     if (window._userToggledReasoning) {
-                        const newDetails = aiBubble.querySelector(".active-turn-container .reasoning-details");
+                        const newDetails = aiBubble.querySelector(".active-turn-area .reasoning-details") || aiBubble.querySelector(".active-turn-container .reasoning-details");
                         if (newDetails) {
                             if (window._userReasoningState) {
                                 newDetails.setAttribute("open", "");
@@ -114,8 +113,7 @@ async function runAgenticExecutionLoop(userText) {
                         observations: "Error: The model returned an empty response. This usually indicates a generation failure or context window overflow."
                     });
 
-                    const openTurnNums = getOpenTurnNums(aiBubble);
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                    updateAiBubbleTurns(aiBubble, completedTurns,
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Empty response detected. Retrying generation... (Attempt ${loopRetries}/${maxRetries})</div>`);
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -197,11 +195,10 @@ async function runAgenticExecutionLoop(userText) {
                 if (jsonBlock) {
                     executedAnything = true;
                     updateConsolePane(jsonBlock);
-                    const openTurnNums = getOpenTurnNums(aiBubble);
                     const activeTurnNum = completedTurns.length + 1;
                     const parsed = parseStreamingReasoning(llmResponse);
-                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
+                    updateAiBubbleTurns(aiBubble, completedTurns,
                         `<div class="active-turn-container">` +
                         reasoningHtml +
                         formatMarkdown(parsed.content, activeTurnNum) +
@@ -247,8 +244,7 @@ async function runAgenticExecutionLoop(userText) {
                             observations: toolObservations
                         });
 
-                        const openTurnNums = getOpenTurnNums(aiBubble);
-                        updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                        updateAiBubbleTurns(aiBubble, completedTurns,
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Tool error detected. Initiating self-correction... (Attempt ${loopRetries}/${maxRetries})</div>`);
                         if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -338,8 +334,7 @@ async function runAgenticExecutionLoop(userText) {
 
                     // Show feedback in UI and prepare next turn
                     const isNextTurnAllowed = (loopRetries < maxRetries);
-                    const openTurnNums = getOpenTurnNums(aiBubble);
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                    updateAiBubbleTurns(aiBubble, completedTurns,
                         (isNextTurnAllowed ? `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Agent planning next step...</div>` : ""));
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
@@ -350,11 +345,10 @@ async function runAgenticExecutionLoop(userText) {
                         writeToDebugLog("Auto-Verification Intercept", "State was modified but no frame was captured. Automatically capturing active frame for validation...");
 
                         // 1. Show feedback in UI that verification is in progress
-                        const openTurnNums = getOpenTurnNums(aiBubble);
                         const activeTurnNum = completedTurns.length + 1;
                         const parsed = parseStreamingReasoning(llmResponse);
-                        const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
-                        updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                        const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
+                        updateAiBubbleTurns(aiBubble, completedTurns,
                             `<div class="active-turn-container">` +
                             reasoningHtml +
                             formatMarkdown(parsed.content, activeTurnNum) +
@@ -416,17 +410,16 @@ async function runAgenticExecutionLoop(userText) {
                     }
 
                     isCompleted = true;
-                    const openTurnNums = getOpenTurnNums(aiBubble);
                     const parsedFinal = parseStreamingReasoning(llmResponse);
-                    const reasoningHtml = parsedFinal.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedFinal.reasoning, completedTurns.length + 1)}</div></details>` : "";
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) + reasoningHtml + formatMarkdown(parsedFinal.content, completedTurns.length + 1));
+                    const reasoningHtml = parsedFinal.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedFinal.reasoning, completedTurns.length + 1)}</div></details>` : "";
+                    updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml + formatMarkdown(parsedFinal.content, completedTurns.length + 1));
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
 
             } catch (err) {
                 console.error("Loop iteration failed:", err);
-                updateBubbleContent(aiBubble, `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`);
+                updateAiBubbleTurns(aiBubble, completedTurns, `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`);
                 if (typeof scrollToBottom === "function") scrollToBottom();
                 isCompleted = true;
             }
@@ -438,15 +431,13 @@ async function runAgenticExecutionLoop(userText) {
         }
 
         if (isStopped) {
-            const openTurnNums = getOpenTurnNums(aiBubble);
-            updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+            updateAiBubbleTurns(aiBubble, completedTurns,
                 `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
                 `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
                 `Execution stopped by user.</div>`);
             if (typeof scrollToBottom === "function") scrollToBottom();
         } else {
             if (loopRetries >= maxRetries) {
-                const openTurnNums = getOpenTurnNums(aiBubble);
                 let hasEmptyResponse = false;
                 for (let turnIdx = 0; turnIdx < completedTurns.length; turnIdx++) {
                     if (completedTurns[turnIdx].turnTitle === "Empty response from agent (Retrying...)") {
@@ -455,7 +446,7 @@ async function runAgenticExecutionLoop(userText) {
                     }
                 }
                 const extraMsg = hasEmptyResponse ? " (An empty response was detected, which could indicate a context window overflow on your local LLM server)." : " Check the JSX Console tab for syntax logs.";
-                updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
+                updateAiBubbleTurns(aiBubble, completedTurns,
                     `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached.${extraMsg}</div>`);
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
@@ -1116,16 +1107,25 @@ function stopAgentExecution() {
                 if (loader) {
                     loader.remove();
                 }
-                const activeTurn = contentDiv.querySelector(".active-turn-container");
-                if (activeTurn) {
+                const activeTurn = contentDiv.querySelector(".active-turn-container") || contentDiv.querySelector(".active-turn-area");
+                if (activeTurn && activeTurn.className === "active-turn-container") {
                     activeTurn.remove();
                 }
 
-                // If not already ended with a stopped message, append one
-                if (contentDiv.innerHTML.indexOf("Execution stopped by user.") === -1) {
-                    contentDiv.innerHTML += '<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">' +
-                        '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></svg>' +
-                        'Execution stopped by user.</div>';
+                const activeTurnArea = contentDiv.querySelector(".active-turn-area");
+                if (activeTurnArea) {
+                    if (activeTurnArea.innerHTML.indexOf("Execution stopped by user.") === -1) {
+                        activeTurnArea.innerHTML += '<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">' +
+                            '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></svg>' +
+                            'Execution stopped by user.</div>';
+                    }
+                } else {
+                    // Fallback to normal appending if not structured
+                    if (contentDiv.innerHTML.indexOf("Execution stopped by user.") === -1) {
+                        contentDiv.innerHTML += '<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">' +
+                            '<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></svg>' +
+                            'Execution stopped by user.</div>';
+                    }
                 }
             }
         }
@@ -1172,4 +1172,42 @@ function updateBubbleContent(aiBubble, html) {
     const detailsState = saveDetailsState(content);
     content.innerHTML = html;
     restoreDetailsState(content, detailsState);
+}
+
+function updateAiBubbleTurns(aiBubble, completedTurns, activeTurnContentHtml) {
+    const content = aiBubble.querySelector(".message-content");
+    if (!content) return;
+
+    let completedTurnsArea = content.querySelector(".completed-turns-area");
+    let activeTurnArea = content.querySelector(".active-turn-area");
+
+    // Fallback if not structured yet (e.g. initial rendering migration)
+    if (!completedTurnsArea || !activeTurnArea) {
+        content.innerHTML = '<div class="completed-turns-area"></div><div class="active-turn-area"></div>';
+        completedTurnsArea = content.querySelector(".completed-turns-area");
+        activeTurnArea = content.querySelector(".active-turn-area");
+    }
+
+    // Save the open details states of completed turns only, so user interaction is preserved!
+    const completedTurnStates = saveDetailsState(completedTurnsArea);
+
+    const openTurnNums = [];
+    for (const key in completedTurnStates) {
+        if (completedTurnStates[key]) {
+            const m = key.match(/details-turn-(?:.*-)?(\d+)$/);
+            if (m) {
+                openTurnNums.push(parseInt(m[1], 10));
+            }
+        }
+    }
+
+    const bubbleId = aiBubble.id;
+    const currentCompletedHtml = renderTurnsHtml(completedTurns, openTurnNums, bubbleId);
+    if (completedTurnsArea.innerHTML !== currentCompletedHtml) {
+        completedTurnsArea.innerHTML = currentCompletedHtml;
+        restoreDetailsState(completedTurnsArea, completedTurnStates);
+    }
+
+    // Update activeTurnArea directly. This doesn't touch the completed turns at all!
+    activeTurnArea.innerHTML = activeTurnContentHtml;
 }

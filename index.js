@@ -545,21 +545,27 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
     const content = document.createElement("div");
     content.className = "message-content";
     if (text.indexOf("dots-loader") !== -1) {
-        content.innerHTML = text; // Bypass markdown formatting for raw loader elements
+        content.innerHTML = `<div class="completed-turns-area"></div><div class="active-turn-area">${text}</div>`; // Wrap initial loader elements
         wrapper.setAttribute("data-raw-text", "");
     } else {
         let htmlContent = "";
+        let turnsHtml = "";
         if (intermediateTurns) {
             if (typeof intermediateTurns === "string") {
-                htmlContent += intermediateTurns;
+                turnsHtml = intermediateTurns;
             } else if (Array.isArray(intermediateTurns)) {
-                htmlContent += renderTurnsHtml(intermediateTurns);
+                turnsHtml = renderTurnsHtml(intermediateTurns, null, id);
             }
         }
+        htmlContent += `<div class="completed-turns-area">${turnsHtml}</div>`;
+
+        let activeContent = "";
         if (reasoning) {
-            htmlContent += `<details class="reasoning-details" id="reasoning-turn-final"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(reasoning)}</div></details>`;
+            activeContent += `<details class="reasoning-details" id="reasoning-turn-final"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(reasoning)}</div></details>`;
         }
-        htmlContent += formatMarkdown(text);
+        activeContent += formatMarkdown(text);
+        
+        htmlContent += `<div class="active-turn-area">${activeContent}</div>`;
         content.innerHTML = htmlContent;
         wrapper.setAttribute("data-raw-text", text);
     }
