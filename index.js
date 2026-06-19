@@ -545,7 +545,7 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
     const content = document.createElement("div");
     content.className = "message-content";
     if (text.indexOf("dots-loader") !== -1) {
-        content.innerHTML = `<div class="completed-turns-area"></div><div class="active-turn-area">${text}</div>`; // Wrap initial loader elements
+        content.innerHTML = `<div class="completed-turns-area"></div><div class="active-turn-area"><div class="active-turn-container"><div class="active-reasoning-area"></div><div class="active-content-area">${text}</div></div></div>`; // Wrap initial loader elements
         wrapper.setAttribute("data-raw-text", "");
     } else {
         let htmlContent = "";
@@ -559,13 +559,13 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
         }
         htmlContent += `<div class="completed-turns-area">${turnsHtml}</div>`;
 
-        let activeContent = "";
+        let activeReasoningHtml = "";
         if (reasoning) {
-            activeContent += `<details class="reasoning-details" id="reasoning-turn-final"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(reasoning)}</div></details>`;
+            activeReasoningHtml = `<details class="reasoning-details" id="reasoning-turn-${id}-final" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(reasoning)}</div></details>`;
         }
-        activeContent += formatMarkdown(text);
+        let activeContentHtml = formatMarkdown(text);
         
-        htmlContent += `<div class="active-turn-area">${activeContent}</div>`;
+        htmlContent += `<div class="active-turn-area"><div class="active-turn-container"><div class="active-reasoning-area">${activeReasoningHtml}</div><div class="active-content-area">${activeContentHtml}</div></div></div>`;
         content.innerHTML = htmlContent;
         wrapper.setAttribute("data-raw-text", text);
     }
