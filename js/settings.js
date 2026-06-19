@@ -50,6 +50,7 @@ async function loadSettings() {
 
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
+            agentPermissionMode = data.agentPermissionMode || "review";
             loaded = true;
         } catch (e) {
             if (e.code !== 'ENOENT') {
@@ -65,6 +66,7 @@ async function loadSettings() {
         modelName = providerSettings.lemonade.model;
         includeBase64InDebugLog = false;
         maxToolRetryLimit = 15;
+        agentPermissionMode = "review";
     }
 
     // Sync into settings DOM
@@ -91,6 +93,14 @@ async function loadSettings() {
     if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
+
+    const permissionModeSelect = document.getElementById("setting-permission-mode");
+    if (permissionModeSelect) {
+        permissionModeSelect.value = agentPermissionMode;
+        if (typeof updatePermissionModeDescription === "function") {
+            updatePermissionModeDescription(agentPermissionMode);
+        }
+    }
 
     updateProviderSectionsUI();
     populateAndQueryModels();
@@ -127,6 +137,9 @@ async function saveSettings(e) {
     apiKey = providerSettings[currentProvider].key;
     modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
 
+    const permissionModeSelect = document.getElementById("setting-permission-mode");
+    if (permissionModeSelect) agentPermissionMode = permissionModeSelect.value || "review";
+
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) includeBase64InDebugLog = base64Checkbox.checked;
 
@@ -138,7 +151,8 @@ async function saveSettings(e) {
         providerSettings: providerSettings,
         model: modelName,
         includeBase64InDebugLog: includeBase64InDebugLog,
-        maxToolRetryLimit: maxToolRetryLimit
+        maxToolRetryLimit: maxToolRetryLimit,
+        agentPermissionMode: agentPermissionMode
     };
 
     if (fs) {

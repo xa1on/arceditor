@@ -355,7 +355,29 @@ ${code}`;
             }
         });
     }
+
+    const permissionModeSelect = document.getElementById("setting-permission-mode");
+    if (permissionModeSelect) {
+        permissionModeSelect.addEventListener("change", (e) => {
+            updatePermissionModeDescription(e.target.value);
+        });
+    }
 }
+
+window.updatePermissionModeDescription = function(mode) {
+    const descEl = document.getElementById("setting-permission-mode-desc");
+    if (!descEl) return;
+    
+    let descText = "";
+    if (mode === "permissive") {
+        descText = "Allows the agent to run all tool calls automatically, including timeline modifications, without prompting. Tools in the Denied list will be blocked.";
+    } else if (mode === "strict") {
+        descText = "Prompts for authorization on every single tool call from the agent (including read-only actions), unless they have been explicitly added to the Allowed list.";
+    } else {
+        descText = "Allows the agent to run read-only composition checks automatically. Non-read-only changes (like creating layers, editing properties) will prompt for your authorization.";
+    }
+    descEl.innerText = descText;
+};
 
 async function copyToClipboard(text) {
     // Premium CEP/Node-integrated clipboard copier
@@ -950,7 +972,8 @@ async function handleChatModelChange() {
         providerSettings: providerSettings,
         model: modelName,
         includeBase64InDebugLog: includeBase64InDebugLog,
-        maxToolRetryLimit: maxToolRetryLimit
+        maxToolRetryLimit: maxToolRetryLimit,
+        agentPermissionMode: agentPermissionMode
     };
 
     if (fs) {
