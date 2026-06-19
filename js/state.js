@@ -119,10 +119,13 @@ let activeAiBubbleId = null;
 function getProjectAllowedTools(projectPath) {
     const key = "settings_" + (projectPath || currentProjectPath);
     if (!allProjectChats[key]) {
-        allProjectChats[key] = { allowedTools: [] };
+        allProjectChats[key] = { allowedTools: [], deniedTools: [] };
     }
     if (!allProjectChats[key].allowedTools) {
         allProjectChats[key].allowedTools = [];
+    }
+    if (!allProjectChats[key].deniedTools) {
+        allProjectChats[key].deniedTools = [];
     }
     return allProjectChats[key].allowedTools;
 }
@@ -133,6 +136,28 @@ function setProjectAllowedTools(projectPath, allowedList) {
         allProjectChats[key] = {};
     }
     allProjectChats[key].allowedTools = allowedList;
+    if (typeof saveChats === "function") {
+        saveChats();
+    }
+}
+
+function getProjectDeniedTools(projectPath) {
+    const key = "settings_" + (projectPath || currentProjectPath);
+    if (!allProjectChats[key]) {
+        allProjectChats[key] = { allowedTools: [], deniedTools: [] };
+    }
+    if (!allProjectChats[key].deniedTools) {
+        allProjectChats[key].deniedTools = [];
+    }
+    return allProjectChats[key].deniedTools;
+}
+
+function setProjectDeniedTools(projectPath, deniedList) {
+    const key = "settings_" + (projectPath || currentProjectPath);
+    if (!allProjectChats[key]) {
+        allProjectChats[key] = {};
+    }
+    allProjectChats[key].deniedTools = deniedList;
     if (typeof saveChats === "function") {
         saveChats();
     }

@@ -104,6 +104,9 @@ function initUI() {
         if (typeof renderAllowedToolsList === "function") {
             renderAllowedToolsList();
         }
+        if (typeof renderDeniedToolsList === "function") {
+            renderDeniedToolsList();
+        }
     });
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     formSettings.addEventListener("submit", saveSettings);
@@ -1006,6 +1009,45 @@ function renderAllowedToolsList() {
     });
 }
 
+function renderDeniedToolsList() {
+    const listContainer = document.getElementById("settings-denied-tools-list");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "";
+    const denied = getProjectDeniedTools(currentProjectPath);
+
+    if (denied.length === 0) {
+        listContainer.innerHTML = `<div style="font-size: 10px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 4px 0;">No tools denied permanently yet.</div>`;
+        return;
+    }
+
+    denied.forEach(tool => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.alignItems = "center";
+        item.style.justifyContent = "space-between";
+        item.style.fontSize = "10px";
+        item.style.padding = "4px";
+        item.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+        item.innerHTML = `
+            <span style="font-family: var(--font-mono); color: var(--text-primary);">${tool}</span>
+            <button type="button" class="btn-remove-denied-tool" data-tool="${tool}" style="background: none; border: none; color: var(--text-error); cursor: pointer; font-size: 12px; font-weight: bold; line-height: 1; padding: 0 4px;">&times;</button>
+        `;
+        listContainer.appendChild(item);
+    });
+
+    listContainer.querySelectorAll(".btn-remove-denied-tool").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const tool = btn.getAttribute("data-tool");
+            let list = getProjectDeniedTools(currentProjectPath);
+            list = list.filter(t => t !== tool);
+            setProjectDeniedTools(currentProjectPath, list);
+            renderDeniedToolsList();
+        });
+    });
+}
+
 window.promptUserForToolConfirmation = function(tc) {
     return new Promise((resolve) => {
         const aiBubble = document.getElementById(activeAiBubbleId);
@@ -1066,10 +1108,11 @@ window.promptUserForToolConfirmation = function(tc) {
                 <summary style="font-size: 9px; color: var(--text-secondary); cursor: pointer; user-select: none;">View parameters</summary>
                 <pre style="font-family: var(--font-mono); font-size: 9px; margin-top: 4px; max-height: 120px; overflow: auto; background: var(--bg-input); padding: 4px; border: 1px solid var(--border-color); white-space: pre-wrap; word-break: break-all; color: var(--text-primary);">${paramString}</pre>
             </details>
-            <div style="display: flex; gap: 4px;">
-                <button class="btn-confirm-allow" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--bg-tab-active); color: var(--text-primary);">Allow</button>
-                <button class="btn-confirm-allow-all" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(20, 115, 230, 0.2); color: var(--text-primary); border-color: var(--text-accent);">Allow All</button>
-                <button class="btn-confirm-deny" style="flex: 1; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(255, 68, 68, 0.15); color: var(--text-error); border-color: var(--text-error);">Deny</button>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button class="btn-confirm-deny-all" style="flex: 1 1 auto; min-width: 60px; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(255, 68, 68, 0.3); color: var(--text-error); border-color: var(--text-error);">Deny All</button>
+                <button class="btn-confirm-deny" style="flex: 1 1 auto; min-width: 60px; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(255, 68, 68, 0.15); color: var(--text-error); border-color: var(--text-error);">Deny</button>
+                <button class="btn-confirm-allow" style="flex: 1 1 auto; min-width: 60px; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(20, 115, 230, 0.15); color: var(--text-accent); border-color: var(--text-accent);">Allow</button>
+                <button class="btn-confirm-allow-all" style="flex: 1 1 auto; min-width: 60px; padding: 4px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: rgba(20, 115, 230, 0.3); color: var(--text-accent); border-color: var(--text-accent);">Allow All</button>
             </div>
         `;
 
@@ -1079,6 +1122,7 @@ window.promptUserForToolConfirmation = function(tc) {
         const btnAllow = cardDiv.querySelector(".btn-confirm-allow");
         const btnAllowAll = cardDiv.querySelector(".btn-confirm-allow-all");
         const btnDeny = cardDiv.querySelector(".btn-confirm-deny");
+        const btnDenyAll = cardDiv.querySelector(".btn-confirm-deny-all");
 
         btnAllow.addEventListener("click", () => {
             cardDiv.innerHTML = `
@@ -1124,6 +1168,22 @@ window.promptUserForToolConfirmation = function(tc) {
                 executingLoader.style.display = "";
             }
             resolve("deny");
+        });
+
+        btnDenyAll.addEventListener("click", () => {
+            cardDiv.innerHTML = `
+                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    <span>Denied permanently for project: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                </div>
+            `;
+            if (executingLoader) {
+                executingLoader.style.display = "";
+            }
+            resolve("denyAll");
         });
     });
 };

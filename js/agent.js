@@ -578,6 +578,13 @@ async function executeToolCalls(jsonStr) {
 
             if (!isReadOnly) {
                 const allowed = getProjectAllowedTools(currentProjectPath);
+                const denied = getProjectDeniedTools(currentProjectPath);
+
+                if (denied.includes(toolName)) {
+                    observations.push(`- Tool "${toolName}": Blocked by project security configuration.`);
+                    continue;
+                }
+
                 if (!allowed.includes(toolName)) {
                     if (typeof setUIReadyState === "function") {
                         setUIReadyState(false);
@@ -591,11 +598,27 @@ async function executeToolCalls(jsonStr) {
                     if (choice === "deny") {
                         observations.push(`- Tool "${toolName}": Denied by user.`);
                         continue;
+                    } else if (choice === "denyAll") {
+                        const updatedDenied = [...denied];
+                        if (!updatedDenied.includes(toolName)) {
+                            updatedDenied.push(toolName);
+                            setProjectDeniedTools(currentProjectPath, updatedDenied);
+                        }
+                        const updatedAllowed = allowed.filter(t => t !== toolName);
+                        if (updatedAllowed.length !== allowed.length) {
+                            setProjectAllowedTools(currentProjectPath, updatedAllowed);
+                        }
+                        observations.push(`- Tool "${toolName}": Blocked by project security configuration.`);
+                        continue;
                     } else if (choice === "allowAll") {
                         const updatedAllowed = [...allowed];
                         if (!updatedAllowed.includes(toolName)) {
                             updatedAllowed.push(toolName);
                             setProjectAllowedTools(currentProjectPath, updatedAllowed);
+                        }
+                        const updatedDenied = denied.filter(t => t !== toolName);
+                        if (updatedDenied.length !== denied.length) {
+                            setProjectDeniedTools(currentProjectPath, updatedDenied);
                         }
                     }
                 }
