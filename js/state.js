@@ -114,3 +114,27 @@ let isExecuting = false;
 let isStopped = false;
 let currentExecutionId = 0;
 let activeAiBubbleId = null;
+
+// Project-level tool execution permissions helpers
+function getProjectAllowedTools(projectPath) {
+    const key = "settings_" + (projectPath || currentProjectPath);
+    if (!allProjectChats[key]) {
+        allProjectChats[key] = { allowedTools: [] };
+    }
+    if (!allProjectChats[key].allowedTools) {
+        allProjectChats[key].allowedTools = [];
+    }
+    return allProjectChats[key].allowedTools;
+}
+
+function setProjectAllowedTools(projectPath, allowedList) {
+    const key = "settings_" + (projectPath || currentProjectPath);
+    if (!allProjectChats[key]) {
+        allProjectChats[key] = {};
+    }
+    allProjectChats[key].allowedTools = allowedList;
+    if (typeof saveChats === "function") {
+        saveChats();
+    }
+}
+
