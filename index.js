@@ -1210,3 +1210,185 @@ window.promptUserForToolConfirmation = function(tc) {
         });
     });
 };
+
+window.promptUserForQuestions = function(tc) {
+    return new Promise((resolve) => {
+        const aiBubble = document.getElementById(activeAiBubbleId);
+        if (!aiBubble) {
+            resolve("Skipped by user (bubble not found)");
+            return;
+        }
+
+        const contentDiv = aiBubble.querySelector(".message-content");
+        if (!contentDiv) {
+            resolve("Skipped by user (content container not found)");
+            return;
+        }
+
+        // Hide executing status loader temporarily
+        const activeContainer = contentDiv.querySelector(".active-turn-container");
+        let executingLoader = null;
+        if (activeContainer) {
+            executingLoader = Array.from(activeContainer.children).find(child => 
+                child.innerHTML.indexOf("dots-loader") !== -1 || child.innerText.indexOf("Executing Agent Tool Calls") !== -1
+            );
+            if (executingLoader) {
+                executingLoader.style.display = "none";
+            }
+        }
+
+        const questions = tc.parameters && tc.parameters.questions;
+        if (!questions || !Array.isArray(questions) || questions.length === 0) {
+            if (executingLoader) executingLoader.style.display = "";
+            resolve("No questions provided.");
+            return;
+        }
+
+        // Append card to contentDiv (same pattern as tool confirmation cards).
+        // The card is removed on completion/skip, so it won't persist.
+        const cardId = "questions-card-" + Date.now();
+        const cardDiv = document.createElement("div");
+        cardDiv.id = cardId;
+        cardDiv.className = "tool-confirm-card";
+        cardDiv.style.marginTop = "8px";
+        cardDiv.style.border = "1px solid var(--border-color)";
+        cardDiv.style.borderRadius = "var(--border-radius-sm)";
+        cardDiv.style.padding = "8px";
+        cardDiv.style.background = "var(--bg-surface)";
+
+        contentDiv.appendChild(cardDiv);
+        scrollToBottom(true);
+
+        let currentQuestionIdx = 0;
+        const answers = [];
+
+        function showQuestion(idx) {
+            if (idx >= questions.length) {
+                // Formatting response to the model
+                const formattedAnswers = answers.map((qAndA) => {
+                    let formattedAns = "";
+                    if (Array.isArray(qAndA.answer)) {
+                        formattedAns = JSON.stringify(qAndA.answer);
+                    } else {
+                        formattedAns = `"${qAndA.answer}"`;
+                    }
+                    return `- Question: "${qAndA.question}"\n  Answer: ${formattedAns}`;
+                }).join("\n\n");
+
+                // Remove the card - the turn observation renderer in renderTurnsHtml
+                // will display the Q&A summary inside the completed turn details.
+                cardDiv.remove();
+
+                if (executingLoader) {
+                    executingLoader.style.display = "";
+                }
+                scrollToBottom(true);
+                resolve(formattedAnswers);
+                return;
+            }
+
+            const q = questions[idx];
+            const hasOptions = q.options && Array.isArray(q.options) && q.options.length > 0;
+
+            let optionsHtml = "";
+            if (hasOptions) {
+                optionsHtml += `<div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">`;
+                q.options.forEach((opt, oIdx) => {
+                    const inputId = `q-${idx}-opt-${oIdx}`;
+                    const inputType = q.is_multi_select ? 'checkbox' : 'radio';
+                    const inputName = `q-${idx}-options`;
+                    optionsHtml += `
+                        <label for="${inputId}" style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 10px; color: var(--text-primary); user-select: none; margin-bottom: 2px;">
+                            <input type="${inputType}" id="${inputId}" name="${inputName}" value="${opt.replace(/"/g, '&quot;')}" style="cursor: pointer; width: 13px; height: 13px; accent-color: var(--text-accent); margin: 0;" />
+                            <span>${opt}</span>
+                        </label>
+                    `;
+                });
+                optionsHtml += `</div>`;
+            }
+
+            const customPlaceholder = hasOptions ? "Or write in a custom option / comments..." : "Type your answer here...";
+            const customInputHtml = `
+                <div style="margin-bottom: 4px;">
+                    <input type="text" class="question-custom-input form-input" placeholder="${customPlaceholder}" style="width: 100%; box-sizing: border-box; padding: 4px 8px; font-size: 10px; height: 22px;" />
+                </div>
+            `;
+
+            cardDiv.innerHTML = `
+                <div style="font-weight: 600; font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-accent)" stroke-width="2.5" fill="none">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <span>Clarification Needed (Question ${idx + 1} of ${questions.length})</span>
+                </div>
+                <div style="font-size: 10.5px; font-weight: 500; color: var(--text-primary); margin-bottom: 8px; line-height: 1.3;">
+                    ${q.question}
+                </div>
+                <div class="question-inputs-area">
+                    ${optionsHtml}
+                    ${customInputHtml}
+                </div>
+                <div style="display: flex; gap: 4px; justify-content: flex-end; margin-top: 8px;">
+                    <button class="btn-confirm-skip btn-secondary" style="width: auto; padding: 2px 8px; font-size: 9px; font-weight: 600; height: 20px; border-radius: var(--border-radius-sm);">Skip All</button>
+                    <button class="btn-confirm-submit btn-primary" style="width: auto; padding: 2px 10px; font-size: 9px; font-weight: 600; height: 20px; border-radius: var(--border-radius-sm);">Submit</button>
+                </div>
+            `;
+
+            scrollToBottom(true);
+
+            const btnSubmit = cardDiv.querySelector(".btn-confirm-submit");
+            const btnSkip = cardDiv.querySelector(".btn-confirm-skip");
+
+            btnSkip.addEventListener("click", () => {
+                // Remove the card - the observation "Skipped by user." will be
+                // shown inside the completed turn details by renderTurnsHtml.
+                cardDiv.remove();
+                if (executingLoader) {
+                    executingLoader.style.display = "";
+                }
+                scrollToBottom(true);
+                resolve("Skipped by user.");
+            });
+
+            btnSubmit.addEventListener("click", () => {
+                let selectedValues = [];
+                if (hasOptions) {
+                    const checkboxes = cardDiv.querySelectorAll(`input[name="q-${idx}-options"]:checked`);
+                    checkboxes.forEach(cb => selectedValues.push(cb.value));
+                }
+
+                const customVal = cardDiv.querySelector(".question-custom-input").value.trim();
+
+                let finalAnswer = "";
+                if (q.is_multi_select) {
+                    let combined = [...selectedValues];
+                    if (customVal) {
+                        combined.push(customVal);
+                    }
+                    finalAnswer = combined.length > 0 ? combined : "(No response provided)";
+                } else {
+                    if (customVal) {
+                        finalAnswer = customVal;
+                    } else if (selectedValues.length > 0) {
+                        finalAnswer = selectedValues[0];
+                    } else {
+                        finalAnswer = "(No response provided)";
+                    }
+                }
+
+                answers.push({
+                    question: q.question,
+                    answer: finalAnswer
+                });
+
+                showQuestion(idx + 1);
+            });
+        }
+
+        showQuestion(currentQuestionIdx);
+    });
+};
+
+

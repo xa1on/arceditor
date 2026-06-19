@@ -131,6 +131,66 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId) {
         const reasoningHtml = turn.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${prefix}${turn.turnNum}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(turn.reasoning, turn.turnNum)}</div></details>` : "";
         const contentHtml = formatMarkdown(turn.content !== undefined ? turn.content : turn.llmResponse, turn.turnNum);
 
+        let obsHtml = "";
+        if (turn.observations) {
+            if (turn.observations.indexOf('- Tool "askQuestion":') !== -1) {
+                const lines = turn.observations.split("\n");
+                let qaList = [];
+                let currentQA = null;
+                for (let j = 0; j < lines.length; j++) {
+                    const line = lines[j].trim();
+                    if (line.indexOf('- Question: "') === 0) {
+                        if (currentQA) qaList.push(currentQA);
+                        currentQA = {
+                            question: line.substring('- Question: "'.length, line.length - 1),
+                            answer: ""
+                        };
+                    } else if (line.indexOf('Answer: ') === 0 && currentQA) {
+                        let ans = line.substring('Answer: '.length);
+                        if (ans.startsWith('"') && ans.endsWith('"')) {
+                            ans = ans.substring(1, ans.length - 1);
+                        } else if (ans.startsWith('[') && ans.endsWith(']')) {
+                            try {
+                                ans = JSON.parse(ans).join(", ");
+                            } catch (e) {}
+                        }
+                        currentQA.answer = ans;
+                    }
+                }
+                if (currentQA) qaList.push(currentQA);
+
+                if (qaList.length > 0) {
+                    obsHtml = `
+                    <div class="turn-observations">
+                        <strong style="color: var(--text-success);">Questions Answered:</strong>
+                        <div style="font-size: 10px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; background: var(--bg-input); padding: 6px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm);">
+                            ${qaList.map(qa => `
+                                <div style="border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 2px; margin-bottom: 2px;">
+                                    <div style="color: var(--text-secondary); font-weight: 500;">Q: ${qa.question}</div>
+                                    <div style="color: var(--text-primary); padding-left: 6px; font-family: var(--font-mono); font-size: 9px; margin-top: 1px;">A: ${qa.answer}</div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                    `;
+                } else {
+                    obsHtml = `
+                    <div class="turn-observations">
+                        <strong>Observations:</strong>
+                        <pre class="observation-pre">${turn.observations}</pre>
+                    </div>
+                    `;
+                }
+            } else {
+                obsHtml = `
+                <div class="turn-observations">
+                    <strong>Observations:</strong>
+                    <pre class="observation-pre">${turn.observations}</pre>
+                </div>
+                `;
+            }
+        }
+
         if (turn.type === "failed") {
             html += `
             <details class="agent-turn-details" id="details-turn-${prefix}${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
@@ -160,10 +220,7 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId) {
                     ${reasoningHtml}
                     ${contentHtml}
                     ${imagesHtml}
-                    <div class="turn-observations">
-                        <strong>Observations:</strong>
-                        <pre class="observation-pre">${turn.observations}</pre>
-                    </div>
+                    ${obsHtml}
                 </div>
             </details>
             `;

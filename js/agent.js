@@ -146,7 +146,8 @@ async function runAgenticExecutionLoop(userText) {
                                     "selectLayers",
                                     "switchComposition",
                                     "setPlayheadTime",
-                                    "undoLastAction"
+                                    "undoLastAction",
+                                    "askQuestion"
                                 ].indexOf(tc.tool) !== -1;
                                 if (!isReadOnly) {
                                     containsModifying = true;
@@ -529,7 +530,8 @@ function getSignificantJsonActionKey(jsonStr) {
                 "getLayerProperties",
                 "selectLayers",
                 "switchComposition",
-                "setPlayheadTime"
+                "setPlayheadTime",
+                "askQuestion"
             ].indexOf(toolName) !== -1;
             return !isReadOnly;
         });
@@ -573,7 +575,8 @@ async function executeToolCalls(jsonStr) {
                 "getLayerProperties",
                 "selectLayers",
                 "switchComposition",
-                "setPlayheadTime"
+                "setPlayheadTime",
+                "askQuestion"
             ].indexOf(toolName) !== -1;
 
             const allowed = getProjectAllowedTools(currentProjectPath);
@@ -639,6 +642,18 @@ async function executeToolCalls(jsonStr) {
             if (toolName === "getTimelineContext") {
                 const timelineData = await getTimelineContext();
                 observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
+                continue;
+            } else if (toolName === "askQuestion") {
+                if (typeof setUIReadyState === "function") {
+                    setUIReadyState(false);
+                }
+                let answers = "";
+                if (typeof window !== "undefined" && typeof window.promptUserForQuestions === "function") {
+                    answers = await window.promptUserForQuestions(tc);
+                } else {
+                    answers = "Error: Question prompting UI is not supported on this platform.";
+                }
+                observations.push(`- Tool "askQuestion":\n${answers}`);
                 continue;
             } else if (toolName === "getInstalledEffects") {
                 if (!installedEffects || Object.keys(installedEffects).length === 0) {
