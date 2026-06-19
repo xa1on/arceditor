@@ -531,7 +531,7 @@ function scrollToBottom(force = false) {
     }
 }
 
-function addBubble(sender, text, base64Images = null, intermediateTurns = null) {
+function addBubble(sender, text, base64Images = null, intermediateTurns = null, reasoning = null) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
 
@@ -552,6 +552,9 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null) 
             } else if (Array.isArray(intermediateTurns)) {
                 htmlContent += renderTurnsHtml(intermediateTurns);
             }
+        }
+        if (reasoning) {
+            htmlContent += `<details class="reasoning-details" id="reasoning-turn-final"><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(reasoning)}</div></details>`;
         }
         htmlContent += formatMarkdown(text);
         content.innerHTML = htmlContent;

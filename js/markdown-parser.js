@@ -127,6 +127,9 @@ function renderTurnsHtml(turns, openTurnNums) {
         const openAttr = isOpen ? " open" : "";
         const imagesHtml = renderTurnImagesHtml(turn.images);
 
+        const reasoningHtml = turn.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${turn.turnNum}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(turn.reasoning, turn.turnNum)}</div></details>` : "";
+        const contentHtml = formatMarkdown(turn.content !== undefined ? turn.content : turn.llmResponse, turn.turnNum);
+
         if (turn.type === "failed") {
             html += `
             <details class="agent-turn-details" id="details-turn-${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
@@ -135,7 +138,8 @@ function renderTurnsHtml(turns, openTurnNums) {
                     <span class="turn-title" style="color: var(--text-error);">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
-                    ${formatMarkdown(turn.llmResponse, turn.turnNum)}
+                    ${reasoningHtml}
+                    ${contentHtml}
                     ${imagesHtml}
                     <div class="turn-observations">
                         <strong style="color: var(--text-error);">Error Observation:</strong>
@@ -152,7 +156,8 @@ function renderTurnsHtml(turns, openTurnNums) {
                     <span class="turn-title">${turn.turnTitle}</span>
                 </summary>
                 <div class="agent-turn-body">
-                    ${formatMarkdown(turn.llmResponse, turn.turnNum)}
+                    ${reasoningHtml}
+                    ${contentHtml}
                     ${imagesHtml}
                     <div class="turn-observations">
                         <strong>Observations:</strong>

@@ -45,6 +45,9 @@ async function loadSettings() {
             apiKey = providerSettings[currentProvider].key;
             modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
 
+            openaiReasoningEffort = providerSettings.openai.reasoningEffort || "medium";
+            claudeThinkingBudget = providerSettings.anthropic.thinkingBudget !== undefined ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
+
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             loaded = true;
@@ -75,6 +78,15 @@ async function loadSettings() {
         if (keyEl) keyEl.value = providerSettings[prov].key;
     }
 
+    const opEffortEl = document.getElementById("setting-openai-reasoning-effort");
+    if (opEffortEl) opEffortEl.value = providerSettings.openai.reasoningEffort || "medium";
+    
+    const anthThinkingEl = document.getElementById("setting-anthropic-thinking-budget");
+    if (anthThinkingEl) anthThinkingEl.value = providerSettings.anthropic.thinkingBudget !== undefined ? providerSettings.anthropic.thinkingBudget : 2048;
+
+    openaiReasoningEffort = providerSettings.openai.reasoningEffort || "medium";
+    claudeThinkingBudget = providerSettings.anthropic.thinkingBudget !== undefined ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
+
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
@@ -95,6 +107,19 @@ async function saveSettings(e) {
         const keyEl = document.getElementById(`setting-key-${prov}`);
         if (urlEl) providerSettings[prov].url = urlEl.value || getDefaultUrl(prov);
         if (keyEl) providerSettings[prov].key = keyEl.value;
+    }
+
+    const opEffortEl = document.getElementById("setting-openai-reasoning-effort");
+    if (opEffortEl) {
+        providerSettings.openai.reasoningEffort = opEffortEl.value;
+        openaiReasoningEffort = opEffortEl.value;
+    }
+    
+    const anthThinkingEl = document.getElementById("setting-anthropic-thinking-budget");
+    if (anthThinkingEl) {
+        const val = parseInt(anthThinkingEl.value, 10);
+        providerSettings.anthropic.thinkingBudget = isNaN(val) ? 2048 : val;
+        claudeThinkingBudget = providerSettings.anthropic.thinkingBudget;
     }
 
     // Sync active provider variables
@@ -337,7 +362,7 @@ function loadSessionHistory(sessionId) {
                 addBubble("user", textContent, base64Images);
             } else if (msg.role === "assistant" && msg.content) {
                 const turns = msg.intermediateTurns !== undefined ? msg.intermediateTurns : msg.intermediateTurnsHtml;
-                addBubble("ai", msg.content, null, turns);
+                addBubble("ai", msg.content, null, turns, msg.reasoning);
             }
         });
     }

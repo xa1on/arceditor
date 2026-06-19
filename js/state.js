@@ -11,12 +11,14 @@ let apiKey = "";
 let isConnected = false;
 let includeBase64InDebugLog = false;
 let maxToolRetryLimit = 15;
+let openaiReasoningEffort = "medium";
+let claudeThinkingBudget = 2048;
 
 let providerSettings = {
     lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
     gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
-    openai: { url: "https://api.openai.com/v1", key: "", model: "" },
-    anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "" }
+    openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
+    anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
 };
 
 let chatHistory = [];

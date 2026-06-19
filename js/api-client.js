@@ -422,7 +422,24 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
     return payload;
 }
 
+function checkModelSupportsNativeReasoning(provider, model) {
+    if (!model) return false;
+    const lowerModel = model.toLowerCase();
+    if (provider === "anthropic") {
+        return (claudeThinkingBudget > 0 && lowerModel.indexOf("3-7") !== -1);
+    }
+    if (provider === "openai") {
+        return (lowerModel.indexOf("o1") !== -1 || lowerModel.indexOf("o3-mini") !== -1);
+    }
+    if (provider === "lemonade") {
+        return (lowerModel.indexOf("r1") !== -1 || lowerModel.indexOf("reasoning") !== -1 || lowerModel.indexOf("thinking") !== -1);
+    }
+    return false;
+}
+
 async function callLLMApi(messages, onChunkReceived, skipSystemInstructions = false) {
+    const modelSupportsNativeReasoning = checkModelSupportsNativeReasoning(currentProvider, modelName);
+
     if (!httpsClient && !httpClient) {
         // Fallback mock mode ONLY inside standalone browsers
         return new Promise((resolve) => {
@@ -468,6 +485,10 @@ Here is the ExtendScript to build it:
     // Deep clone and clean past assistant reasoning blocks
     const cleanedMessages = messages.map(m => {
         const copy = { ...m };
+        if (copy.role === "assistant" && copy.reasoning) {
+            copy.content = `<thinking>\n${copy.reasoning}\n</thinking>\n\n${copy.content}`;
+            delete copy.reasoning;
+        }
         delete copy.isIntermediate;
         delete copy.intermediateTurns;
         return copy;
@@ -485,9 +506,17 @@ Here is the ExtendScript to build it:
                 { role: "system", content: SYSTEM_INSTRUCTIONS },
                 ...cleanedMessages
             ],
-            temperature: 0.2,
             stream: !!onChunkReceived
         };
+
+        if (modelSupportsNativeReasoning) {
+            payload.max_completion_tokens = 8192;
+            if (currentProvider === "openai" && typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
+                payload.reasoning_effort = openaiReasoningEffort;
+            }
+        } else {
+            payload.temperature = 0.2;
+        }
 
         if (typeof writeToDebugLog === "function") {
             writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
@@ -501,6 +530,9 @@ Here is the ExtendScript to build it:
         if (onChunkReceived) {
             payload.stream_options = { include_usage: true };
             let accumulatedText = "";
+            let isThinkingOpen = false;
+            let isThinkingClosed = false;
+
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
                 if (line.startsWith("data: ")) {
                     const dataStr = line.substring(6).trim();
@@ -508,9 +540,25 @@ Here is the ExtendScript to build it:
                     try {
                         const parsed = JSON.parse(dataStr);
                         if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-                            const content = parsed.choices[0].delta.content;
-                            if (content) {
-                                accumulatedText += content;
+                            const delta = parsed.choices[0].delta;
+                            const content = delta.content;
+                            const reasoning = delta.reasoning_content;
+
+                            if (reasoning) {
+                                if (!isThinkingOpen) {
+                                    accumulatedText = "<thinking>\n" + reasoning;
+                                    isThinkingOpen = true;
+                                } else {
+                                    accumulatedText += reasoning;
+                                }
+                                onChunkReceived(accumulatedText);
+                            } else if (content) {
+                                if (isThinkingOpen && !isThinkingClosed) {
+                                    accumulatedText += "\n</thinking>\n\n" + content;
+                                    isThinkingClosed = true;
+                                } else {
+                                    accumulatedText += content;
+                                }
                                 onChunkReceived(accumulatedText);
                             }
                         }
@@ -524,6 +572,13 @@ Here is the ExtendScript to build it:
                     } catch (e) { }
                 }
             });
+
+            if (isThinkingOpen && !isThinkingClosed) {
+                accumulatedText += "\n</thinking>\n\n";
+                isThinkingClosed = true;
+                onChunkReceived(accumulatedText);
+            }
+
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", accumulatedText);
             }
@@ -538,7 +593,12 @@ Here is the ExtendScript to build it:
                     totalTokens: responseData.usage.total_tokens
                 };
             }
-            const content = responseData.choices && responseData.choices[0] && responseData.choices[0].message ? responseData.choices[0].message.content : "";
+            const msgObj = responseData.choices && responseData.choices[0] && responseData.choices[0].message ? responseData.choices[0].message : null;
+            let content = msgObj ? msgObj.content : "";
+            const reasoning = msgObj ? msgObj.reasoning_content : null;
+            if (reasoning) {
+                content = `<thinking>\n${reasoning}\n</thinking>\n\n${content}`;
+            }
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (OpenAI/Lemonade)", content);
             }
@@ -670,13 +730,24 @@ Here is the ExtendScript to build it:
         payload = {
             model: modelName,
             messages: anthropicMessages,
-            max_tokens: 4096,
-            temperature: 0.2,
             stream: !!onChunkReceived
         };
+
+        if (modelSupportsNativeReasoning) {
+            payload.thinking = {
+                type: "enabled",
+                budget_tokens: claudeThinkingBudget
+            };
+            payload.max_tokens = Math.max(claudeThinkingBudget + 2048, 4096);
+        } else {
+            payload.max_tokens = 4096;
+            payload.temperature = 0.2;
+        }
+
         if (!skipSystemInstructions) {
             payload.system = SYSTEM_INSTRUCTIONS;
         }
+
         if (typeof writeToDebugLog === "function") {
             writeToDebugLog("API Request Sent (Anthropic)", JSON.stringify({
                 provider: currentProvider,
@@ -688,15 +759,41 @@ Here is the ExtendScript to build it:
 
         if (onChunkReceived) {
             let accumulatedText = "";
+            let isThinkingOpen = false;
+            let isThinkingClosed = false;
+
             await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
                 if (line.startsWith("data: ")) {
                     const dataStr = line.substring(6).trim();
                     try {
                         const parsed = JSON.parse(dataStr);
-                        if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
+                        if (parsed.type === "content_block_delta" && parsed.delta) {
+                            const delta = parsed.delta;
+                            if (delta.type === "thinking_delta" && delta.thinking) {
+                                if (!isThinkingOpen) {
+                                    accumulatedText = "<thinking>\n" + delta.thinking;
+                                    isThinkingOpen = true;
+                                } else {
+                                    accumulatedText += delta.thinking;
+                                }
+                                onChunkReceived(accumulatedText);
+                            } else if (delta.type === "text_delta" && delta.text) {
+                                if (isThinkingOpen && !isThinkingClosed) {
+                                    accumulatedText += "\n</thinking>\n\n" + delta.text;
+                                    isThinkingClosed = true;
+                                } else {
+                                    accumulatedText += delta.text;
+                                }
+                                onChunkReceived(accumulatedText);
+                            } else if (delta.text) {
+                                accumulatedText += delta.text;
+                                onChunkReceived(accumulatedText);
+                            }
+                        } else if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
                             accumulatedText += parsed.delta.text;
                             onChunkReceived(accumulatedText);
                         }
+
                         if (parsed.type === "message_start" && parsed.message && parsed.message.usage) {
                             lastApiUsage = {
                                 promptTokens: parsed.message.usage.input_tokens || 0,
@@ -712,6 +809,13 @@ Here is the ExtendScript to build it:
                     } catch (e) { }
                 }
             });
+
+            if (isThinkingOpen && !isThinkingClosed) {
+                accumulatedText += "\n</thinking>\n\n";
+                isThinkingClosed = true;
+                onChunkReceived(accumulatedText);
+            }
+
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (Anthropic Stream Finished)", accumulatedText);
             }
@@ -726,7 +830,27 @@ Here is the ExtendScript to build it:
                     totalTokens: (responseData.usage.input_tokens || 0) + (responseData.usage.output_tokens || 0)
                 };
             }
-            const content = responseData.content && responseData.content[0] ? responseData.content[0].text : "";
+
+            let content = "";
+            if (responseData.content && Array.isArray(responseData.content)) {
+                let reasoningText = "";
+                let textContent = "";
+                responseData.content.forEach(c => {
+                    if (c.type === "thinking" && c.thinking) {
+                        reasoningText += c.thinking;
+                    } else if (c.type === "text" && c.text) {
+                        textContent += c.text;
+                    }
+                });
+                if (reasoningText) {
+                    content = `<thinking>\n${reasoningText}\n</thinking>\n\n${textContent}`;
+                } else {
+                    content = textContent;
+                }
+            } else if (responseData.content && responseData.content[0]) {
+                content = responseData.content[0].text || "";
+            }
+
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (Anthropic)", content);
             }

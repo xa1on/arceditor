@@ -73,9 +73,14 @@ async function runAgenticExecutionLoop(userText) {
                     if (executionId !== currentExecutionId || isStopped) return;
                     const openTurnNums = getOpenTurnNums(aiBubble);
                     const activeTurnNum = completedTurns.length + 1;
+
+                    const parsed = parseStreamingReasoning(chunkText);
+                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
+
                     updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
-                        formatMarkdown(chunkText, activeTurnNum) +
+                        reasoningHtml +
+                        formatMarkdown(parsed.content, activeTurnNum) +
                         `</div>`);
 
                     // Restore user's manual expand/collapse state if they interacted with it
@@ -90,7 +95,7 @@ async function runAgenticExecutionLoop(userText) {
                         }
                     }
 
-                    aiBubble.setAttribute("data-raw-text", chunkText);
+                    aiBubble.setAttribute("data-raw-text", parsed.content);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                 });
                 if (executionId !== currentExecutionId || isStopped) {
@@ -124,8 +129,13 @@ async function runAgenticExecutionLoop(userText) {
                     agentHistory.push(JSON.parse(JSON.stringify(retryMsg)));
                     continue;
                 }
-                aiBubble.setAttribute("data-raw-text", llmResponse);
-                const assistantMsg = { role: "assistant", content: llmResponse };
+                const parsedResponse = parseStreamingReasoning(llmResponse);
+                aiBubble.setAttribute("data-raw-text", parsedResponse.content);
+                const assistantMsg = { 
+                    role: "assistant", 
+                    content: parsedResponse.content, 
+                    reasoning: parsedResponse.reasoning 
+                };
                 activeContext.push(assistantMsg);
                 finalLlmResponse = llmResponse;
 
@@ -189,9 +199,12 @@ async function runAgenticExecutionLoop(userText) {
                     updateConsolePane(jsonBlock);
                     const openTurnNums = getOpenTurnNums(aiBubble);
                     const activeTurnNum = completedTurns.length + 1;
+                    const parsed = parseStreamingReasoning(llmResponse);
+                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
                     updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                         `<div class="active-turn-container">` +
-                        formatMarkdown(llmResponse, activeTurnNum) +
+                        reasoningHtml +
+                        formatMarkdown(parsed.content, activeTurnNum) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>` +
                         `</div>`);
                     if (typeof scrollToBottom === "function") scrollToBottom();
@@ -213,9 +226,9 @@ async function runAgenticExecutionLoop(userText) {
                         break;
                     }
 
-                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 || 
-                        toolObservations.toLowerCase().indexOf("evalscript error") !== -1 || 
-                        toolObservations.toLowerCase().indexOf("exception:") !== -1 || 
+                    if (toolObservations.toLowerCase().indexOf("error:") !== -1 ||
+                        toolObservations.toLowerCase().indexOf("evalscript error") !== -1 ||
+                        toolObservations.toLowerCase().indexOf("exception:") !== -1 ||
                         toolObservations.indexOf("Unsupported tool name:") !== -1) {
                         scriptFailed = true;
                         loopRetries++;
@@ -223,10 +236,13 @@ async function runAgenticExecutionLoop(userText) {
                         writeToDebugLog("Tool Execution Error", toolObservations);
 
                         // Package failed turn
+                        const parsedTurn = parseStreamingReasoning(llmResponse);
                         completedTurns.push({
                             type: "failed",
                             turnNum: completedTurns.length + 1,
                             turnTitle: "Tool execution failed (Retrying...)",
+                            content: parsedTurn.content,
+                            reasoning: parsedTurn.reasoning,
                             llmResponse: llmResponse,
                             observations: toolObservations
                         });
@@ -308,10 +324,13 @@ async function runAgenticExecutionLoop(userText) {
                         }
                     }
 
+                    const parsedTurn = parseStreamingReasoning(llmResponse);
                     completedTurns.push({
                         type: "success",
                         turnNum: completedTurns.length + 1,
                         turnTitle: turnTitle,
+                        content: parsedTurn.content,
+                        reasoning: parsedTurn.reasoning,
                         llmResponse: llmResponse,
                         observations: observations,
                         images: turnImages
@@ -333,9 +352,12 @@ async function runAgenticExecutionLoop(userText) {
                         // 1. Show feedback in UI that verification is in progress
                         const openTurnNums = getOpenTurnNums(aiBubble);
                         const activeTurnNum = completedTurns.length + 1;
+                        const parsed = parseStreamingReasoning(llmResponse);
+                        const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
                         updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) +
                             `<div class="active-turn-container">` +
-                            formatMarkdown(llmResponse, activeTurnNum) +
+                            reasoningHtml +
+                            formatMarkdown(parsed.content, activeTurnNum) +
                             `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Verifying timeline canvas changes...</div>` +
                             `</div>`);
                         if (typeof scrollToBottom === "function") scrollToBottom();
@@ -371,10 +393,13 @@ async function runAgenticExecutionLoop(userText) {
                             agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
 
                             // Add a successful verification turn to completedTurns
+                            const parsedTurn = parseStreamingReasoning(llmResponse);
                             completedTurns.push({
                                 type: "success",
                                 turnNum: completedTurns.length + 1,
                                 turnTitle: "Visual verification frame captured",
+                                content: parsedTurn.content,
+                                reasoning: parsedTurn.reasoning,
                                 llmResponse: llmResponse,
                                 observations: "Success: Canvas frame automatically captured and attached for visual inspection.",
                                 images: base64Data
@@ -392,7 +417,9 @@ async function runAgenticExecutionLoop(userText) {
 
                     isCompleted = true;
                     const openTurnNums = getOpenTurnNums(aiBubble);
-                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) + formatMarkdown(llmResponse, completedTurns.length + 1));
+                    const parsedFinal = parseStreamingReasoning(llmResponse);
+                    const reasoningHtml = parsedFinal.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedFinal.reasoning, completedTurns.length + 1)}</div></details>` : "";
+                    updateBubbleContent(aiBubble, renderTurnsHtml(completedTurns, openTurnNums) + reasoningHtml + formatMarkdown(parsedFinal.content, completedTurns.length + 1));
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
@@ -933,7 +960,7 @@ async function pruneHistoryContexts(contextArray) {
 
 function fallbackSlidingWindowPrune(contextArray) {
     if (!contextArray) return [];
-    
+
     const maxTokens = 20000;
     if (estimateMessagesTokenCount(contextArray) <= maxTokens) {
         return contextArray;

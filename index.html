@@ -283,10 +283,18 @@
                                         placeholder="https://api.openai.com/v1"
                                         style="padding: 4px 8px; font-size: 10px;">
                                 </div>
-                                <div class="field-group" style="margin-bottom: 0;">
+                                <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-key-openai" style="font-size: 9px;">API Key</label>
                                     <input type="password" id="setting-key-openai" class="form-input"
                                         placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                </div>
+                                <div class="field-group" style="margin-bottom: 0;">
+                                    <label for="setting-openai-reasoning-effort" style="font-size: 9px;">Reasoning Effort (for o1/o3-mini)</label>
+                                    <select id="setting-openai-reasoning-effort" class="form-input" style="padding: 4px 8px; font-size: 10px; height: auto;">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -302,10 +310,15 @@
                                         placeholder="https://api.anthropic.com/v1"
                                         style="padding: 4px 8px; font-size: 10px;">
                                 </div>
-                                <div class="field-group" style="margin-bottom: 0;">
+                                <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-key-anthropic" style="font-size: 9px;">API Key</label>
                                     <input type="password" id="setting-key-anthropic" class="form-input"
                                         placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                </div>
+                                <div class="field-group" style="margin-bottom: 0;">
+                                    <label for="setting-anthropic-thinking-budget" style="font-size: 9px;">Thinking Budget (Tokens, 0 to disable)</label>
+                                    <input type="number" id="setting-anthropic-thinking-budget" class="form-input" min="0" max="65536"
+                                        placeholder="2048" style="padding: 4px 8px; font-size: 10px;">
                                 </div>
                             </div>
                         </div>
@@ -345,6 +358,7 @@
     <script src="js/api-client.js"></script>
     <script src="js/timeline.js"></script>
     <script src="js/instructions.js"></script>
+    <script src="js/reasoning-parser.js"></script>
     <script src="js/markdown-parser.js"></script>
     <script src="js/agent.js"></script>
     <!-- Entry UI Bindings -->
