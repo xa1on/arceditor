@@ -324,6 +324,41 @@ body {
     color: #d4d4d4;
 }
 
+/* Code Syntax Highlighting styles */
+.hl-comment {
+    color: #6a9955;
+    font-style: italic;
+}
+.hl-string {
+    color: #ce9178;
+}
+.hl-regex {
+    color: #d16969;
+}
+.hl-number {
+    color: #b5cea8;
+}
+.hl-keyword {
+    color: #569cd6;
+    font-weight: 500;
+}
+.hl-builtin {
+    color: #4ec9b0;
+    font-weight: 500;
+}
+.hl-function {
+    color: #dcdcaa;
+}
+.hl-operator {
+    color: #d4d4d4;
+}
+.hl-json-key {
+    color: #9cdcfe;
+}
+.hl-json-value {
+    color: #569cd6;
+}
+
 /* CONSOLE WRAPPER */
 .console-wrapper {
     display: flex;

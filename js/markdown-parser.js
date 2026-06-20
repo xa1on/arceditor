@@ -111,8 +111,12 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
                         .replace(/>/g, "&gt;");
 
                     let displayHtml = "";
-                    if (key === "script" || valStr.indexOf("\n") !== -1) {
-                        displayHtml = `<pre class="param-value-code"><code>${escapedValStr}</code></pre>`;
+                    if (key === "script") {
+                        displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, "javascript")}</code></pre>`;
+                    } else if (valStr.indexOf("\n") !== -1) {
+                        const trimmedVal = valStr.trim();
+                        const possibleLang = (trimmedVal.startsWith("{") && trimmedVal.endsWith("}")) || (trimmedVal.startsWith("[") && trimmedVal.endsWith("]")) ? "json" : "";
+                        displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, possibleLang)}</code></pre>`;
                     } else {
                         displayHtml = escapedValStr;
                     }
@@ -124,7 +128,7 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
             }
 
             const cardId = "tool-card-" + Date.now() + "-" + index;
-            const rawJsonHtml = `<pre class="code-viewport"><code>${JSON.stringify(call, null, 2)}</code></pre>`;
+            const rawJsonHtml = `<pre class="code-viewport"><code>${highlightCode(JSON.stringify(call, null, 2), "json")}</code></pre>`;
 
             const escapedReason = reason ? reason
                 .replace(/&/g, "&amp;")
@@ -378,14 +382,14 @@ function formatMarkdown(text, turnNum, observations) {
                 if (formatted) {
                     renderedBlock = formatted;
                 } else {
-                    renderedBlock = `<pre class="code-viewport"><code>${code}</code></pre>`;
+                    renderedBlock = `<pre class="code-viewport"><code>${highlightCode(code, "json")}</code></pre>`;
                 }
             } else if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
                 jsxBlockCount++;
                 renderedBlock = `
                 <details class="jsx-code-details" id="jsx-code-turn-${activeTurn}-${jsxBlockCount}" ${!isClosed ? 'open' : ''}>
                     <summary class="jsx-code-summary">ExtendScript JSX Code Block${!isClosed ? ' (Streaming...)' : ''}</summary>
-                    <pre class="code-viewport"><code>${code}</code></pre>
+                    <pre class="code-viewport"><code>${highlightCode(code, lang)}</code></pre>
                 </details>
                 `;
             } else {
@@ -393,7 +397,7 @@ function formatMarkdown(text, turnNum, observations) {
                 if (firstNewline === -1) {
                     displayCode = block;
                 }
-                renderedBlock = `<pre class="code-viewport"><code>${displayCode}</code></pre>`;
+                renderedBlock = `<pre class="code-viewport"><code>${highlightCode(displayCode, lang)}</code></pre>`;
             }
 
             preBlocks.push(renderedBlock);
@@ -638,4 +642,220 @@ function parseMarkdownTable(blockText) {
     }
 
     return parseTableLines(lines);
+}
+
+/**
+ * Code Syntax Highlighting Module
+ */
+function unescapeHtml(html) {
+    if (!html) return "";
+    return html
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, "&");
+}
+
+function escapeHtml(text) {
+    if (!text) return "";
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function highlightJavascript(code) {
+    const raw = unescapeHtml(code);
+    const tokenRegex = new RegExp([
+        `(\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*)`, // 1. Comments
+        `("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|\`(?:\\\\.|[^\`\\\\])*\`)`, // 2. Strings
+        `(\\/(?![*\\/])(?:\\\\.|[^\\/\\\\\\n])+\\/[gimy]*)`, // 3. RegEx
+        `(\\b\\d+(?:\\.\\d+)?\\b)`, // 4. Numbers
+        `(\\b(?:break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|finally|for|function|if|import|in|instanceof|new|return|super|switch|this|throw|try|typeof|var|void|while|with|yield|let|static)\\b)`, // 5. Keywords
+        `(\\b(?:app|project|activeItem|Layer|CompItem|FolderItem|File|Folder|Socket|XML|Global|window|document|console|Math|Array|Object|String|Number|Boolean|RegExp|JSON|undefined|null|NaN|Infinity)\\b)`, // 6. Builtins/Globals
+        `(\\b[a-zA-Z_$][a-zA-Z0-9_$]*(?=\\s*\\())`, // 7. Functions
+        `(=>|&&|\\|\\||[{}()\\[\\].;+\\-*/%&|^!=<>:~?]+)` // 8. Operators & brackets
+    ].join('|'), 'g');
+
+    let html = "";
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(raw)) !== null) {
+        if (match.index > lastIndex) {
+            html += escapeHtml(raw.substring(lastIndex, match.index));
+        }
+
+        const tokenText = match[0];
+        let tokenClass = "";
+
+        if (match[1]) tokenClass = "hl-comment";
+        else if (match[2]) tokenClass = "hl-string";
+        else if (match[3]) tokenClass = "hl-regex";
+        else if (match[4]) tokenClass = "hl-number";
+        else if (match[5]) tokenClass = "hl-keyword";
+        else if (match[6]) tokenClass = "hl-builtin";
+        else if (match[7]) tokenClass = "hl-function";
+        else if (match[8]) tokenClass = "hl-operator";
+
+        if (tokenClass) {
+            html += `<span class="${tokenClass}">${escapeHtml(tokenText)}</span>`;
+        } else {
+            html += escapeHtml(tokenText);
+        }
+
+        lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < raw.length) {
+        html += escapeHtml(raw.substring(lastIndex));
+    }
+    return html;
+}
+
+function highlightJson(code) {
+    const raw = unescapeHtml(code);
+    const tokenRegex = new RegExp([
+        `(\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*)`, // 1. Comments
+        `("(?:\\\\.|[^"\\\\])*"(?=\\s*:))`, // 2. JSON Keys
+        `("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|\`(?:\\\\.|[^\`\\\\])*\`)`, // 3. Strings
+        `(\\b\\d+(?:\\.\\d+)?\\b)`, // 4. Numbers
+        `(\\b(?:true|false|null)\\b)`, // 5. JSON values/booleans
+        `([{}()\\[\\].;+\\-*/%&|^!=<>:~?]+)` // 6. Operators & brackets
+    ].join('|'), 'g');
+
+    let html = "";
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(raw)) !== null) {
+        if (match.index > lastIndex) {
+            html += escapeHtml(raw.substring(lastIndex, match.index));
+        }
+
+        const tokenText = match[0];
+        let tokenClass = "";
+
+        if (match[1]) tokenClass = "hl-comment";
+        else if (match[2]) tokenClass = "hl-json-key";
+        else if (match[3]) tokenClass = "hl-string";
+        else if (match[4]) tokenClass = "hl-number";
+        else if (match[5]) tokenClass = "hl-json-value";
+        else if (match[6]) tokenClass = "hl-operator";
+
+        if (tokenClass) {
+            html += `<span class="${tokenClass}">${escapeHtml(tokenText)}</span>`;
+        } else {
+            html += escapeHtml(tokenText);
+        }
+
+        lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < raw.length) {
+        html += escapeHtml(raw.substring(lastIndex));
+    }
+    return html;
+}
+
+function highlightHtml(code) {
+    const raw = unescapeHtml(code);
+    const tokenRegex = new RegExp([
+        `(<!--[\\s\\S]*?-->)`, // 1. Comments
+        `(<\\/?[a-zA-Z0-9:-]+(?=>|\\s))`, // 2. Tags
+        `(\\b[a-zA-Z-]+(?=\\s*=))`, // 3. Attributes
+        `("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*')` // 4. Attribute values
+    ].join('|'), 'g');
+
+    let html = "";
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(raw)) !== null) {
+        if (match.index > lastIndex) {
+            html += escapeHtml(raw.substring(lastIndex, match.index));
+        }
+
+        const tokenText = match[0];
+        let tokenClass = "";
+
+        if (match[1]) tokenClass = "hl-comment";
+        else if (match[2]) tokenClass = "hl-keyword";
+        else if (match[3]) tokenClass = "hl-builtin";
+        else if (match[4]) tokenClass = "hl-string";
+
+        if (tokenClass) {
+            html += `<span class="${tokenClass}">${escapeHtml(tokenText)}</span>`;
+        } else {
+            html += escapeHtml(tokenText);
+        }
+
+        lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < raw.length) {
+        html += escapeHtml(raw.substring(lastIndex));
+    }
+    return html;
+}
+
+function highlightCss(code) {
+    const raw = unescapeHtml(code);
+    const tokenRegex = new RegExp([
+        `(\\/\\*[\\s\\S]*?\\*\\/)`, // 1. Comments
+        `(\\b[a-zA-Z-]+(?=\\s*:))`, // 2. Properties
+        `("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*')` // 3. Strings
+    ].join('|'), 'g');
+
+    let html = "";
+    let lastIndex = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(raw)) !== null) {
+        if (match.index > lastIndex) {
+            html += escapeHtml(raw.substring(lastIndex, match.index));
+        }
+
+        const tokenText = match[0];
+        let tokenClass = "";
+
+        if (match[1]) tokenClass = "hl-comment";
+        else if (match[2]) tokenClass = "hl-builtin";
+        else if (match[3]) tokenClass = "hl-string";
+
+        if (tokenClass) {
+            html += `<span class="${tokenClass}">${escapeHtml(tokenText)}</span>`;
+        } else {
+            html += escapeHtml(tokenText);
+        }
+
+        lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < raw.length) {
+        html += escapeHtml(raw.substring(lastIndex));
+    }
+    return html;
+}
+
+function highlightCode(code, lang) {
+    if (!code) return "";
+    if (!lang) return escapeHtml(unescapeHtml(code));
+
+    const cleanLang = lang.trim().toLowerCase();
+
+    if (cleanLang === "json") {
+        return highlightJson(code);
+    } else if (cleanLang === "javascript" || cleanLang === "js" || cleanLang === "extendscript" || cleanLang === "jsx") {
+        return highlightJavascript(code);
+    } else if (cleanLang === "html" || cleanLang === "xml") {
+        return highlightHtml(code);
+    } else if (cleanLang === "css") {
+        return highlightCss(code);
+    }
+
+    return escapeHtml(unescapeHtml(code));
 }
