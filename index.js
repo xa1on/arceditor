@@ -1179,18 +1179,77 @@ window.promptUserForToolConfirmation = function(tc) {
 
         btnDeny.addEventListener("click", () => {
             cardDiv.innerHTML = `
-                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                <div style="font-weight: 600; font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                     <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
-                    <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                    <span>Denial Reason (Optional)</span>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <input type="text" class="deny-reason-input form-input" placeholder="Why did you deny this? (optional)" style="width: 100%; box-sizing: border-box; padding: 4px 8px; font-size: 10px; height: 22px;" />
+                </div>
+                <div style="display: flex; gap: 4px; justify-content: flex-end; margin-top: 8px;">
+                    <button class="btn-deny-skip" style="width: auto; padding: 2px 8px; font-size: 9px; font-weight: 600; height: 20px; border-radius: var(--border-radius-sm); background: #3e3e3e; border: 1px solid #555; color: var(--text-primary); cursor: pointer;">Skip</button>
+                    <button class="btn-deny-submit" style="width: auto; padding: 2px 10px; font-size: 9px; font-weight: 600; height: 20px; border-radius: var(--border-radius-sm); background: rgba(255, 68, 68, 0.3); border: 1px solid var(--text-error); color: var(--text-error); cursor: pointer;">Submit</button>
                 </div>
             `;
-            if (executingLoader) {
-                executingLoader.style.display = "";
-            }
-            resolve("deny");
+            scrollToBottom(true);
+
+            const inputField = cardDiv.querySelector(".deny-reason-input");
+            const btnSkip = cardDiv.querySelector(".btn-deny-skip");
+            const btnSubmit = cardDiv.querySelector(".btn-deny-submit");
+
+            inputField.focus();
+
+            const handleDenial = (reason) => {
+                reason = (reason || "").trim();
+                if (reason) {
+                    cardDiv.innerHTML = `
+                        <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong> &mdash; <em class="deny-reason-text" style="color: var(--text-primary);"></em></span>
+                        </div>
+                    `;
+                    cardDiv.querySelector(".deny-reason-text").textContent = reason;
+                    if (executingLoader) {
+                        executingLoader.style.display = "";
+                    }
+                    resolve(`deny::${reason}`);
+                } else {
+                    cardDiv.innerHTML = `
+                        <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                            <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
+                        </div>
+                    `;
+                    if (executingLoader) {
+                        executingLoader.style.display = "";
+                    }
+                    resolve("deny");
+                }
+                scrollToBottom(true);
+            };
+
+            btnSkip.addEventListener("click", () => {
+                handleDenial("");
+            });
+
+            btnSubmit.addEventListener("click", () => {
+                handleDenial(inputField.value);
+            });
+
+            inputField.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    handleDenial(inputField.value);
+                }
+            });
         });
 
         btnDenyAll.addEventListener("click", () => {

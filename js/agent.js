@@ -609,6 +609,10 @@ async function executeToolCalls(jsonStr) {
                 if (choice === "deny") {
                     observations.push(`- Tool "${toolName}": Denied by user.`);
                     continue;
+                } else if (choice && choice.startsWith("deny::")) {
+                    const reason = choice.substring(6).trim();
+                    observations.push(`- Tool "${toolName}": Denied by user. Reason: "${reason}"`);
+                    continue;
                 } else if (choice === "denyAll") {
                     const updatedDenied = [...denied];
                     if (!updatedDenied.includes(toolName)) {
