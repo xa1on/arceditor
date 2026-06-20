@@ -296,22 +296,14 @@ async function captureCompositionFrame(isAgentCall) {
             const returnedPath = result.substring(8).trim();
             let actualPath = returnedPath;
 
-            // Poll for up to 10000ms (200 attempts at 50ms) to allow After Effects' write to fully complete and stabilize
             let fileFound = false;
-            let lastSize = -1;
-            for (let attempt = 0; attempt < 200; attempt++) {
-                try {
-                    const stats = await fs.promises.stat(actualPath);
-                    // Check if file size is non-trivial (> 100 bytes) AND matches its size from the previous check (write complete)
-                    if (stats.size > 100 && stats.size === lastSize) {
-                        fileFound = true;
-                        break;
-                    }
-                    lastSize = stats.size;
-                } catch (e) {
-                    // File not ready or does not exist yet
+            try {
+                const stats = await fs.promises.stat(actualPath);
+                if (stats.size > 100) {
+                    fileFound = true;
                 }
-                await new Promise(resolve => setTimeout(resolve, 50));
+            } catch (e) {
+                // File does not exist or write failed
             }
 
             if (fileFound) {
@@ -485,18 +477,12 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
             if (!actualPath) continue;
             try {
                 let fileFound = false;
-                let lastSize = -1;
-                for (let attempt = 0; attempt < 200; attempt++) {
-                    try {
-                        const stats = await fs.promises.stat(actualPath);
-                        if (stats.size > 100 && stats.size === lastSize) {
-                            fileFound = true;
-                            break;
-                        }
-                        lastSize = stats.size;
-                    } catch (e) {}
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                }
+                try {
+                    const stats = await fs.promises.stat(actualPath);
+                    if (stats.size > 100) {
+                        fileFound = true;
+                    }
+                } catch (e) {}
 
                 if (fileFound) {
                     const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });

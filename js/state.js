@@ -115,6 +115,7 @@ let currentProjectPath = "Unsaved Project";
 let isExecuting = false;
 let isStopped = false;
 let currentExecutionId = 0;
+let historyVersion = 0;
 let activeAiBubbleId = null;
 
 // Project-level tool execution permissions helpers

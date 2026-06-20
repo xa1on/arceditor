@@ -33,7 +33,6 @@ const CANVAS_READONLY_TOOLS = [
     "captureActiveFrame",
     "captureCompositionSequence",
     "getTimelineContext",
-    "getInstalledEffects",
     "searchInstalledEffects",
     "getLayerProperties",
     "selectLayers",
@@ -50,7 +49,6 @@ const PERMISSION_READONLY_TOOLS = [
     "captureActiveFrame",
     "captureCompositionSequence",
     "getTimelineContext",
-    "getInstalledEffects",
     "searchInstalledEffects",
     "getLayerProperties",
     "selectLayers",
@@ -64,6 +62,7 @@ const PERMISSION_READONLY_TOOLS = [
 async function runAgenticExecutionLoop(userText) {
     isStopped = false;
     currentExecutionId++;
+    historyVersion++; // Increment version on new prompt run
     const executionId = currentExecutionId;
 
     try {
@@ -520,9 +519,14 @@ async function runAgenticExecutionLoop(userText) {
         // Trigger memory condensation asynchronously in the background so the user does not wait
         setTimeout(async () => {
             try {
+                const expectedVersion = historyVersion; // Capture current history version
                 const historySnapshot = [...agentHistory];
                 const condensedContext = await pruneHistoryContexts(historySnapshot);
                 if (condensedContext && condensedContext.length < historySnapshot.length) {
+                    if (expectedVersion !== historyVersion) {
+                        console.log("[ArcEditor] History version mismatch during condensation. Discarding condensation task to prevent race condition.");
+                        return;
+                    }
                     const snapshotLen = historySnapshot.length;
                     let wasModified = false;
                     for (let idx = 0; idx < snapshotLen; idx++) {
@@ -898,6 +902,19 @@ async function executeToolCalls(jsonStr) {
                 jsxCommand = `$._com_arceditor_.ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
             } else if (toolName === "executeExtendScript") {
                 const script = params.script;
+                // Static Analysis Verification
+                const analysis = typeof analyzeExtendScript === "function" ? analyzeExtendScript(script) : { safe: true };
+                if (!analysis.safe) {
+                    observations.push(`- Tool "executeExtendScript": Blocked by static security analyzer. Reason: ${analysis.reason}`);
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "blocked";
+                        window._activeToolStatuses[i].reason = analysis.reason;
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "blocked", analysis.reason);
+                    }
+                    continue;
+                }
                 jsxCommand = `(function() {
                     var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
                     var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;

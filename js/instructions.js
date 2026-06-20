@@ -598,7 +598,6 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
 const SYSTEM_TOOLS_ORDER = [
     "executeExtendScript",
     "getTimelineContext",
-    "getInstalledEffects",
     "searchInstalledEffects",
     "getLayerProperties",
     "captureActiveFrame",

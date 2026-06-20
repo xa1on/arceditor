@@ -9,8 +9,12 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 (function (ns) {
     // Custom lightweight JSON stringifier (since ExtendScript lacks native JSON)
     var ArcJSON = {
-        stringify: function (obj, seen) {
+        stringify: function (obj, seen, depth) {
             seen = seen || [];
+            depth = depth || 0;
+            if (depth > 8) {
+                return '"[MaxDepthReached]"';
+            }
             var t = typeof (obj);
             if (obj === null || obj === undefined) return "null";
             if (t === "number" || t === "boolean") return String(obj);
@@ -37,7 +41,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
                 if (isArr) {
                     for (var j = 0; j < obj.length; j++) {
-                        json.push(this.stringify(obj[j], seen));
+                        json.push(this.stringify(obj[j], seen, depth + 1));
                     }
                     seen.pop();
                     return "[" + json.join(",") + "]";
@@ -48,7 +52,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                             var t2 = typeof (v);
                             if (t2 === "function" || t2 === "undefined") continue;
 
-                            var val = this.stringify(v, seen);
+                            var val = this.stringify(v, seen, depth + 1);
                             json.push('"' + n.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '":' + val);
                         }
                     }
@@ -1457,18 +1461,31 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                         propInfo.type = "PROPERTY";
                         try {
                             var val = prop.value;
-                            if (val && typeof val === "object" && !(val instanceof Array)) {
-                                var cName = (val.constructor && val.constructor.name) ? val.constructor.name : "";
-                                if (cName === "Layer" || cName === "TextLayer" || cName === "ShapeLayer" || cName === "CameraLayer" || cName === "LightLayer" || cName === "AVLayer") {
-                                    propInfo.value = "[Layer: " + val.name + " (ID: " + val.id + ")]";
-                                } else if (cName === "CompItem" || cName === "FootageItem" || cName === "FolderItem") {
-                                    propInfo.value = "[Asset: " + val.name + " (ID: " + val.id + ")]";
-                                } else if (cName === "TextDocument") {
-                                    propInfo.value = "[TextDocument: " + val.text.substring(0, 60) + "]";
-                                } else if (cName === "Shape") {
-                                    propInfo.value = "[Shape Path]";
+                            if (val && typeof val === "object") {
+                                if (val instanceof Array || (val.constructor && val.constructor === Array)) {
+                                    var cleanArr = [];
+                                    for (var aIdx = 0; aIdx < val.length; aIdx++) {
+                                        var itemVal = val[aIdx];
+                                        if (itemVal && typeof itemVal === "object") {
+                                            cleanArr.push("[Object]");
+                                        } else {
+                                            cleanArr.push(itemVal);
+                                        }
+                                    }
+                                    propInfo.value = cleanArr;
                                 } else {
-                                    propInfo.value = "[Object " + cName + "]";
+                                    var cName = (val.constructor && val.constructor.name) ? val.constructor.name : "";
+                                    if (cName === "Layer" || cName === "TextLayer" || cName === "ShapeLayer" || cName === "CameraLayer" || cName === "LightLayer" || cName === "AVLayer") {
+                                        propInfo.value = "[Layer: " + val.name + " (ID: " + val.id + ")]";
+                                    } else if (cName === "CompItem" || cName === "FootageItem" || cName === "FolderItem") {
+                                        propInfo.value = "[Asset: " + val.name + " (ID: " + val.id + ")]";
+                                    } else if (cName === "TextDocument") {
+                                        propInfo.value = "[TextDocument: " + val.text.substring(0, 60) + "]";
+                                    } else if (cName === "Shape") {
+                                        propInfo.value = "[Shape Path]";
+                                    } else {
+                                        propInfo.value = "[Object " + cName + "]";
+                                    }
                                 }
                             } else {
                                 propInfo.value = val;
