@@ -620,6 +620,32 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                             next = curr.property("ADBE Root Vectors Group");
                         }
                     }
+                    if (!next && typeof curr.numProperties !== "undefined" && curr.numProperties > 0) {
+                        var lowerSeg = String(segment).toLowerCase();
+                        // First pass: Case-insensitive exact name or matchName match
+                        for (var pIdx = 1; pIdx <= curr.numProperties; pIdx++) {
+                            var p = curr.property(pIdx);
+                            if (p && (p.name.toLowerCase() === lowerSeg || p.matchName.toLowerCase() === lowerSeg)) {
+                                next = p;
+                                break;
+                            }
+                        }
+                        // Second pass: Case-insensitive fuzzy/partial match
+                        if (!next) {
+                            for (var pIdx = 1; pIdx <= curr.numProperties; pIdx++) {
+                                var p = curr.property(pIdx);
+                                if (p) {
+                                    var pNameLower = p.name.toLowerCase();
+                                    var pMatchLower = p.matchName.toLowerCase();
+                                    if (pNameLower.indexOf(lowerSeg) !== -1 || lowerSeg.indexOf(pNameLower) !== -1 ||
+                                        pMatchLower.indexOf(lowerSeg) !== -1 || lowerSeg.indexOf(pMatchLower) !== -1) {
+                                        next = p;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (!next) throw new Error("Property path segment not found: " + segment);
                     curr = next;
                 }
