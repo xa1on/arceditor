@@ -230,11 +230,15 @@ async function runAgenticExecutionLoop(userText) {
                             status: "pending",
                             reason: ""
                         }));
+
+                        const scriptCall = toolCalls.find(tc => getCanonicalToolName(tc.tool) === "executeExtendScript");
+                        if (scriptCall && scriptCall.parameters && scriptCall.parameters.script) {
+                            updateConsolePane(scriptCall.parameters.script);
+                        }
                     } catch (e) {
                         window._activeToolStatuses = null;
                     }
                     executedAnything = true;
-                    updateConsolePane(jsonBlock);
                     const activeTurnNum = completedTurns.length + 1;
                     const parsed = parseStreamingReasoning(llmResponse);
                     const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
