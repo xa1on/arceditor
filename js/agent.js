@@ -5,7 +5,58 @@
  */
 let capturedFrameDataDuringLoop = null;
 
+// Helper to canonicalize tool names case-insensitively to standard camelCase
+function getCanonicalToolName(name) {
+    if (!name) return "";
+    const lower = name.toLowerCase();
+    const mapping = {
+        "captureactiveframe": "captureActiveFrame",
+        "capturecompositionsequence": "captureCompositionSequence",
+        "gettimelinecontext": "getTimelineContext",
+        "getinstalledeffects": "getInstalledEffects",
+        "searchinstalledeffects": "searchInstalledEffects",
+        "getlayerproperties": "getLayerProperties",
+        "selectlayers": "selectLayers",
+        "switchcomposition": "switchComposition",
+        "setplayheadtime": "setPlayheadTime",
+        "undolastaction": "undoLastAction",
+        "askquestion": "askQuestion",
+        "submitplan": "submitPlan",
+        "updateplan": "updatePlan"
+    };
+    return mapping[lower] || name;
+}
 
+// Central definition of tool categories for read-only checks
+const CANVAS_READONLY_TOOLS = [
+    "captureActiveFrame",
+    "captureCompositionSequence",
+    "getTimelineContext",
+    "getInstalledEffects",
+    "searchInstalledEffects",
+    "getLayerProperties",
+    "selectLayers",
+    "switchComposition",
+    "setPlayheadTime",
+    "undoLastAction",
+    "askQuestion",
+    "submitPlan",
+    "updatePlan"
+];
+
+const PERMISSION_READONLY_TOOLS = [
+    "captureActiveFrame",
+    "captureCompositionSequence",
+    "getTimelineContext",
+    "getInstalledEffects",
+    "searchInstalledEffects",
+    "getLayerProperties",
+    "selectLayers",
+    "switchComposition",
+    "setPlayheadTime",
+    "askQuestion",
+    "updatePlan"
+];
 
 async function runAgenticExecutionLoop(userText) {
     isStopped = false;
@@ -139,24 +190,12 @@ async function runAgenticExecutionLoop(userText) {
                         for (let tIdx = 0; tIdx < toolCalls.length; tIdx++) {
                             const tc = toolCalls[tIdx];
                             if (tc && tc.tool) {
-                                const isReadOnly = [
-                                    "captureActiveFrame",
-                                    "captureCompositionSequence",
-                                    "getTimelineContext",
-                                    "getInstalledEffects",
-                                    "searchInstalledEffects",
-                                    "getLayerProperties",
-                                    "selectLayers",
-                                    "switchComposition",
-                                    "setPlayheadTime",
-                                    "undoLastAction",
-                                    "askQuestion",
-                                    "submitPlan"
-                                ].indexOf(tc.tool) !== -1;
+                                const toolName = getCanonicalToolName(tc.tool);
+                                const isReadOnly = CANVAS_READONLY_TOOLS.indexOf(toolName) !== -1;
                                 if (!isReadOnly) {
                                     containsModifying = true;
                                 }
-                                if (tc.tool === "captureActiveFrame" || tc.tool === "captureCompositionSequence") {
+                                if (toolName === "captureActiveFrame" || toolName === "captureCompositionSequence") {
                                     containsCapture = true;
                                 }
                             }
@@ -532,26 +571,47 @@ function extractJSONToolCalls(text) {
     return null;
 }
 
+function updatePlanString(planText, updates) {
+    if (!planText) return planText;
+    const lines = planText.split("\n");
+    let checklistCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const match = line.match(/^(\s*[-*+]\s+\[)([\s*xX]?)(\]\s+)(.*?)$/);
+        if (match) {
+            const currentIdx = checklistCount;
+            checklistCount++;
+
+            const update = updates.find(u => u.index === currentIdx);
+            if (update) {
+                let leading = match[1];
+                let checkChar = match[2];
+                let closing = match[3];
+                let text = match[4];
+
+                if (update.checked !== undefined) {
+                    checkChar = update.checked ? 'x' : ' ';
+                }
+                if (update.text !== undefined) {
+                    text = update.text;
+                }
+
+                lines[i] = `${leading}${checkChar}${closing}${text}`;
+            }
+        }
+    }
+    return lines.join("\n");
+}
+
 function getSignificantJsonActionKey(jsonStr) {
     if (!jsonStr) return "";
     try {
         const parsed = JSON.parse(jsonStr);
         const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
         const stateModifying = toolCalls.filter(tc => {
-            const toolName = tc.tool;
-            const isReadOnly = [
-                "captureActiveFrame",
-                "captureCompositionSequence",
-                "getTimelineContext",
-                "getInstalledEffects",
-                "searchInstalledEffects",
-                "getLayerProperties",
-                "selectLayers",
-                "switchComposition",
-                "setPlayheadTime",
-                "askQuestion",
-                "submitPlan"
-            ].indexOf(toolName) !== -1;
+            const toolName = getCanonicalToolName(tc.tool);
+            const isReadOnly = CANVAS_READONLY_TOOLS.indexOf(toolName) !== -1;
             return !isReadOnly;
         });
         if (stateModifying.length === 0) {
@@ -582,21 +642,10 @@ async function executeToolCalls(jsonStr) {
                 break;
             }
             const tc = toolCalls[i];
-            const toolName = tc.tool;
+            const toolName = getCanonicalToolName(tc.tool);
 
             // Authorization Intercept for non-readonly tool calls
-            const isReadOnly = [
-                "captureActiveFrame",
-                "captureCompositionSequence",
-                "getTimelineContext",
-                "getInstalledEffects",
-                "searchInstalledEffects",
-                "getLayerProperties",
-                "selectLayers",
-                "switchComposition",
-                "setPlayheadTime",
-                "askQuestion"
-            ].indexOf(toolName) !== -1;
+            const isReadOnly = PERMISSION_READONLY_TOOLS.indexOf(toolName) !== -1;
 
             const allowed = getProjectAllowedTools(currentProjectPath);
             const denied = getProjectDeniedTools(currentProjectPath);
@@ -721,6 +770,42 @@ async function executeToolCalls(jsonStr) {
                     updateCurrentSessionHistory();
                 }
                 observations.push(`- Tool "submitPlan": Plan approved by user. Plan details:\n${params.plan}`);
+                continue;
+            } else if (toolName === "updatePlan") {
+                if (params.conclude) {
+                    window.activePlan = null;
+                    if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+                        window.updatePinnedPlanUI();
+                    }
+                    if (typeof updateCurrentSessionHistory === "function") {
+                        updateCurrentSessionHistory();
+                    }
+                    observations.push(`- Tool "${toolName}": Plan concluded and finished. It is no longer active.`);
+                    continue;
+                }
+
+                if (!window.activePlan && params.plan === undefined) {
+                    observations.push(`- Tool "${toolName}": Error: No active running plan to update. Propose a new plan first using submitPlan.`);
+                    continue;
+                }
+
+                let originalPlan = window.activePlan || "";
+                let newPlan = originalPlan;
+
+                if (params.plan !== undefined) {
+                    newPlan = params.plan;
+                } else if (params.updates && Array.isArray(params.updates)) {
+                    newPlan = updatePlanString(originalPlan, params.updates);
+                }
+
+                window.activePlan = newPlan;
+                if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+                    window.updatePinnedPlanUI();
+                }
+                if (typeof updateCurrentSessionHistory === "function") {
+                    updateCurrentSessionHistory();
+                }
+                observations.push(`- Tool "${toolName}": Plan updated successfully. Current plan details:\n${window.activePlan}`);
                 continue;
             } else if (toolName === "getInstalledEffects") {
                 if (!installedEffects || Object.keys(installedEffects).length === 0) {

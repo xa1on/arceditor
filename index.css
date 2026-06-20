@@ -858,11 +858,24 @@ select.form-input {
 }
 
 .bullet-item {
-    padding-left: 12px;
-    text-indent: -12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
     margin: 3px 0;
     color: var(--text-primary);
     line-height: 1.4;
+}
+
+.bullet-char {
+    flex-shrink: 0;
+    min-width: 12px;
+    text-align: right;
+    margin-right: 4px;
+    color: var(--text-secondary);
+}
+
+.bullet-text {
+    flex: 1;
 }
 
 /* Secondary Button (Translucent Border) for Diagnostics */
@@ -1565,7 +1578,7 @@ select.form-input {
 /* Styled checklist task items */
 .task-item {
     display: flex !important;
-    align-items: center !important;
+    align-items: flex-start !important;
     gap: 8px !important;
     margin-bottom: 4px !important;
 }
@@ -1574,7 +1587,7 @@ select.form-input {
     cursor: default;
     width: 13px !important;
     height: 13px !important;
-    margin: 0 8px 0 0 !important;
+    margin: 2px 8px 0 0 !important;
     flex-shrink: 0 !important;
     accent-color: var(--text-accent);
 }

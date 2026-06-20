@@ -431,6 +431,11 @@ function formatMarkdown(text, turnNum, observations) {
             const lTrim = line.trim();
             if (!lTrim) return "";
 
+            // Calculate indentation styling based on leading spaces
+            const leadingSpaces = line.match(/^(\s*)/)[0];
+            const indentLevel = leadingSpaces.length;
+            const indentStyle = indentLevel > 0 ? ` style="padding-left: ${indentLevel * 16}px;"` : '';
+
             // Headings
             if (lTrim.startsWith("#")) {
                 return lTrim
@@ -449,18 +454,18 @@ function formatMarkdown(text, turnNum, observations) {
 
             // Checklist task items
             if (/^\s*[-*+]\s+\[\s*\]\s+/.test(line)) {
-                return line.replace(/^\s*[-*+]\s+\[\s*\]\s+(.*?)$/, "<div class='bullet-item task-item'><input type='checkbox' disabled /> <span>$1</span></div>");
+                return line.replace(/^\s*[-*+]\s+\[\s*\]\s+(.*?)$/, `<div class='bullet-item task-item'${indentStyle}><input type='checkbox' disabled /> <span class='bullet-text'>$1</span></div>`);
             }
             if (/^\s*[-*+]\s+\[[xX]\]\s+/.test(line)) {
-                return line.replace(/^\s*[-*+]\s+\[[xX]\]\s+(.*?)$/, "<div class='bullet-item task-item'><input type='checkbox' checked disabled /> <span>$1</span></div>");
+                return line.replace(/^\s*[-*+]\s+\[[xX]\]\s+(.*?)$/, `<div class='bullet-item task-item'${indentStyle}><input type='checkbox' checked disabled /> <span class='bullet-text'>$1</span></div>`);
             }
 
             // Standard list items
             if (/^\s*[-*+]\s+/.test(line)) {
-                return line.replace(/^\s*[-*+]\s+(.*?)$/, "<div class='bullet-item'>• $1</div>");
+                return line.replace(/^\s*[-*+]\s+(.*?)$/, `<div class='bullet-item'${indentStyle}><span class='bullet-char'>•</span><span class='bullet-text'>$1</span></div>`);
             }
             if (/^\s*(\d+)\.\s+/.test(line)) {
-                return line.replace(/^\s*(\d+)\.\s+(.*?)$/, "<div class='bullet-item'>$1. $2</div>");
+                return line.replace(/^\s*(\d+)\.\s+(.*?)$/, `<div class='bullet-item'${indentStyle}><span class='bullet-char'>$1.</span><span class='bullet-text'>$2</span></div>`);
             }
 
             // Plain text line

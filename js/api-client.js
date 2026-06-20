@@ -340,6 +340,14 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
     });
 }
 
+function getSystemInstructionsWithPlan() {
+    let instructions = typeof SYSTEM_INSTRUCTIONS !== "undefined" ? SYSTEM_INSTRUCTIONS : "";
+    if (typeof window !== "undefined" && window.activePlan) {
+        instructions += `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
+    }
+    return instructions;
+}
+
 function prepareGeminiPayload(messages, skipSystemInstructions) {
     const chatParts = [];
 
@@ -415,7 +423,7 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
 
     if (!skipSystemInstructions) {
         payload.systemInstruction = {
-            parts: [{ text: SYSTEM_INSTRUCTIONS }]
+            parts: [{ text: getSystemInstructionsWithPlan() }]
         };
     }
 
@@ -503,7 +511,7 @@ Here is the ExtendScript to build it:
         payload = {
             model: modelName,
             messages: skipSystemInstructions ? cleanedMessages : [
-                { role: "system", content: SYSTEM_INSTRUCTIONS },
+                { role: "system", content: getSystemInstructionsWithPlan() },
                 ...cleanedMessages
             ],
             stream: !!onChunkReceived
@@ -745,7 +753,7 @@ Here is the ExtendScript to build it:
         }
 
         if (!skipSystemInstructions) {
-            payload.system = SYSTEM_INSTRUCTIONS;
+            payload.system = getSystemInstructionsWithPlan();
         }
 
         if (typeof writeToDebugLog === "function") {
