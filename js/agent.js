@@ -22,7 +22,8 @@ function getCanonicalToolName(name) {
         "undolastaction": "undoLastAction",
         "askquestion": "askQuestion",
         "submitplan": "submitPlan",
-        "updateplan": "updatePlan"
+        "updateplan": "updatePlan",
+        "websearch": "webSearch"
     };
     return mapping[lower] || name;
 }
@@ -41,7 +42,8 @@ const CANVAS_READONLY_TOOLS = [
     "undoLastAction",
     "askQuestion",
     "submitPlan",
-    "updatePlan"
+    "updatePlan",
+    "webSearch"
 ];
 
 const PERMISSION_READONLY_TOOLS = [
@@ -55,7 +57,8 @@ const PERMISSION_READONLY_TOOLS = [
     "switchComposition",
     "setPlayheadTime",
     "askQuestion",
-    "updatePlan"
+    "updatePlan",
+    "webSearch"
 ];
 
 async function runAgenticExecutionLoop(userText) {
@@ -752,6 +755,11 @@ async function executeToolCalls(jsonStr) {
             if (toolName === "getTimelineContext") {
                 const timelineData = await getTimelineContext();
                 observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
+                continue;
+            } else if (toolName === "webSearch") {
+                const query = params.query;
+                const results = await window.searchWeb(query);
+                observations.push(`- Tool "webSearch": ${JSON.stringify(results)}`);
                 continue;
             } else if (toolName === "askQuestion") {
                 if (typeof setUIReadyState === "function") {

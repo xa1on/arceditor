@@ -14,6 +14,7 @@ let maxToolRetryLimit = 15;
 let openaiReasoningEffort = "medium";
 let claudeThinkingBudget = 2048;
 let agentPermissionMode = "review";
+let webSearchEnabled = true;
 
 let providerSettings = {
     lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },

@@ -51,6 +51,7 @@ async function loadSettings() {
             claudeThinkingBudget = providerSettings.anthropic.thinkingBudget !== undefined ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
 
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
+            webSearchEnabled = data.webSearchEnabled !== undefined ? !!data.webSearchEnabled : true;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             agentPermissionMode = data.agentPermissionMode || "review";
             loaded = true;
@@ -67,6 +68,7 @@ async function loadSettings() {
         apiKey = providerSettings.lemonade.key;
         modelName = providerSettings.lemonade.model;
         includeBase64InDebugLog = false;
+        webSearchEnabled = true;
         maxToolRetryLimit = 15;
         agentPermissionMode = "review";
     }
@@ -93,6 +95,8 @@ async function loadSettings() {
 
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
+    const webSearchCheckbox = document.getElementById("setting-web-search");
+    if (webSearchCheckbox) webSearchCheckbox.checked = webSearchEnabled;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
 
@@ -145,6 +149,9 @@ async function saveSettings(e) {
     const base64Checkbox = document.getElementById("setting-include-base64");
     if (base64Checkbox) includeBase64InDebugLog = base64Checkbox.checked;
 
+    const webSearchCheckbox = document.getElementById("setting-web-search");
+    if (webSearchCheckbox) webSearchEnabled = webSearchCheckbox.checked;
+
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxToolRetryLimit = parseInt(maxRetryInput.value, 10) || 15;
 
@@ -153,6 +160,7 @@ async function saveSettings(e) {
         providerSettings: providerSettings,
         model: modelName,
         includeBase64InDebugLog: includeBase64InDebugLog,
+        webSearchEnabled: webSearchEnabled,
         maxToolRetryLimit: maxToolRetryLimit,
         agentPermissionMode: agentPermissionMode
     };

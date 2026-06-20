@@ -342,6 +342,35 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
 
 function getSystemInstructionsWithPlan() {
     let instructions = typeof SYSTEM_INSTRUCTIONS !== "undefined" ? SYSTEM_INSTRUCTIONS : "";
+    
+    let catalog = "";
+    if (typeof SYSTEM_TOOLS_ORDER !== "undefined" && typeof SYSTEM_TOOL_DESCRIPTIONS !== "undefined") {
+        let counter = 1;
+        const deniedTools = typeof getProjectDeniedTools === "function" ? getProjectDeniedTools(currentProjectPath) : [];
+        
+        for (let i = 0; i < SYSTEM_TOOLS_ORDER.length; i++) {
+            const toolKey = SYSTEM_TOOLS_ORDER[i];
+            const tool = SYSTEM_TOOL_DESCRIPTIONS[toolKey];
+            if (!tool) continue;
+            
+            if (toolKey === "webSearch" && typeof webSearchEnabled !== "undefined" && !webSearchEnabled) {
+                continue;
+            }
+            
+            let numberPrefix = `${counter}. `;
+            
+            if (deniedTools.includes(toolKey)) {
+                catalog += `${numberPrefix}\\\`${tool.name}\\\` (Currently disabled/blocked by project permission settings)\n\n`;
+            } else {
+                catalog += `${numberPrefix}\\\`${tool.name}\\\`\n${tool.text}\n`;
+            }
+            counter++;
+        }
+    }
+    
+    instructions = instructions.replace("[SYSTEM_TOOLS_CATALOG_PLACEHOLDER]", catalog);
+    instructions = instructions.replace("[WEB_SEARCH_TOOL_PLACEHOLDER]", "");
+    
     if (typeof window !== "undefined" && window.activePlan) {
         instructions += `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
     }
@@ -866,3 +895,78 @@ Here is the ExtendScript to build it:
         }
     }
 }
+
+async function searchWeb(query) {
+    const debugTextarea = document.getElementById("debug-output");
+    const timestamp = new Date().toISOString();
+    if (debugTextarea) {
+        debugTextarea.value += `\n[${timestamp}] [DEBUG] Executing Web Search for: "${query}"\n`;
+        debugTextarea.scrollTop = debugTextarea.scrollHeight;
+    }
+
+    try {
+        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        const headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        };
+        const html = await makeRequest(url, 'GET', headers, null);
+        
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        
+        const results = [];
+        const resultElements = doc.querySelectorAll(".result");
+        
+        for (let i = 0; i < resultElements.length && results.length < 5; i++) {
+            const el = resultElements[i];
+            const titleEl = el.querySelector(".result__title a");
+            const snippetEl = el.querySelector(".result__snippet");
+            
+            if (titleEl) {
+                const title = titleEl.textContent.trim();
+                const rawUrl = titleEl.getAttribute("href");
+                let cleanUrl = rawUrl;
+                
+                if (rawUrl) {
+                    let absoluteUrl = rawUrl;
+                    if (rawUrl.startsWith("//")) {
+                        absoluteUrl = "https:" + rawUrl;
+                    } else if (rawUrl.startsWith("/")) {
+                        absoluteUrl = "https://html.duckduckgo.com" + rawUrl;
+                    }
+                    
+                    if (absoluteUrl.includes("uddg=")) {
+                        try {
+                            const uddgParam = new URL(absoluteUrl).searchParams.get("uddg");
+                            if (uddgParam) {
+                                cleanUrl = uddgParam;
+                            }
+                        } catch (e) { }
+                    } else {
+                        cleanUrl = absoluteUrl;
+                    }
+                }
+                
+                const snippet = snippetEl ? snippetEl.textContent.trim() : "";
+                results.push({
+                    title: title,
+                    url: cleanUrl,
+                    snippet: snippet
+                });
+            }
+        }
+        
+        if (results.length === 0) {
+            if (html.includes("ddg-captcha") || html.includes("robot") || html.includes("captcha")) {
+                return { error: "Search page returned a CAPTCHA challenge. Scraper blocked." };
+            }
+            return { error: "No search results found. DuckDuckGo may have changed structure or rate-limited the client." };
+        }
+        
+        return results;
+    } catch (err) {
+        console.error("Web search failed:", err);
+        return { error: `Web search request failed: ${err.message || err}` };
+    }
+}
+window.searchWeb = searchWeb;
