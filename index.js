@@ -294,6 +294,17 @@ ${code}`;
     // Copy Bubble Text & Toggle Tool View Event Delegation
     const chatMessages = document.getElementById("chat-messages");
     if (chatMessages) {
+        chatMessages.addEventListener("scroll", () => {
+            if (isProgrammaticScroll) return;
+            // Use a slightly larger tolerance to be resilient to fast generation and rendering delays
+            const isAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= 80;
+            if (isAtBottom) {
+                userHasScrolledUp = false;
+            } else {
+                userHasScrolledUp = true;
+            }
+        });
+
         chatMessages.addEventListener("click", async (e) => {
             // 1. Copy bubble content
             const btn = e.target.closest(".copy-bubble-btn");
@@ -544,18 +555,21 @@ function toggleWelcomeScreen(isEmpty, animate = false) {
     }
 }
 
-// Assign to window for settings.js access
 window.toggleWelcomeScreen = toggleWelcomeScreen;
+
+let userHasScrolledUp = false;
+let isProgrammaticScroll = false;
 
 function scrollToBottom(force = false) {
     const scroller = document.getElementById("chat-messages");
     if (!scroller) return;
 
-    // Check if the scrollbar is currently at the bottom (within a 40px tolerance)
-    const isAtBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 40;
-
-    if (force || isAtBottom) {
+    if (force || !userHasScrolledUp) {
+        isProgrammaticScroll = true;
         scroller.scrollTop = scroller.scrollHeight;
+        setTimeout(() => {
+            isProgrammaticScroll = false;
+        }, 50);
     }
 }
 
