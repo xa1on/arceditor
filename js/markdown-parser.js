@@ -33,7 +33,36 @@ function renderTurnImagesHtml(images) {
     return imgHtml;
 }
 
-function tryFormatToolCall(code, isStreaming) {
+function parseObservations(observations) {
+    if (!observations) return [];
+    const lines = observations.split("\n");
+    const results = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.indexOf('- Tool "') === 0) {
+            const closingQuote = line.indexOf('"', 8);
+            if (closingQuote !== -1) {
+                const tool = line.substring(8, closingQuote);
+                const rest = line.substring(closingQuote + 2).trim(); // Skip ": "
+                let status = "allowed";
+                let reason = "";
+                if (rest.indexOf("Denied by user.") === 0) {
+                    status = "denied";
+                    const reasonIndex = rest.indexOf('Reason: "');
+                    if (reasonIndex !== -1) {
+                        reason = rest.substring(reasonIndex + 9, rest.length - 1);
+                    }
+                } else if (rest.indexOf("Blocked by project security configuration.") === 0) {
+                    status = "blocked";
+                }
+                results.push({ tool, status, reason });
+            }
+        }
+    }
+    return results;
+}
+
+function tryFormatToolCall(code, isStreaming, toolStatuses) {
     // Unescape HTML entities first (since formatMarkdown escapes them before processing code blocks)
     const cleanCode = code
         .replace(/&amp;/g, "&")
@@ -60,6 +89,10 @@ function tryFormatToolCall(code, isStreaming) {
 
         let html = `<div class="tool-calls-container">`;
         calls.forEach((call, index) => {
+            const statusInfo = toolStatuses && toolStatuses[index];
+            const status = statusInfo ? statusInfo.status : (isStreaming ? "pending" : "allowed");
+            const reason = statusInfo ? statusInfo.reason : "";
+
             const params = call.parameters || {};
             let paramsHtml = "";
             const paramKeys = Object.keys(params);
@@ -93,14 +126,27 @@ function tryFormatToolCall(code, isStreaming) {
             const cardId = "tool-card-" + Date.now() + "-" + index;
             const rawJsonHtml = `<pre class="code-viewport"><code>${JSON.stringify(call, null, 2)}</code></pre>`;
 
+            const escapedReason = reason ? reason
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;") : "";
+
+            const denialHtml = (status === "denied" && escapedReason) ? `
+                <div class="tool-denial-reason" style="margin-bottom: 6px; padding: 4px 6px; background: rgba(255, 68, 68, 0.1); border: 1px solid rgba(255, 68, 68, 0.2); border-radius: var(--border-radius-sm); font-size: 9.5px; color: var(--text-error); font-style: italic;">
+                    <strong>Denial Reason:</strong> ${escapedReason}
+                </div>
+            ` : "";
+
             html += `
-                <div class="tool-call-card" id="${cardId}">
+                <div class="tool-call-card status-${status}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}">
                     <div class="tool-call-header">
                         <span class="tool-badge">Tool Call${isStreaming ? ' (Streaming...)' : ''}</span>
                         <span class="tool-name">${call.tool}</span>
+                        <span class="tool-status-badge status-${status}">${status}</span>
                         <button class="toggle-tool-view-btn">Show JSON</button>
                     </div>
                     <div class="tool-call-body">
+                        ${denialHtml}
                         <div class="tool-params-table-wrap">
                             ${paramsHtml}
                         </div>
@@ -229,9 +275,16 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId) {
     return html;
 }
 
-function formatMarkdown(text, turnNum) {
+function formatMarkdown(text, turnNum, observations) {
     if (!text) return "";
     const activeTurn = turnNum || "default";
+
+    let toolStatuses = [];
+    if (observations) {
+        toolStatuses = parseObservations(observations);
+    } else if (typeof window !== "undefined" && window._activeToolStatuses) {
+        toolStatuses = window._activeToolStatuses;
+    }
 
     // Normalize newlines to standard \n
     const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -272,7 +325,7 @@ function formatMarkdown(text, turnNum) {
 
             let renderedBlock = "";
             if (lang === "json") {
-                const formatted = tryFormatToolCall(code, !isClosed);
+                const formatted = tryFormatToolCall(code, !isClosed, toolStatuses);
                 if (formatted) {
                     renderedBlock = formatted;
                 } else {

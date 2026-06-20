@@ -1386,3 +1386,52 @@ select.form-input {
 .markdown-table tbody tr:hover {
     background-color: rgba(255, 255, 255, 0.04);
 }
+
+/* Tool Call Status Badges & Borders */
+.tool-status-badge {
+    font-size: 8px;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: var(--border-radius-sm);
+    letter-spacing: 0.3px;
+    margin-left: 6px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.tool-status-badge.status-pending {
+    background: var(--text-warning);
+    color: #1c1c1c;
+}
+
+.tool-status-badge.status-allowed {
+    background: var(--text-success);
+    color: #ffffff;
+}
+
+.tool-status-badge.status-denied {
+    background: var(--text-error);
+    color: #ffffff;
+}
+
+.tool-status-badge.status-blocked {
+    background: #555555;
+    color: #ffffff;
+}
+
+.tool-call-card.status-pending {
+    border-left-color: var(--text-warning);
+}
+
+.tool-call-card.status-allowed {
+    border-left-color: var(--text-success);
+}
+
+.tool-call-card.status-denied {
+    border-left-color: var(--text-error);
+}
+
+.tool-call-card.status-blocked {
+    border-left-color: #555555;
+}

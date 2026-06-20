@@ -178,7 +178,18 @@ async function runAgenticExecutionLoop(userText) {
                 var executedAnything = false;
                 var scriptFailed = false;
 
-                if (jsonBlock) {
+                 if (jsonBlock) {
+                    try {
+                        const parsed = JSON.parse(jsonBlock);
+                        const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+                        window._activeToolStatuses = toolCalls.map(tc => ({
+                            tool: tc.tool,
+                            status: "pending",
+                            reason: ""
+                        }));
+                    } catch (e) {
+                        window._activeToolStatuses = null;
+                    }
                     executedAnything = true;
                     updateConsolePane(jsonBlock);
                     const activeTurnNum = completedTurns.length + 1;
@@ -483,6 +494,9 @@ async function runAgenticExecutionLoop(userText) {
         if (executionId === currentExecutionId) {
             isExecuting = false;
             attachedFrames = [];
+            if (typeof window !== "undefined") {
+                window._activeToolStatuses = null;
+            }
             if (typeof updateContextSizeInfo === "function") {
                 updateContextSizeInfo();
             }
@@ -583,6 +597,12 @@ async function executeToolCalls(jsonStr) {
             const denied = getProjectDeniedTools(currentProjectPath);
 
             if (denied.includes(toolName)) {
+                if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                    window._activeToolStatuses[i].status = "blocked";
+                }
+                if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                    window.updateToolCardStatusUI(i, "blocked");
+                }
                 observations.push(`- Tool "${toolName}": Blocked by project security configuration.`);
                 continue;
             }
@@ -603,17 +623,37 @@ async function executeToolCalls(jsonStr) {
                 
                 let choice = "allow";
                 if (typeof window !== "undefined" && typeof window.promptUserForToolConfirmation === "function") {
+                    tc.toolIndex = i;
                     choice = await window.promptUserForToolConfirmation(tc);
                 }
                 
                 if (choice === "deny") {
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "denied";
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "denied");
+                    }
                     observations.push(`- Tool "${toolName}": Denied by user.`);
                     continue;
                 } else if (choice && choice.startsWith("deny::")) {
                     const reason = choice.substring(6).trim();
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "denied";
+                        window._activeToolStatuses[i].reason = reason;
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "denied", reason);
+                    }
                     observations.push(`- Tool "${toolName}": Denied by user. Reason: "${reason}"`);
                     continue;
                 } else if (choice === "denyAll") {
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "blocked";
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "blocked");
+                    }
                     const updatedDenied = [...denied];
                     if (!updatedDenied.includes(toolName)) {
                         updatedDenied.push(toolName);
@@ -636,6 +676,14 @@ async function executeToolCalls(jsonStr) {
                         setProjectDeniedTools(currentProjectPath, updatedDenied);
                     }
                 }
+            }
+
+            // Mark as allowed since it bypassed prompt or user allowed it
+            if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                window._activeToolStatuses[i].status = "allowed";
+            }
+            if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                window.updateToolCardStatusUI(i, "allowed");
             }
 
             const params = tc.parameters || {};
@@ -1194,6 +1242,49 @@ function restoreDetailsState(container, states) {
         }
     }
 }
+
+window.updateToolCardStatusUI = function(toolIndex, status, reason = "") {
+    const aiBubble = document.getElementById(activeAiBubbleId);
+    if (!aiBubble) return;
+    const toolCard = aiBubble.querySelector(`.tool-call-card[data-index="${toolIndex}"]`);
+    if (!toolCard) return;
+
+    toolCard.setAttribute("data-status", status);
+    toolCard.classList.remove("status-pending", "status-allowed", "status-denied", "status-blocked");
+    toolCard.classList.add(`status-${status}`);
+
+    const badge = toolCard.querySelector(".tool-status-badge");
+    if (badge) {
+        badge.textContent = status;
+        badge.className = `tool-status-badge status-${status}`;
+    }
+
+    if (status === "denied" && reason) {
+        const body = toolCard.querySelector(".tool-call-body");
+        if (body) {
+            const existingReason = body.querySelector(".tool-denial-reason");
+            if (existingReason) existingReason.remove();
+
+            const reasonDiv = document.createElement("div");
+            reasonDiv.className = "tool-denial-reason";
+            reasonDiv.style.marginBottom = "6px";
+            reasonDiv.style.padding = "4px 6px";
+            reasonDiv.style.background = "rgba(255, 68, 68, 0.1)";
+            reasonDiv.style.border = "1px solid rgba(255, 68, 68, 0.2)";
+            reasonDiv.style.borderRadius = "var(--border-radius-sm)";
+            reasonDiv.style.fontSize = "9.5px";
+            reasonDiv.style.color = "var(--text-error)";
+            reasonDiv.style.fontStyle = "italic";
+
+            const strong = document.createElement("strong");
+            strong.textContent = "Denial Reason: ";
+            reasonDiv.appendChild(strong);
+            reasonDiv.appendChild(document.createTextNode(reason));
+
+            body.insertBefore(reasonDiv, body.firstChild);
+        }
+    }
+};
 
 function updateBubbleContent(aiBubble, html) {
     const content = aiBubble.querySelector(".message-content");

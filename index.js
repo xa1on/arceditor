@@ -1148,14 +1148,7 @@ window.promptUserForToolConfirmation = function(tc) {
         const btnDenyAll = cardDiv.querySelector(".btn-confirm-deny-all");
 
         btnAllow.addEventListener("click", () => {
-            cardDiv.innerHTML = `
-                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-success)" stroke-width="2.5" fill="none">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span>Allowed tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
-                </div>
-            `;
+            cardDiv.remove();
             if (executingLoader) {
                 executingLoader.style.display = "";
             }
@@ -1163,14 +1156,7 @@ window.promptUserForToolConfirmation = function(tc) {
         });
 
         btnAllowAll.addEventListener("click", () => {
-            cardDiv.innerHTML = `
-                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-accent)" stroke-width="2.5" fill="none">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span>Allowed permanently for project: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
-                </div>
-            `;
+            cardDiv.remove();
             if (executingLoader) {
                 executingLoader.style.display = "";
             }
@@ -1204,34 +1190,13 @@ window.promptUserForToolConfirmation = function(tc) {
 
             const handleDenial = (reason) => {
                 reason = (reason || "").trim();
+                cardDiv.remove();
+                if (executingLoader) {
+                    executingLoader.style.display = "";
+                }
                 if (reason) {
-                    cardDiv.innerHTML = `
-                        <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                            <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong> &mdash; <em class="deny-reason-text" style="color: var(--text-primary);"></em></span>
-                        </div>
-                    `;
-                    cardDiv.querySelector(".deny-reason-text").textContent = reason;
-                    if (executingLoader) {
-                        executingLoader.style.display = "";
-                    }
                     resolve(`deny::${reason}`);
                 } else {
-                    cardDiv.innerHTML = `
-                        <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                            <span>Denied tool call: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
-                        </div>
-                    `;
-                    if (executingLoader) {
-                        executingLoader.style.display = "";
-                    }
                     resolve("deny");
                 }
                 scrollToBottom(true);
@@ -1253,15 +1218,7 @@ window.promptUserForToolConfirmation = function(tc) {
         });
 
         btnDenyAll.addEventListener("click", () => {
-            cardDiv.innerHTML = `
-                <div style="font-size: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
-                    <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--text-error)" stroke-width="2.5" fill="none">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                    <span>Denied permanently for project: <strong style="font-family: var(--font-mono);">${toolName}</strong></span>
-                </div>
-            `;
+            cardDiv.remove();
             if (executingLoader) {
                 executingLoader.style.display = "";
             }
