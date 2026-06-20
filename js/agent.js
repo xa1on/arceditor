@@ -69,6 +69,9 @@ async function runAgenticExecutionLoop(userText) {
                 window._userToggledReasoning = false;
                 window._userReasoningState = false;
 
+                // Clear active tool statuses from the previous turn to prevent leaking them during streaming preview
+                window._activeToolStatuses = null;
+
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId || isStopped) return;
                     const activeTurnNum = completedTurns.length + 1;
