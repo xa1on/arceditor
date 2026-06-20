@@ -1074,12 +1074,29 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
                 throw new Error("No marker found matching: " + timeOrIndex);
             } else if (typeof timeOrIndex === "string") {
-                var idx = parseInt(timeOrIndex, 10);
-                if (!isNaN(idx) && idx > 0 && idx <= markerProp.numKeys) {
-                    markerProp.removeKey(idx);
-                    return "Success: Deleted marker key " + idx;
+                if (/^\d+$/.test(timeOrIndex)) {
+                    var idx = parseInt(timeOrIndex, 10);
+                    if (idx > 0 && idx <= markerProp.numKeys) {
+                        markerProp.removeKey(idx);
+                        return "Success: Deleted marker key " + idx;
+                    }
+                } else {
+                    var timeVal = parseFloat(timeOrIndex);
+                    if (!isNaN(timeVal)) {
+                        var keyIndex = -1;
+                        for (var i = 1; i <= markerProp.numKeys; i++) {
+                            if (Math.abs(markerProp.keyTime(i) - timeVal) < 0.01) {
+                                keyIndex = i;
+                                break;
+                            }
+                        }
+                        if (keyIndex !== -1) {
+                            markerProp.removeKey(keyIndex);
+                            return "Success: Deleted marker at time " + timeVal + "s (key " + keyIndex + ")";
+                        }
+                    }
                 }
-                throw new Error("Invalid marker index: " + timeOrIndex);
+                throw new Error("No marker found matching: " + timeOrIndex);
             } else {
                 throw new Error("Invalid timeOrIndex parameter type.");
             }
@@ -1439,7 +1456,23 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     if (prop.propertyType === PropertyType.PROPERTY) {
                         propInfo.type = "PROPERTY";
                         try {
-                            propInfo.value = prop.value;
+                            var val = prop.value;
+                            if (val && typeof val === "object" && !(val instanceof Array)) {
+                                var cName = (val.constructor && val.constructor.name) ? val.constructor.name : "";
+                                if (cName === "Layer" || cName === "TextLayer" || cName === "ShapeLayer" || cName === "CameraLayer" || cName === "LightLayer" || cName === "AVLayer") {
+                                    propInfo.value = "[Layer: " + val.name + " (ID: " + val.id + ")]";
+                                } else if (cName === "CompItem" || cName === "FootageItem" || cName === "FolderItem") {
+                                    propInfo.value = "[Asset: " + val.name + " (ID: " + val.id + ")]";
+                                } else if (cName === "TextDocument") {
+                                    propInfo.value = "[TextDocument: " + val.text.substring(0, 60) + "]";
+                                } else if (cName === "Shape") {
+                                    propInfo.value = "[Shape Path]";
+                                } else {
+                                    propInfo.value = "[Object " + cName + "]";
+                                }
+                            } else {
+                                propInfo.value = val;
+                            }
                         } catch (e) {
                             propInfo.value = "(unreadable)";
                         }

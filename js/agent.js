@@ -520,9 +520,23 @@ async function runAgenticExecutionLoop(userText) {
         // Trigger memory condensation asynchronously in the background so the user does not wait
         setTimeout(async () => {
             try {
-                const condensedContext = await pruneHistoryContexts(agentHistory);
-                if (condensedContext && condensedContext.length < agentHistory.length) {
-                    agentHistory = condensedContext;
+                const historySnapshot = [...agentHistory];
+                const condensedContext = await pruneHistoryContexts(historySnapshot);
+                if (condensedContext && condensedContext.length < historySnapshot.length) {
+                    const snapshotLen = historySnapshot.length;
+                    let wasModified = false;
+                    for (let idx = 0; idx < snapshotLen; idx++) {
+                        if (agentHistory[idx] !== historySnapshot[idx]) {
+                            wasModified = true;
+                            break;
+                        }
+                    }
+                    if (wasModified) {
+                        console.log("[ArcEditor] History base shifted during condensation. Discarding condensation task to prevent race condition.");
+                        return;
+                    }
+                    const newMessages = agentHistory.slice(snapshotLen);
+                    agentHistory = condensedContext.concat(newMessages);
                     updateCurrentSessionHistory();
                     updateContextSizeInfo();
                 }

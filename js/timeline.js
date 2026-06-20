@@ -291,7 +291,7 @@ async function captureCompositionFrame(isAgentCall) {
     const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
     const result = await evalScriptAsync(jsxCommand);
 
-    if (result.indexOf("Success:") === 0) {
+    if (result && result.indexOf("Success:") === 0) {
         try {
             const returnedPath = result.substring(8).trim();
             let actualPath = returnedPath;
@@ -431,23 +431,59 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
     const base64List = [];
 
+    const pathsAndTimes = [];
     for (let i = 0; i < n; i++) {
         let t = actualStart;
         if (n > 1) {
             t = actualStart + i * (actualEnd - actualStart) / (n - 1);
         }
-
         const uniqueSuffix = `${Date.now()}_seq_${i}_${Math.random().toString(36).substring(2, 8)}`;
         const tempPngPath = path.join(saveDir, `arc_preview_${uniqueSuffix}.png`);
         const safePath = tempPngPath.replace(/\\/g, '/');
+        pathsAndTimes.push({ time: t, path: safePath });
+    }
 
-        const result = await captureFrameAtTime(t, safePath);
+    let stepsJsx = "";
+    for (let i = 0; i < pathsAndTimes.length; i++) {
+        const item = pathsAndTimes[i];
+        stepsJsx += "\n" +
+            "            comp.time = Math.max(0, Math.min(comp.duration, " + item.time + "));\n" +
+            "            var file_" + i + " = new File(\"" + item.path + "\");\n" +
+            "            if (file_" + i + ".exists) file_" + i + ".remove();\n" +
+            "            if (typeof comp.saveFrameToPng === \"function\") {\n" +
+            "                comp.saveFrameToPng(comp.time, file_" + i + ");\n" +
+            "            } else {\n" +
+            "                comp.saveFrameToPNG(comp.time, file_" + i + ");\n" +
+            "            }\n" +
+            "            pathsResult.push(file_" + i + ".fsName);\n";
+    }
 
-        if (result.indexOf("Success:") === 0) {
+    const jsxCommand = "(function() {\n" +
+        "        var comp = app.project.activeItem;\n" +
+        "        if (!comp || !(comp instanceof CompItem)) return \"Error: No active composition\";\n" +
+        "        var originalTime = comp.time;\n" +
+        "        var pathsResult = [];\n" +
+        "        try {\n" +
+        "            if (!new File(\"" + pathsAndTimes[0].path + "\").parent.exists) {\n" +
+        "                new File(\"" + pathsAndTimes[0].path + "\").parent.create();\n" +
+        "            }\n" +
+        "            " + stepsJsx + "\n" +
+        "            comp.time = originalTime;\n" +
+        "            return \"Success: \" + pathsResult.join(\";\");\n" +
+        "        } catch(e) {\n" +
+        "            comp.time = originalTime;\n" +
+        "            return \"Error: \" + e.toString();\n" +
+        "        }\n" +
+        "    })()";
+
+    const result = await evalScriptAsync(jsxCommand);
+
+    if (result && result.indexOf("Success:") === 0) {
+        const pathsList = result.substring(8).split(";");
+        for (let i = 0; i < pathsList.length; i++) {
+            const actualPath = pathsList[i].trim();
+            if (!actualPath) continue;
             try {
-                const returnedPath = result.substring(8).trim();
-                let actualPath = returnedPath;
-
                 let fileFound = false;
                 let lastSize = -1;
                 for (let attempt = 0; attempt < 200; attempt++) {
@@ -470,7 +506,7 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
                     } catch (e) {}
                 }
             } catch (err) {
-                console.error("[ArcEditor] Error processing frame at time " + t, err);
+                console.error("[ArcEditor] Error processing frame file: " + actualPath, err);
             }
         }
     }

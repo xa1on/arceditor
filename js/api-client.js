@@ -17,7 +17,7 @@ function sanitizePayload(obj) {
             if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
                 return "data:image/png;base64,[Base64 Image Data (Omitted)]";
             }
-            if (obj.length > 1000 && /^[a-zA-Z0-9+\/=\r\n_\-]+$/.test(obj)) {
+            if (obj.length > 1000 && /^[a-zA-Z0-9+\/=\r\n_\-]+$/.test(obj.substring(0, 100))) {
                 return "[Base64 Image Data (Omitted)]";
             }
         }
@@ -105,7 +105,7 @@ function makeRequest(url, method, headers, payload) {
                                 reject(new Error(`HTTP Error ${response.status}`));
                             });
                         } else {
-                            response.text().then(resolve);
+                            response.text().then(resolve).catch(reject);
                         }
                     })
                     .catch(err => {
@@ -340,7 +340,7 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
     });
 }
 
-function getSystemInstructionsWithPlan() {
+function getSystemInstructionsWithPlan(includePlan = true) {
     let instructions = typeof SYSTEM_INSTRUCTIONS !== "undefined" ? SYSTEM_INSTRUCTIONS : "";
     
     let catalog = "";
@@ -371,7 +371,7 @@ function getSystemInstructionsWithPlan() {
     instructions = instructions.replace("[SYSTEM_TOOLS_CATALOG_PLACEHOLDER]", catalog);
     instructions = instructions.replace("[WEB_SEARCH_TOOL_PLACEHOLDER]", "");
     
-    if (typeof window !== "undefined" && window.activePlan) {
+    if (includePlan && typeof window !== "undefined" && window.activePlan) {
         instructions += `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
     }
     return instructions;
@@ -452,7 +452,7 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
 
     if (!skipSystemInstructions) {
         payload.systemInstruction = {
-            parts: [{ text: getSystemInstructionsWithPlan() }]
+            parts: [{ text: getSystemInstructionsWithPlan(false) }]
         };
     }
 
@@ -531,6 +531,32 @@ Here is the ExtendScript to build it:
         return copy;
     });
 
+    // Append the active plan to the very last user message to optimize prefix caching
+    if (typeof window !== "undefined" && window.activePlan && cleanedMessages.length > 0) {
+        let lastUserMsgIdx = -1;
+        for (let i = cleanedMessages.length - 1; i >= 0; i--) {
+            if (cleanedMessages[i].role === "user") {
+                lastUserMsgIdx = i;
+                break;
+            }
+        }
+        if (lastUserMsgIdx !== -1) {
+            const lastMsg = cleanedMessages[lastUserMsgIdx];
+            const planSection = `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
+            
+            if (typeof lastMsg.content === "string") {
+                lastMsg.content += planSection;
+            } else if (Array.isArray(lastMsg.content)) {
+                const textPart = lastMsg.content.find(p => p.type === "text");
+                if (textPart) {
+                    textPart.text += planSection;
+                } else {
+                    lastMsg.content.push({ type: "text", text: planSection });
+                }
+            }
+        }
+    }
+
     if (currentProvider === "lemonade" || currentProvider === "openai") {
         targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
         if (currentProvider === "openai") {
@@ -540,7 +566,7 @@ Here is the ExtendScript to build it:
         payload = {
             model: modelName,
             messages: skipSystemInstructions ? cleanedMessages : [
-                { role: "system", content: getSystemInstructionsWithPlan() },
+                { role: "system", content: getSystemInstructionsWithPlan(false) },
                 ...cleanedMessages
             ],
             stream: !!onChunkReceived
@@ -782,7 +808,7 @@ Here is the ExtendScript to build it:
         }
 
         if (!skipSystemInstructions) {
-            payload.system = getSystemInstructionsWithPlan();
+            payload.system = getSystemInstructionsWithPlan(false);
         }
 
         if (typeof writeToDebugLog === "function") {

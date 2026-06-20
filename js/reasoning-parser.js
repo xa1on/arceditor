@@ -26,6 +26,16 @@ function parseStreamingReasoning(text) {
     } else {
         content = text;
     }
+
+    // Clean up any duplicate or stray closing tags at the very start of content
+    if (content) {
+        const trimmed = content.trim();
+        if (trimmed.indexOf(closeTag) === 0) {
+            const index = content.indexOf(closeTag);
+            content = content.substring(0, index).trimEnd() + "\n\n" + content.substring(index + closeTag.length).trimStart();
+        }
+    }
+
     return { reasoning, content };
 }
 
@@ -33,3 +43,4 @@ function parseStreamingReasoning(text) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = { parseStreamingReasoning };
 }
+
