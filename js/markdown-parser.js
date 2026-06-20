@@ -227,6 +227,55 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId) {
                     </div>
                     `;
                 }
+            } else if (turn.observations.indexOf('- Tool "submitPlan":') !== -1) {
+                const lines = turn.observations.split("\n");
+                let status = "approved";
+                let reason = "";
+                let planContent = "";
+                let isCapturingPlan = false;
+                for (let j = 0; j < lines.length; j++) {
+                    const line = lines[j];
+                    if (line.indexOf('- Tool "submitPlan":') === 0) {
+                        const nextLine = lines[j + 1] || "";
+                        if (nextLine.indexOf("Plan rejected by user") !== -1 || nextLine.indexOf("Denied by user") !== -1) {
+                            status = "rejected";
+                            const reasonIdx = nextLine.indexOf("Reason: ");
+                            if (reasonIdx !== -1) {
+                                reason = nextLine.substring(reasonIdx + 8);
+                                if (reason.startsWith('"') && reason.endsWith('"')) {
+                                    reason = reason.substring(1, reason.length - 1);
+                                }
+                            }
+                        } else {
+                            status = "approved";
+                            isCapturingPlan = true;
+                            j++;
+                            if (lines[j] && lines[j].indexOf("Plan approved by user") !== -1) {
+                                j++;
+                            }
+                        }
+                    } else if (isCapturingPlan) {
+                        planContent += (planContent ? "\n" : "") + line;
+                    }
+                }
+
+                if (status === "approved") {
+                    obsHtml = `
+                    <div class="turn-observations">
+                        <strong style="color: var(--text-success);">Plan Approved:</strong>
+                        <div style="font-size: 10px; margin-top: 4px; background: rgba(20, 115, 230, 0.05); padding: 8px; border: 1px solid var(--text-accent); border-radius: var(--border-radius-sm);">
+                            ${formatMarkdown(planContent, turn.turnNum)}
+                        </div>
+                    </div>
+                    `;
+                } else {
+                    const displayReason = reason ? `: "${reason}"` : "";
+                    obsHtml = `
+                    <div class="turn-observations">
+                        <strong style="color: var(--text-error);">Plan Rejected${displayReason}</strong>
+                    </div>
+                    `;
+                }
             } else {
                 obsHtml = `
                 <div class="turn-observations">
@@ -370,42 +419,83 @@ function formatMarkdown(text, turnNum, observations) {
             return trimmed;
         }
 
-        // Process headings
-        if (trimmed.startsWith("#")) {
-            return trimmed
-                .replace(/^###### (.*?)$/gm, "<h6>$1</h6>")
-                .replace(/^##### (.*?)$/gm, "<h5>$1</h5>")
-                .replace(/^#### (.*?)$/gm, "<h4>$1</h4>")
-                .replace(/^### (.*?)$/gm, "<h3>$1</h3>")
-                .replace(/^## (.*?)$/gm, "<h2>$1</h2>")
-                .replace(/^# (.*?)$/gm, "<h1>$1</h1>");
-        }
-
-        // Process blockquotes
-        if (trimmed.indexOf("&gt;") === 0) {
-            const quoteContent = trimmed
-                .replace(/^&gt;\s?/gm, "")
-                .replace(/\n/g, "<br>");
-            return `<blockquote>${quoteContent}</blockquote>`;
-        }
-
         // Process tables (fallback)
         const tableHtml = parseMarkdownTable(trimmed);
         if (tableHtml) {
             return tableHtml;
         }
 
-        // Process list items
-        if (/^\s*[-*+]\s+/.test(trimmed) || /^\s*\d+\.\s+/.test(trimmed)) {
-            return trimmed
-                .replace(/^\s*[-*+]\s+(.*?)$/gm, "<div class='bullet-item'>• $1</div>")
-                .replace(/^\s*(\d+)\.\s+(.*?)$/gm, "<div class='bullet-item'>$1. $2</div>");
-        }
+        // Split this paragraph block by single newlines to process headings, lists, and text separately
+        const lines = trimmed.split("\n");
+        const processedLines = lines.map(line => {
+            const lTrim = line.trim();
+            if (!lTrim) return "";
 
-        // Standard text paragraph
-        // Replace single newlines with <br> for soft breaks
-        let pText = trimmed.replace(/\n/g, "<br>");
-        return `<p>${pText}</p>`;
+            // Headings
+            if (lTrim.startsWith("#")) {
+                return lTrim
+                    .replace(/^###### (.*?)$/, "<h6>$1</h6>")
+                    .replace(/^##### (.*?)$/, "<h5>$1</h5>")
+                    .replace(/^#### (.*?)$/, "<h4>$1</h4>")
+                    .replace(/^### (.*?)$/, "<h3>$1</h3>")
+                    .replace(/^## (.*?)$/, "<h2>$1</h2>")
+                    .replace(/^# (.*?)$/, "<h1>$1</h1>");
+            }
+
+            // Blockquotes
+            if (lTrim.indexOf("&gt;") === 0) {
+                return `<blockquote>${lTrim.replace(/^&gt;\s?/, "")}</blockquote>`;
+            }
+
+            // Checklist task items
+            if (/^\s*[-*+]\s+\[\s*\]\s+/.test(line)) {
+                return line.replace(/^\s*[-*+]\s+\[\s*\]\s+(.*?)$/, "<div class='bullet-item task-item'><input type='checkbox' disabled /> <span>$1</span></div>");
+            }
+            if (/^\s*[-*+]\s+\[[xX]\]\s+/.test(line)) {
+                return line.replace(/^\s*[-*+]\s+\[[xX]\]\s+(.*?)$/, "<div class='bullet-item task-item'><input type='checkbox' checked disabled /> <span>$1</span></div>");
+            }
+
+            // Standard list items
+            if (/^\s*[-*+]\s+/.test(line)) {
+                return line.replace(/^\s*[-*+]\s+(.*?)$/, "<div class='bullet-item'>• $1</div>");
+            }
+            if (/^\s*(\d+)\.\s+/.test(line)) {
+                return line.replace(/^\s*(\d+)\.\s+(.*?)$/, "<div class='bullet-item'>$1. $2</div>");
+            }
+
+            // Plain text line
+            return lTrim;
+        });
+
+        // Group consecutive inline lines, but output block elements individually
+        let finalHtml = "";
+        let inParagraph = false;
+
+        for (let j = 0; j < processedLines.length; j++) {
+            const lineHtml = processedLines[j];
+            if (!lineHtml) continue;
+
+            const isBlock = lineHtml.startsWith("<div") || lineHtml.startsWith("<h") || lineHtml.startsWith("<block") || lineHtml.startsWith("<table") || lineHtml.startsWith("<ul") || lineHtml.startsWith("<ol");
+            if (isBlock) {
+                if (inParagraph) {
+                    finalHtml += "</p>";
+                    inParagraph = false;
+                }
+                finalHtml += lineHtml;
+            } else {
+                if (!inParagraph) {
+                    finalHtml += "<p>";
+                    inParagraph = true;
+                } else {
+                    finalHtml += "<br>";
+                }
+                finalHtml += lineHtml;
+            }
+        }
+        if (inParagraph) {
+            finalHtml += "</p>";
+        }
+        return finalHtml;
     });
 
     let result = processedParagraphs.join("\n");

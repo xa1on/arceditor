@@ -3,6 +3,8 @@
  * Handles local user configurations, provider presets, and disk settings serialization.
  */
 
+window.activePlan = null;
+
 function updateProviderSectionsUI() {
     const activeProv = document.getElementById("setting-provider").value;
     const sections = document.querySelectorAll(".provider-section");
@@ -353,6 +355,10 @@ function loadSessionHistory(sessionId) {
     activeSessionId = sessionId;
     chatHistory = session.history || [];
     agentHistory = session.agentHistory || [];
+    window.activePlan = session.activePlan || null;
+    if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+        window.updatePinnedPlanUI();
+    }
 
     // Clear Chat Scroller and re-render messages!
     const scroller = document.getElementById("chat-messages");
@@ -407,6 +413,7 @@ function updateCurrentSessionHistory() {
     if (session) {
         session.history = chatHistory;
         session.agentHistory = agentHistory;
+        session.activePlan = window.activePlan;
 
         // Auto-generate title from the first user prompt if the title is still "New Chat"
         if (session.title === "New Chat" && chatHistory.length > 0) {
@@ -442,11 +449,17 @@ function createNewSession() {
         allProjectChats[currentProjectPath] = [];
     }
 
+    window.activePlan = null;
+    if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+        window.updatePinnedPlanUI();
+    }
+
     const newSession = {
         id: "session_" + Date.now(),
         title: "New Chat",
         history: [],
         agentHistory: [],
+        activePlan: null,
         created: Date.now()
     };
 

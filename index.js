@@ -1101,6 +1101,8 @@ window.promptUserForToolConfirmation = function(tc) {
         let paramString = "";
         if (toolName === "executeExtendScript" && tc.parameters && tc.parameters.script) {
             paramString = tc.parameters.script;
+        } else if (toolName === "submitPlan" && tc.parameters && tc.parameters.plan) {
+            paramString = tc.parameters.plan;
         } else {
             paramString = JSON.stringify(tc.parameters || {}, null, 2);
         }
@@ -1405,6 +1407,89 @@ window.promptUserForQuestions = function(tc) {
 
         showQuestion(currentQuestionIdx);
     });
+};
+
+function openPlanModal() {
+    const modal = document.getElementById("plan-modal");
+    if (modal) {
+        modal.classList.add("active");
+        renderPlanModalBody();
+    }
+}
+
+function closePlanModal() {
+    const modal = document.getElementById("plan-modal");
+    if (modal) {
+        modal.classList.remove("active");
+    }
+}
+
+function renderPlanModalBody() {
+    const modalBody = document.getElementById("plan-modal-body");
+    if (modalBody) {
+        if (window.activePlan) {
+            modalBody.innerHTML = typeof formatMarkdown === "function" ? formatMarkdown(window.activePlan) : `<pre>${window.activePlan}</pre>`;
+        } else {
+            modalBody.innerHTML = `<div style="font-size: 11px; color: var(--text-secondary); text-align: center; font-style: italic;">No active plan available.</div>`;
+        }
+    }
+}
+
+function initPinnedPlanToggle() {
+    const header = document.querySelector(".pinned-plan-header");
+    if (header) {
+        if (!header.dataset.listenerBound) {
+            header.addEventListener("click", () => {
+                openPlanModal();
+            });
+            header.dataset.listenerBound = "true";
+        }
+    }
+
+    const closeBtn = document.getElementById("btn-close-plan");
+    if (closeBtn) {
+        if (!closeBtn.dataset.listenerBound) {
+            closeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                closePlanModal();
+            });
+            closeBtn.dataset.listenerBound = "true";
+        }
+    }
+
+    const modal = document.getElementById("plan-modal");
+    if (modal) {
+        const overlay = modal.querySelector(".modal-overlay");
+        if (overlay && !overlay.dataset.listenerBound) {
+            overlay.addEventListener("click", (e) => {
+                e.stopPropagation();
+                closePlanModal();
+            });
+            overlay.dataset.listenerBound = "true";
+        }
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initPinnedPlanToggle);
+} else {
+    initPinnedPlanToggle();
+}
+
+window.updatePinnedPlanUI = function() {
+    const container = document.getElementById("pinned-plan-container");
+    if (!container) return;
+
+    if (window.activePlan) {
+        container.classList.remove("hidden");
+        const modal = document.getElementById("plan-modal");
+        if (modal && modal.classList.contains("active")) {
+            renderPlanModalBody();
+        }
+    } else {
+        container.classList.add("hidden");
+        closePlanModal();
+    }
 };
 
 

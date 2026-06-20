@@ -117,10 +117,10 @@ async function runAgenticExecutionLoop(userText) {
                 }
                 const parsedResponse = parseStreamingReasoning(llmResponse);
                 aiBubble.setAttribute("data-raw-text", parsedResponse.content);
-                const assistantMsg = { 
-                    role: "assistant", 
-                    content: parsedResponse.content, 
-                    reasoning: parsedResponse.reasoning 
+                const assistantMsg = {
+                    role: "assistant",
+                    content: parsedResponse.content,
+                    reasoning: parsedResponse.reasoning
                 };
                 activeContext.push(assistantMsg);
                 finalLlmResponse = llmResponse;
@@ -150,7 +150,8 @@ async function runAgenticExecutionLoop(userText) {
                                     "switchComposition",
                                     "setPlayheadTime",
                                     "undoLastAction",
-                                    "askQuestion"
+                                    "askQuestion",
+                                    "submitPlan"
                                 ].indexOf(tc.tool) !== -1;
                                 if (!isReadOnly) {
                                     containsModifying = true;
@@ -181,7 +182,7 @@ async function runAgenticExecutionLoop(userText) {
                 var executedAnything = false;
                 var scriptFailed = false;
 
-                 if (jsonBlock) {
+                if (jsonBlock) {
                     try {
                         const parsed = JSON.parse(jsonBlock);
                         const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
@@ -548,7 +549,8 @@ function getSignificantJsonActionKey(jsonStr) {
                 "selectLayers",
                 "switchComposition",
                 "setPlayheadTime",
-                "askQuestion"
+                "askQuestion",
+                "submitPlan"
             ].indexOf(toolName) !== -1;
             return !isReadOnly;
         });
@@ -623,13 +625,13 @@ async function executeToolCalls(jsonStr) {
                 if (typeof setUIReadyState === "function") {
                     setUIReadyState(false);
                 }
-                
+
                 let choice = "allow";
                 if (typeof window !== "undefined" && typeof window.promptUserForToolConfirmation === "function") {
                     tc.toolIndex = i;
                     choice = await window.promptUserForToolConfirmation(tc);
                 }
-                
+
                 if (choice === "deny") {
                     if (window._activeToolStatuses && window._activeToolStatuses[i]) {
                         window._activeToolStatuses[i].status = "denied";
@@ -709,6 +711,16 @@ async function executeToolCalls(jsonStr) {
                     answers = "Error: Question prompting UI is not supported on this platform.";
                 }
                 observations.push(`- Tool "askQuestion":\n${answers}`);
+                continue;
+            } else if (toolName === "submitPlan") {
+                window.activePlan = params.plan;
+                if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+                    window.updatePinnedPlanUI();
+                }
+                if (typeof updateCurrentSessionHistory === "function") {
+                    updateCurrentSessionHistory();
+                }
+                observations.push(`- Tool "submitPlan": Plan approved by user. Plan details:\n${params.plan}`);
                 continue;
             } else if (toolName === "getInstalledEffects") {
                 if (!installedEffects || Object.keys(installedEffects).length === 0) {
@@ -1246,7 +1258,7 @@ function restoreDetailsState(container, states) {
     }
 }
 
-window.updateToolCardStatusUI = function(toolIndex, status, reason = "") {
+window.updateToolCardStatusUI = function (toolIndex, status, reason = "") {
     const aiBubble = document.getElementById(activeAiBubbleId);
     if (!aiBubble) return;
     const toolCard = aiBubble.querySelector(`.tool-call-card[data-index="${toolIndex}"]`);
@@ -1358,13 +1370,13 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
         } else {
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = activeReasoningHtml;
-            
+
             const newContent = tempDiv.querySelector(".reasoning-content");
             const contentDiv = activeReasoningDetails.querySelector(".reasoning-content");
             if (contentDiv && newContent && contentDiv.innerHTML !== newContent.innerHTML) {
                 contentDiv.innerHTML = newContent.innerHTML;
             }
-            
+
             const summary = activeReasoningDetails.querySelector("summary");
             const newSummary = tempDiv.querySelector("summary");
             if (summary && newSummary && summary.innerHTML !== newSummary.innerHTML) {

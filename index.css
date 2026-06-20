@@ -1434,4 +1434,147 @@ select.form-input {
 
 .tool-call-card.status-blocked {
     border-left-color: #555555;
+}
+
+/* Pinned Plan Banner */
+.pinned-plan-bar {
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    border-left: 3px solid var(--text-accent);
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+}
+
+.pinned-plan-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+    gap: 6px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.pinned-plan-title {
+    flex: 1;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pinned-plan-arrow {
+    color: var(--text-secondary);
+    transition: transform 0.2s ease;
+}
+
+.pinned-plan-bar.expanded .pinned-plan-arrow {
+    transform: rotate(180deg);
+}
+
+/* Floating Plan Modal */
+.modal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    visibility: hidden;
+    opacity: 0;
+    transition: visibility 0s 0.25s, opacity 0.25s ease;
+}
+
+.modal.active {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    transition: opacity 0.25s ease;
+}
+
+.modal-content {
+    position: relative;
+    width: 85%;
+    height: 85%;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    display: flex;
+    flex-direction: column;
+    z-index: 1001;
+    transform: scale(0.95);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.modal.active .modal-content {
+    transform: scale(1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background-color: var(--bg-base);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+}
+
+.modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    background: var(--bg-input);
+}
+
+/* Custom Scrollbar for plan modal body (similar to input field) */
+.modal-body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: #3e3e3e;
+    border-radius: 2px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Styled checklist task items */
+.task-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 4px !important;
+}
+
+.task-item input[type="checkbox"] {
+    cursor: default;
+    width: 13px !important;
+    height: 13px !important;
+    margin: 0 8px 0 0 !important;
+    flex-shrink: 0 !important;
+    accent-color: var(--text-accent);
 }
