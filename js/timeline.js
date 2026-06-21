@@ -380,7 +380,7 @@ async function captureFrameAtTime(time, tempPath) {
         if (!comp || !(comp instanceof CompItem)) return "Error: No active composition";
         var originalTime = comp.time;
         try {
-            comp.time = Math.max(0, Math.min(comp.duration, ${time}));
+            comp.time = Math.max(0, Math.min(comp.duration - comp.frameDuration, ${time}));
             var file = new File("${safePath}");
             if (!file.parent.exists) file.parent.create();
             if (file.exists) file.remove();
@@ -414,17 +414,27 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     }
 
     const n = Math.max(1, Math.min(10, numFrames || 5)); // Cap at 10 to keep it lightweight and fast
+
+    let compData = null;
+    try {
+        compData = await getTimelineContext();
+    } catch (e) {}
+
+    const frameRate = (compData && compData.frameRate) || 30;
+    const frameDuration = 1 / frameRate;
+    const duration = (compData && compData.duration) || 5;
+
     let actualStart = typeof startTime === "number" ? startTime : 0;
     let actualEnd = typeof endTime === "number" ? endTime : null;
 
     if (actualEnd === null) {
-        try {
-            const compData = await getTimelineContext();
-            actualEnd = compData.duration || 5;
-        } catch (e) {
-            actualEnd = 5;
-        }
+        actualEnd = duration;
     }
+
+    // Clamp both to [0, duration - frameDuration] to avoid rendering blank frames beyond composition duration
+    const maxSafeTime = Math.max(0, duration - frameDuration);
+    actualStart = Math.max(0, Math.min(maxSafeTime, actualStart));
+    actualEnd = Math.max(actualStart, Math.min(maxSafeTime, actualEnd));
 
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
     const base64List = [];
@@ -445,7 +455,7 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     for (let i = 0; i < pathsAndTimes.length; i++) {
         const item = pathsAndTimes[i];
         stepsJsx += "\n" +
-            "            comp.time = Math.max(0, Math.min(comp.duration, " + item.time + "));\n" +
+            "            comp.time = Math.max(0, Math.min(comp.duration - comp.frameDuration, " + item.time + "));\n" +
             "            var file_" + i + " = new File(\"" + item.path + "\");\n" +
             "            if (file_" + i + ".exists) file_" + i + ".remove();\n" +
             "            if (typeof comp.saveFrameToPng === \"function\") {\n" +

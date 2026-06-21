@@ -855,14 +855,19 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             return prop.value;
         },
 
-        /**
-         * Sets multiple keyframes on a property with optional Easy Ease.
-         */
-        setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut) {
+        setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut, useTime) {
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
+
+            if (useTime !== true && useTime !== "time") {
+                var secondsTimes = [];
+                for (var i = 0; i < times.length; i++) {
+                    secondsTimes.push(times[i] / comp.frameRate);
+                }
+                times = secondsTimes;
+            }
 
             prop.setValuesAtTimes(times, values);
 
