@@ -297,13 +297,15 @@ async function captureCompositionFrame(isAgentCall) {
             let actualPath = returnedPath;
 
             let fileFound = false;
+            let lastSize = -1;
             for (let attempt = 0; attempt < 100; attempt++) {
                 try {
                     const stats = await fs.promises.stat(actualPath);
-                    if (stats.size > 100) {
+                    if (stats.size > 100 && stats.size === lastSize) {
                         fileFound = true;
                         break;
                     }
+                    lastSize = stats.size;
                 } catch (e) {
                     // File not ready or does not exist yet
                 }
@@ -481,13 +483,15 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
             if (!actualPath) continue;
             try {
                 let fileFound = false;
+                let lastSize = -1;
                 for (let attempt = 0; attempt < 100; attempt++) {
                     try {
                         const stats = await fs.promises.stat(actualPath);
-                        if (stats.size > 100) {
+                        if (stats.size > 100 && stats.size === lastSize) {
                             fileFound = true;
                             break;
                         }
+                        lastSize = stats.size;
                     } catch (e) {}
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
