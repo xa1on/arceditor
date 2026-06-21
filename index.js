@@ -1103,10 +1103,9 @@ window.promptUserForToolConfirmation = function(tc) {
         const activeContainer = contentDiv.querySelector(".active-turn-container");
         let executingLoader = null;
         if (activeContainer) {
-            executingLoader = Array.from(activeContainer.children).find(child => 
-                child.innerHTML.indexOf("dots-loader") !== -1 || child.innerText.indexOf("Executing Agent Tool Calls") !== -1
-            );
-            if (executingLoader) {
+            const loaderEl = activeContainer.querySelector(".dots-loader");
+            if (loaderEl) {
+                executingLoader = loaderEl.parentElement;
                 executingLoader.style.display = "none";
             }
         }
@@ -1261,10 +1260,9 @@ window.promptUserForQuestions = function(tc) {
         const activeContainer = contentDiv.querySelector(".active-turn-container");
         let executingLoader = null;
         if (activeContainer) {
-            executingLoader = Array.from(activeContainer.children).find(child => 
-                child.innerHTML.indexOf("dots-loader") !== -1 || child.innerText.indexOf("Executing Agent Tool Calls") !== -1
-            );
-            if (executingLoader) {
+            const loaderEl = activeContainer.querySelector(".dots-loader");
+            if (loaderEl) {
+                executingLoader = loaderEl.parentElement;
                 executingLoader.style.display = "none";
             }
         }
