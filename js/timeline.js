@@ -297,13 +297,17 @@ async function captureCompositionFrame(isAgentCall) {
             let actualPath = returnedPath;
 
             let fileFound = false;
-            try {
-                const stats = await fs.promises.stat(actualPath);
-                if (stats.size > 100) {
-                    fileFound = true;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                try {
+                    const stats = await fs.promises.stat(actualPath);
+                    if (stats.size > 100) {
+                        fileFound = true;
+                        break;
+                    }
+                } catch (e) {
+                    // File not ready or does not exist yet
                 }
-            } catch (e) {
-                // File does not exist or write failed
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
 
             if (fileFound) {
@@ -477,12 +481,16 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
             if (!actualPath) continue;
             try {
                 let fileFound = false;
-                try {
-                    const stats = await fs.promises.stat(actualPath);
-                    if (stats.size > 100) {
-                        fileFound = true;
-                    }
-                } catch (e) {}
+                for (let attempt = 0; attempt < 100; attempt++) {
+                    try {
+                        const stats = await fs.promises.stat(actualPath);
+                        if (stats.size > 100) {
+                            fileFound = true;
+                            break;
+                        }
+                    } catch (e) {}
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
 
                 if (fileFound) {
                     const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
