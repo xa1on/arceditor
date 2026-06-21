@@ -701,6 +701,10 @@ textarea::placeholder {
     opacity: 1;
 }
 
+.drawer.active .drawer-content {
+    transform: translateX(0);
+}
+
 .drawer-content {
     position: absolute;
     right: 0;
