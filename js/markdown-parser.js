@@ -191,13 +191,16 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
     }
 }
 
-function renderTurnsHtml(turns, openTurnNums, bubbleId) {
+function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = false) {
     if (!turns || turns.length === 0) return "";
     let html = "";
     const prefix = bubbleId ? `${bubbleId}-` : "";
+    const executing = typeof isExecuting !== "undefined" ? isExecuting : false;
+
     for (let i = 0; i < turns.length; i++) {
         const turn = turns[i];
-        const isOpen = openTurnNums && openTurnNums.indexOf(turn.turnNum) !== -1;
+        const isMostRecent = i === turns.length - 1;
+        const isOpen = (openTurnNums && openTurnNums.indexOf(turn.turnNum) !== -1) || (executing && isMostRecent && !activeTurnHasContent);
         const openAttr = isOpen ? " open" : "";
         const imagesHtml = renderTurnImagesHtml(turn.images);
 

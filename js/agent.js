@@ -1467,7 +1467,11 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
     }
 
     const bubbleId = aiBubble.id;
-    const currentCompletedHtml = renderTurnsHtml(completedTurns, openTurnNums, bubbleId);
+    const activeTurnHasContent = !!(
+        (activeReasoningHtml && activeReasoningHtml.indexOf("reasoning-content") !== -1) ||
+        (activeContentHtml && activeContentHtml.indexOf("dots-loader") === -1 && activeContentHtml.trim() !== "")
+    );
+    const currentCompletedHtml = renderTurnsHtml(completedTurns, openTurnNums, bubbleId, activeTurnHasContent);
 
     // Check if the number of completed turns has changed to avoid browser innerHTML normalization discrepancies
     const renderedTurnsCount = completedTurnsArea.querySelectorAll(".agent-turn-details").length;
@@ -1493,7 +1497,7 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
     }
 
     // Update active reasoning only if it changed (by modifying only sub-elements to preserve details element reference)
-    if (activeReasoningHtml !== undefined && activeReasoningHtml !== null) {
+    if (activeReasoningHtml) {
         let activeReasoningDetails = activeReasoningArea.querySelector(".reasoning-details");
         if (!activeReasoningDetails) {
             activeReasoningArea.innerHTML = activeReasoningHtml;
