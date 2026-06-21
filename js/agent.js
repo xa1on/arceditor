@@ -1473,11 +1473,19 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
     );
     const currentCompletedHtml = renderTurnsHtml(completedTurns, openTurnNums, bubbleId, activeTurnHasContent);
 
-    // Check if the number of completed turns has changed to avoid browser innerHTML normalization discrepancies
     const renderedTurnsCount = completedTurnsArea.querySelectorAll(".agent-turn-details").length;
     if (renderedTurnsCount !== completedTurns.length) {
         completedTurnsArea.innerHTML = currentCompletedHtml;
         restoreDetailsState(completedTurnsArea, completedTurnStates);
+    }
+
+    // Collapse the previous completed turn in the DOM as soon as the active turn starts streaming content
+    if (activeTurnHasContent && completedTurns.length > 0) {
+        const lastTurnNum = completedTurns[completedTurns.length - 1].turnNum;
+        const lastTurnDetails = completedTurnsArea.querySelector(`#details-turn-${bubbleId}-${lastTurnNum}`);
+        if (lastTurnDetails && lastTurnDetails.hasAttribute("open")) {
+            lastTurnDetails.removeAttribute("open");
+        }
     }
 
     // Initialize active-turn sub-containers if they don't exist yet
