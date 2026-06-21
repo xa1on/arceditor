@@ -559,7 +559,7 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
   },
   updatePlan: {
     name: "updatePlan",
-    text: `- Description: Updates the contents of an existing running plan or concludes it when completed. You can either rewrite the entire plan, apply granular checked status and text updates to specific checklist items by their 0-based index, or conclude the plan.
+    text: `- Description: Updates the contents of an existing running plan, checks off completed items, and/or concludes the plan when all tasks are finished.
     - Parameters:
       * \`plan\`: (Optional) String. The entire new plan markdown content to replace the current plan.
       * \`conclude\`: (Optional) Boolean. Set to true to conclude and archive the active plan, removing it from context and hiding it from the UI.
@@ -567,24 +567,18 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
         - \`index\`: Integer. The 0-based index of the checkbox checklist item in the plan.
         - \`checked\`: (Optional) Boolean. The new checked status for that checklist item.
         - \`text\`: (Optional) String. The new label/text for that checklist item.
-    - JSON Call Format (Concluding a plan):
-      \`\`\`json
-      {
-        "tool": "updatePlan",
-        "parameters": {
-          "conclude": true
-        }
-      }
-      \`\`\`
-    - JSON Call Format (Granular checkoff):
+    - JSON Call Format (Update items & Conclude in one call):
       \`\`\`json
       {
         "tool": "updatePlan",
         "parameters": {
           "updates": [
-            { "index": 0, "checked": true },
-            { "index": 1, "text": "Create orbital path rings for planets (in progress)" }
-          ]
+            {
+              "index": 2, "checked": true,
+              "index": 3, "checked": true
+            }
+          ],
+          "conclude": true
         }
       }
       \`\`\`

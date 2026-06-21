@@ -803,23 +803,6 @@ async function executeToolCalls(jsonStr) {
                 observations.push(`- Tool "submitPlan": Plan approved by user. Plan details:\n${params.plan}`);
                 continue;
             } else if (toolName === "updatePlan") {
-                if (params.conclude) {
-                    window.activePlan = null;
-                    if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
-                        window.updatePinnedPlanUI();
-                    }
-                    if (typeof updateCurrentSessionHistory === "function") {
-                        updateCurrentSessionHistory();
-                    }
-                    observations.push(`- Tool "${toolName}": Plan concluded and finished. It is no longer active.`);
-                    continue;
-                }
-
-                if (!window.activePlan && params.plan === undefined) {
-                    observations.push(`- Tool "${toolName}": Error: No active running plan to update. Propose a new plan first using submitPlan.`);
-                    continue;
-                }
-
                 let originalPlan = window.activePlan || "";
                 let newPlan = originalPlan;
 
@@ -827,6 +810,24 @@ async function executeToolCalls(jsonStr) {
                     newPlan = params.plan;
                 } else if (params.updates && Array.isArray(params.updates)) {
                     newPlan = updatePlanString(originalPlan, params.updates);
+                }
+
+                if (params.conclude) {
+                    window.activePlan = newPlan;
+                    if (typeof updateCurrentSessionHistory === "function") {
+                        updateCurrentSessionHistory();
+                    }
+                    window.activePlan = null;
+                    if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
+                        window.updatePinnedPlanUI();
+                    }
+                    observations.push(`- Tool "${toolName}": Plan updated and concluded/finished. Current plan details:\n${newPlan}`);
+                    continue;
+                }
+
+                if (!window.activePlan && params.plan === undefined) {
+                    observations.push(`- Tool "${toolName}": Error: No active running plan to update. Propose a new plan first using submitPlan.`);
+                    continue;
                 }
 
                 window.activePlan = newPlan;
