@@ -164,13 +164,12 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
             ` : "";
 
             html += `
-                <div class="tool-call-card status-${status}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}">
-                    <div class="tool-call-header">
+                <details class="tool-call-card status-${status}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}" open>
+                    <summary class="tool-call-header">
                         <span class="tool-badge">Tool Call${isStreaming ? ' (Streaming...)' : ''}</span>
                         <span class="tool-name">${call.tool || '...'}</span>
-                        <span class="tool-status-badge status-${status}">${status}</span>
                         <button class="toggle-tool-view-btn">Show JSON</button>
-                    </div>
+                    </summary>
                     <div class="tool-call-body">
                         ${denialHtml}
                         <div class="tool-params-table-wrap">
@@ -180,7 +179,7 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
                             ${rawJsonHtml}
                         </div>
                     </div>
-                </div>
+                </details>
             `;
         });
         html += `</div>`;

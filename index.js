@@ -369,6 +369,10 @@ ${code}`;
         if (summary) {
             const details = summary.closest("details");
             if (details) {
+                // If the click is on a button, link, or input field inside the summary, bypass details toggling
+                if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest("select")) {
+                    return;
+                }
                 e.preventDefault();
                 const wasOpen = details.hasAttribute("open");
                 if (wasOpen) {
@@ -1550,6 +1554,11 @@ window.collapseDetailsWithAnimation = function(detailsEl) {
 
     if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
         detailsEl.removeAttribute("open");
+        // Also collapse child tool cards instantly when parent turn is collapsed
+        if (detailsEl.classList.contains("agent-turn-details")) {
+            const childCards = detailsEl.querySelectorAll(".tool-call-card");
+            childCards.forEach(card => card.removeAttribute("open"));
+        }
         return;
     }
 
@@ -1583,6 +1592,17 @@ window.collapseDetailsWithAnimation = function(detailsEl) {
             detailsEl.style.overflow = "";
             detailsEl.style.transition = "";
             detailsEl.dataset.animating = "false";
+            
+            // Also collapse child tool cards instantly when parent turn completes collapse animation
+            if (detailsEl.classList.contains("agent-turn-details")) {
+                const childCards = detailsEl.querySelectorAll(".tool-call-card");
+                childCards.forEach(card => {
+                    card.removeAttribute("open");
+                    card.style.height = "";
+                    card.style.overflow = "";
+                    card.style.transition = "";
+                });
+            }
         }
     };
     detailsEl.addEventListener("transitionend", onEnd);

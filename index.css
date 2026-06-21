@@ -1137,6 +1137,14 @@ select.form-input {
     background: #252526;
     padding: 4px 8px;
     border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+}
+
+.tool-call-header::-webkit-details-marker,
+.tool-call-header::marker {
+    display: none;
 }
 
 .tool-badge {
