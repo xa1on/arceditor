@@ -21,6 +21,10 @@ function analyzeExtendScript(code) {
     let index = 0;
     const length = code.length;
 
+    let braceDepth = 0;
+    let parenDepth = 0;
+    let ternaryCount = 0;
+
     while (index < length) {
         let char = code[index];
 
@@ -99,7 +103,37 @@ function analyzeExtendScript(code) {
             continue;
         }
 
-        // 6. Non-significant characters (operators, braces, numbers)
+        // 6. Track structural nesting for named argument detection
+        if (char === '{') {
+            braceDepth++;
+        } else if (char === '}') {
+            braceDepth = Math.max(0, braceDepth - 1);
+        } else if (char === '(') {
+            parenDepth++;
+        } else if (char === ')') {
+            parenDepth = Math.max(0, parenDepth - 1);
+            // Reset ternary count at the end of a paren scope to prevent state leakage
+            if (parenDepth === 0) {
+                ternaryCount = 0;
+            }
+        } else if (char === '?') {
+            if (braceDepth === 0) {
+                ternaryCount++;
+            }
+        } else if (char === ':') {
+            if (braceDepth === 0) {
+                if (ternaryCount > 0) {
+                    ternaryCount--;
+                } else if (parenDepth > 0) {
+                    return {
+                        safe: false,
+                        reason: "Invalid named parameter syntax (key: value) detected inside function call arguments. ExtendScript requires positional arguments."
+                    };
+                }
+            }
+        }
+
+        // 7. Non-significant characters (operators, numbers)
         index++;
     }
 

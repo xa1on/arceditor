@@ -59,6 +59,15 @@ const PERMISSION_READONLY_TOOLS = [
     "webSearch"
 ];
 
+function pushToHistory(msg) {
+    const serialized = JSON.parse(JSON.stringify(msg));
+    chatHistory.push(serialized);
+    agentHistory.push(JSON.parse(JSON.stringify(msg)));
+    if (typeof saveChats === "function") {
+        saveChats();
+    }
+}
+
 async function runAgenticExecutionLoop(userText) {
     isStopped = false;
     currentExecutionId++;
@@ -85,8 +94,7 @@ async function runAgenticExecutionLoop(userText) {
             userMsg = { role: "user", content: userText };
         }
 
-        chatHistory.push(JSON.parse(JSON.stringify(userMsg)));
-        agentHistory.push(JSON.parse(JSON.stringify(userMsg)));
+        pushToHistory(userMsg);
 
         // DECOUPLED CONTEXT FOR LLM (keeps visual history completely raw and unpruned)
         let activeContext = JSON.parse(JSON.stringify(agentHistory));
@@ -164,8 +172,7 @@ async function runAgenticExecutionLoop(userText) {
                         isIntermediate: true
                     };
                     activeContext.push(retryMsg);
-                    chatHistory.push(JSON.parse(JSON.stringify(retryMsg)));
-                    agentHistory.push(JSON.parse(JSON.stringify(retryMsg)));
+                    pushToHistory(retryMsg);
                     continue;
                 }
                 const parsedResponse = parseStreamingReasoning(llmResponse);
@@ -216,8 +223,7 @@ async function runAgenticExecutionLoop(userText) {
                 if (jsonBlock) {
                     assistantMsg.isIntermediate = true;
                 }
-                chatHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
-                agentHistory.push(JSON.parse(JSON.stringify(assistantMsg)));
+                pushToHistory(assistantMsg);
 
                 var observations = "";
                 var executedAnything = false;
@@ -298,8 +304,7 @@ async function runAgenticExecutionLoop(userText) {
                             isIntermediate: true
                         };
                         activeContext.push(errFeedbackMsg);
-                        chatHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
-                        agentHistory.push(JSON.parse(JSON.stringify(errFeedbackMsg)));
+                        pushToHistory(errFeedbackMsg);
 
                         // Don't send the base64 image again to save bandwidth
                         visualFrameInputs = null;
@@ -315,6 +320,7 @@ async function runAgenticExecutionLoop(userText) {
 
                     // Append observations to local context history and master history (handling multi-modal visual observations!)
                     let turnImages = null;
+                    let obsMsg;
                     if (capturedFrameDataDuringLoop) {
                         turnImages = capturedFrameDataDuringLoop;
                         const contentParts = [
@@ -327,25 +333,21 @@ async function runAgenticExecutionLoop(userText) {
                         } else {
                             contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
                         }
-                        const obsMsg = {
+                        obsMsg = {
                             role: "user",
                             content: contentParts,
                             isIntermediate: true
                         };
-                        activeContext.push(obsMsg);
-                        chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
-                        agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                         capturedFrameDataDuringLoop = null; // Reset for next potential capture
                     } else {
-                        const obsMsg = {
+                        obsMsg = {
                             role: "user",
                             content: `[System Observation - Tool Output]:\n${observations}\n\nPlease analyze this result and proceed with your next planned steps.`,
                             isIntermediate: true
                         };
-                        activeContext.push(obsMsg);
-                        chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
-                        agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
                     }
+                    activeContext.push(obsMsg);
+                    pushToHistory(obsMsg);
 
                     // Package successful turn
                     let turnTitle = "Analyzing composition context";
@@ -423,8 +425,7 @@ async function runAgenticExecutionLoop(userText) {
                                 isIntermediate: true
                             };
                             activeContext.push(obsMsg);
-                            chatHistory.push(JSON.parse(JSON.stringify(obsMsg)));
-                            agentHistory.push(JSON.parse(JSON.stringify(obsMsg)));
+                            pushToHistory(obsMsg);
 
                             // Add a successful verification turn to completedTurns
                             const parsedTurn = parseStreamingReasoning(llmResponse);
