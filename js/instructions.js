@@ -316,6 +316,7 @@ Layer Referencing (Avoid Fragile Indexes!):
         * \`scale\`: (Optional) [X, Y] local vector group scale array.
 
 *** RESILIENT UNDO & CORRECTIVE BEHAVIOR ***
+- AUTOMATIC UNDO: Scripts that fail to execute are automatically undone. There is no need to run an \`undoLastAction\` tool if the script fails to execute. If a script does fully run, however, does not do what you expect, it is encouraged to run an \`undoLastAction\` tool before generating a corrected script. It is always better to start from a clean slate than attempt to correct a incorrect state.
 - HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
 - SELF-CORRECTION UNDO: If you run an ExtendScript code block and realize it has a layout bug or configuration mistake, perform an undo step first before generating the corrected script block. Always ensure the canvas is clean before applying revised designs.
 
