@@ -614,7 +614,7 @@ Here is the ExtendScript to build it:
                                 } else {
                                     accumulatedText += reasoning;
                                 }
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             } else if (content) {
                                 if (isThinkingOpen && !isThinkingClosed) {
                                     accumulatedText += "\n</thinking>\n\n" + content;
@@ -622,7 +622,7 @@ Here is the ExtendScript to build it:
                                 } else {
                                     accumulatedText += content;
                                 }
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             }
                         }
                         if (parsed.usage) {
@@ -639,13 +639,13 @@ Here is the ExtendScript to build it:
             if (isThinkingOpen && !isThinkingClosed) {
                 accumulatedText += "\n</thinking>\n\n";
                 isThinkingClosed = true;
-                onChunkReceived(accumulatedText);
+                onChunkReceived(normalizeResponse(accumulatedText));
             }
 
             if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", accumulatedText);
+                writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", normalizeResponse(accumulatedText));
             }
-            return accumulatedText;
+            return normalizeResponse(accumulatedText);
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
@@ -662,6 +662,7 @@ Here is the ExtendScript to build it:
             if (reasoning) {
                 content = `<thinking>\n${reasoning}\n</thinking>\n\n${content}`;
             }
+            content = normalizeResponse(content);
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (OpenAI/Lemonade)", content);
             }
@@ -721,7 +722,7 @@ Here is the ExtendScript to build it:
                             const text = parsed.candidates[0].content.parts[0].text;
                             if (text) {
                                 accumulatedText += text;
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             }
                         }
                         if (parsed.usageMetadata) {
@@ -735,9 +736,9 @@ Here is the ExtendScript to build it:
                 }
             });
             if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Gemini Stream Finished)", accumulatedText);
+                writeToDebugLog("API Response Received (Gemini Stream Finished)", normalizeResponse(accumulatedText));
             }
-            return accumulatedText;
+            return normalizeResponse(accumulatedText);
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
@@ -748,7 +749,8 @@ Here is the ExtendScript to build it:
                     totalTokens: responseData.usageMetadata.totalTokenCount
                 };
             }
-            const content = responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content && responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] ? responseData.candidates[0].content.parts[0].text : "";
+            let content = responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content && responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] ? responseData.candidates[0].content.parts[0].text : "";
+            content = normalizeResponse(content);
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (Gemini)", content);
             }
@@ -839,7 +841,7 @@ Here is the ExtendScript to build it:
                                 } else {
                                     accumulatedText += delta.thinking;
                                 }
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             } else if (delta.type === "text_delta" && delta.text) {
                                 if (isThinkingOpen && !isThinkingClosed) {
                                     accumulatedText += "\n</thinking>\n\n" + delta.text;
@@ -847,14 +849,14 @@ Here is the ExtendScript to build it:
                                 } else {
                                     accumulatedText += delta.text;
                                 }
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             } else if (delta.text) {
                                 accumulatedText += delta.text;
-                                onChunkReceived(accumulatedText);
+                                onChunkReceived(normalizeResponse(accumulatedText));
                             }
                         } else if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
                             accumulatedText += parsed.delta.text;
-                            onChunkReceived(accumulatedText);
+                            onChunkReceived(normalizeResponse(accumulatedText));
                         }
 
                         if (parsed.type === "message_start" && parsed.message && parsed.message.usage) {
@@ -876,13 +878,13 @@ Here is the ExtendScript to build it:
             if (isThinkingOpen && !isThinkingClosed) {
                 accumulatedText += "\n</thinking>\n\n";
                 isThinkingClosed = true;
-                onChunkReceived(accumulatedText);
+                onChunkReceived(normalizeResponse(accumulatedText));
             }
 
             if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Anthropic Stream Finished)", accumulatedText);
+                writeToDebugLog("API Response Received (Anthropic Stream Finished)", normalizeResponse(accumulatedText));
             }
-            return accumulatedText;
+            return normalizeResponse(accumulatedText);
         } else {
             const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
             const responseData = JSON.parse(responseText);
@@ -914,6 +916,7 @@ Here is the ExtendScript to build it:
                 content = responseData.content[0].text || "";
             }
 
+            content = normalizeResponse(content);
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Response Received (Anthropic)", content);
             }
@@ -996,3 +999,90 @@ async function searchWeb(query) {
     }
 }
 window.searchWeb = searchWeb;
+
+function normalizeResponse(text) {
+    if (!text) return "";
+    
+    // 1. Normalize antThinking to standard thinking
+    let normalized = text
+        .replace(/<antThinking>/g, "<thinking>")
+        .replace(/<\/antThinking>/g, "</thinking>");
+        
+    // 2. Normalize XML function calls to JSON code blocks
+    if (normalized.indexOf("<function_calls>") !== -1) {
+        const startIdx = normalized.indexOf("<function_calls>");
+        const endIdx = normalized.indexOf("</function_calls>", startIdx);
+        
+        const beforeCalls = normalized.substring(0, startIdx);
+        let callsContent = "";
+        let afterCalls = "";
+        
+        if (endIdx !== -1) {
+            callsContent = normalized.substring(startIdx + "<function_calls>".length, endIdx);
+            afterCalls = normalized.substring(endIdx + "</function_calls>".length);
+        } else {
+            callsContent = normalized.substring(startIdx + "<function_calls>".length);
+        }
+        
+        const toolCalls = [];
+        const invokeRegex = /<(invoke_name|invoke\s+name)\s*=\s*["']([^"']+)["']\s*>/g;
+        let invokeMatch;
+        let lastInvokeEnd = 0;
+        
+        while ((invokeMatch = invokeRegex.exec(callsContent)) !== null) {
+            const toolName = invokeMatch[2];
+            const invokeStart = invokeMatch.index + invokeMatch[0].length;
+            
+            let invokeEnd = callsContent.indexOf("</invoke>", invokeStart);
+            if (invokeEnd === -1) {
+                invokeEnd = callsContent.indexOf("</invoke_name>", invokeStart);
+            }
+            let isUnclosed = false;
+            if (invokeEnd === -1) {
+                invokeEnd = callsContent.length;
+                isUnclosed = true;
+            }
+            
+            const invokeContent = callsContent.substring(invokeStart, invokeEnd);
+            const parameters = {};
+            
+            const paramRegex = /<(parameter_name|parameter\s+name)\s*=\s*["']([^"']+)["']\s*>([\s\S]*?)(?:<\/(?:parameter_name|parameter)>|$)/g;
+            let paramMatch;
+            while ((paramMatch = paramRegex.exec(invokeContent)) !== null) {
+                const paramName = paramMatch[2];
+                const paramValue = paramMatch[3];
+                parameters[paramName] = paramValue;
+            }
+            
+            toolCalls.push({
+                tool: toolName,
+                parameters: parameters
+            });
+            
+            let closeTagLen = 0;
+            if (!isUnclosed) {
+                closeTagLen = callsContent.indexOf("</invoke_name>", invokeStart) === invokeEnd ? "</invoke_name>".length : "</invoke>".length;
+            }
+            lastInvokeEnd = invokeEnd + closeTagLen;
+        }
+        
+        if (toolCalls.length > 0) {
+            const jsonStr = JSON.stringify(toolCalls.length === 1 ? toolCalls[0] : toolCalls, null, 2);
+            const jsonBlock = `\n\`\`\`json\n${jsonStr}\n\`\`\`\n`;
+            
+            let remainingText = callsContent.substring(lastInvokeEnd).trim();
+            remainingText = remainingText.replace(/<\/?[^>]*>?/g, "");
+            if (remainingText) {
+                normalized = beforeCalls + jsonBlock + "\n" + remainingText + afterCalls;
+            } else {
+                normalized = beforeCalls + jsonBlock + afterCalls;
+            }
+        }
+    }
+    
+    return normalized;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports.normalizeResponse = normalizeResponse;
+}
