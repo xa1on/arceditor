@@ -110,19 +110,31 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
             const statusInfo = toolStatuses && toolStatuses[index];
             const status = statusInfo ? statusInfo.status : (isStreaming ? "pending" : "allowed");
             const reason = statusInfo ? statusInfo.reason : "";
+            const cardId = "tool-card-" + activeTurn + "-" + index;
+
+            // Cache successfully parsed parameters or fallback to last cached values to avoid layout flicker
+            let activeParams = null;
+            if (parsed) {
+                activeParams = call.parameters || {};
+                if (typeof window !== "undefined") {
+                    window._lastParsedParameters = window._lastParsedParameters || {};
+                    window._lastParsedParameters[cardId] = activeParams;
+                }
+            } else if (typeof window !== "undefined" && window._lastParsedParameters && window._lastParsedParameters[cardId]) {
+                activeParams = window._lastParsedParameters[cardId];
+            }
 
             let paramsHtml = "";
-            if (parsed) {
-                const params = call.parameters || {};
-                const paramKeys = Object.keys(params);
+            if (activeParams) {
+                const paramKeys = Object.keys(activeParams);
                 if (paramKeys.length > 0) {
                     paramsHtml = `<table class="tool-params-table">`;
                     paramKeys.forEach(key => {
                         let valStr = "";
-                        if (typeof params[key] === "object" && params[key] !== null) {
-                            valStr = JSON.stringify(params[key], null, 2);
+                        if (typeof activeParams[key] === "object" && activeParams[key] !== null) {
+                            valStr = JSON.stringify(activeParams[key], null, 2);
                         } else {
-                            valStr = String(params[key]);
+                            valStr = String(activeParams[key]);
                         }
                         const escapedValStr = valStr
                             .replace(/&/g, "&amp;")
@@ -149,7 +161,6 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
                 paramsHtml = `<div class="tool-no-params">Streaming parameters...</div>`;
             }
 
-            const cardId = "tool-card-" + activeTurn + "-" + index;
             const rawJsonHtml = `<pre class="code-viewport"><code>${highlightCode(parsed ? JSON.stringify(call, null, 2) : cleanCode, "json")}</code></pre>`;
 
             const escapedReason = reason ? reason

@@ -975,40 +975,57 @@ function repairJSON(jsonStr) {
     repaired = repaired.replace(/,\s*$/g, '');
     repaired = repaired.replace(/,\s*([}\]])/g, '$1');
 
+    let result = "";
     let structure = [];
     let inString = false;
     let escaping = false;
-    let lastValidIndex = repaired.length;
+    let lastValidIndex = 0;
 
     for (let i = 0; i < repaired.length; i++) {
         const char = repaired[i];
+        
         if (escaping) {
+            result += char;
             escaping = false;
             continue;
         }
+        
         if (char === '\\') {
+            result += char;
             escaping = true;
             continue;
         }
+        
         if (char === '"') {
+            result += char;
             inString = !inString;
             continue;
         }
-        if (!inString) {
+        
+        if (inString) {
+            if (char === '\n') {
+                result += '\\n';
+            } else if (char === '\r') {
+                // Ignore carriage return
+            } else {
+                result += char;
+            }
+        } else {
+            result += char;
             if (char === '{' || char === '[') {
                 structure.push(char);
             } else if (char === '}') {
                 if (structure.length > 0 && structure[structure.length - 1] === '{') {
                     structure.pop();
                     if (structure.length === 0) {
-                        lastValidIndex = i + 1;
+                        lastValidIndex = result.length;
                     }
                 }
             } else if (char === ']') {
                 if (structure.length > 0 && structure[structure.length - 1] === '[') {
                     structure.pop();
                     if (structure.length === 0) {
-                        lastValidIndex = i + 1;
+                        lastValidIndex = result.length;
                     }
                 }
             }
@@ -1016,10 +1033,15 @@ function repairJSON(jsonStr) {
     }
 
     if (structure.length === 0) {
-        repaired = repaired.substring(0, lastValidIndex);
+        if (lastValidIndex > 0) {
+            repaired = result.substring(0, lastValidIndex);
+        } else {
+            repaired = result;
+        }
     } else {
+        repaired = result;
         if (inString) {
-            if (escaping) {
+            if (repaired.endsWith('\\')) {
                 repaired = repaired.substring(0, repaired.length - 1);
             }
             repaired += '"';
