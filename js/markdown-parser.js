@@ -62,7 +62,7 @@ function parseObservations(observations) {
     return results;
 }
 
-function tryFormatToolCall(code, isStreaming, toolStatuses) {
+function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "default") {
     // Unescape HTML entities first (since formatMarkdown escapes them before processing code blocks)
     const cleanCode = code
         .replace(/&amp;/g, "&")
@@ -79,13 +79,31 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
                 parsed = repairJSON(cleanCode);
             }
         }
-        if (!parsed) return null;
 
-        const calls = Array.isArray(parsed) ? parsed : [parsed];
+        let isLikelyToolCall = false;
+        let toolName = "";
 
-        // Validate if this actually looks like a tool call sequence
-        const isValid = calls.every(c => c && typeof c === "object" && typeof c.tool === "string");
-        if (!isValid) return null;
+        if (parsed) {
+            const calls = Array.isArray(parsed) ? parsed : [parsed];
+            isLikelyToolCall = calls.every(c => c && typeof c === "object" && typeof c.tool === "string");
+            if (isLikelyToolCall) {
+                toolName = calls[0].tool;
+            }
+        } else {
+            // If parsed is null, check if the code block starts like a JSON tool call
+            const trimmed = cleanCode.trim();
+            if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                isLikelyToolCall = true;
+                const toolMatch = cleanCode.match(/"tool"\s*:\s*"([^"]*)"/);
+                if (toolMatch) {
+                    toolName = toolMatch[1];
+                }
+            }
+        }
+
+        if (!isLikelyToolCall) return null;
+
+        const calls = parsed ? (Array.isArray(parsed) ? parsed : [parsed]) : [{ tool: toolName, parameters: {} }];
 
         let html = `<div class="tool-calls-container">`;
         calls.forEach((call, index) => {
@@ -93,42 +111,46 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
             const status = statusInfo ? statusInfo.status : (isStreaming ? "pending" : "allowed");
             const reason = statusInfo ? statusInfo.reason : "";
 
-            const params = call.parameters || {};
             let paramsHtml = "";
-            const paramKeys = Object.keys(params);
-            if (paramKeys.length > 0) {
-                paramsHtml = `<table class="tool-params-table">`;
-                paramKeys.forEach(key => {
-                    let valStr = "";
-                    if (typeof params[key] === "object" && params[key] !== null) {
-                        valStr = JSON.stringify(params[key], null, 2);
-                    } else {
-                        valStr = String(params[key]);
-                    }
-                    const escapedValStr = valStr
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;");
+            if (parsed) {
+                const params = call.parameters || {};
+                const paramKeys = Object.keys(params);
+                if (paramKeys.length > 0) {
+                    paramsHtml = `<table class="tool-params-table">`;
+                    paramKeys.forEach(key => {
+                        let valStr = "";
+                        if (typeof params[key] === "object" && params[key] !== null) {
+                            valStr = JSON.stringify(params[key], null, 2);
+                        } else {
+                            valStr = String(params[key]);
+                        }
+                        const escapedValStr = valStr
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;");
 
-                    let displayHtml = "";
-                    if (key === "script") {
-                        displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, "javascript")}</code></pre>`;
-                    } else if (valStr.indexOf("\n") !== -1) {
-                        const trimmedVal = valStr.trim();
-                        const possibleLang = (trimmedVal.startsWith("{") && trimmedVal.endsWith("}")) || (trimmedVal.startsWith("[") && trimmedVal.endsWith("]")) ? "json" : "";
-                        displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, possibleLang)}</code></pre>`;
-                    } else {
-                        displayHtml = escapedValStr;
-                    }
-                    paramsHtml += `<tr><td class="param-key">${key}</td><td class="param-value">${displayHtml}</td></tr>`;
-                });
-                paramsHtml += `</table>`;
+                        let displayHtml = "";
+                        if (key === "script") {
+                            displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, "javascript")}</code></pre>`;
+                        } else if (valStr.indexOf("\n") !== -1) {
+                            const trimmedVal = valStr.trim();
+                            const possibleLang = (trimmedVal.startsWith("{") && trimmedVal.endsWith("}")) || (trimmedVal.startsWith("[") && trimmedVal.endsWith("]")) ? "json" : "";
+                            displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, possibleLang)}</code></pre>`;
+                        } else {
+                            displayHtml = escapedValStr;
+                        }
+                        paramsHtml += `<tr><td class="param-key">${key}</td><td class="param-value">${displayHtml}</td></tr>`;
+                    });
+                    paramsHtml += `</table>`;
+                } else {
+                    paramsHtml = `<div class="tool-no-params">No parameters</div>`;
+                }
             } else {
-                paramsHtml = `<div class="tool-no-params">No parameters</div>`;
+                paramsHtml = `<div class="tool-no-params">Streaming parameters...</div>`;
             }
 
-            const cardId = "tool-card-" + Date.now() + "-" + index;
-            const rawJsonHtml = `<pre class="code-viewport"><code>${highlightCode(JSON.stringify(call, null, 2), "json")}</code></pre>`;
+            const cardId = "tool-card-" + activeTurn + "-" + index;
+            const rawJsonHtml = `<pre class="code-viewport"><code>${highlightCode(parsed ? JSON.stringify(call, null, 2) : cleanCode, "json")}</code></pre>`;
 
             const escapedReason = reason ? reason
                 .replace(/&/g, "&amp;")
@@ -145,7 +167,7 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
                 <div class="tool-call-card status-${status}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}">
                     <div class="tool-call-header">
                         <span class="tool-badge">Tool Call${isStreaming ? ' (Streaming...)' : ''}</span>
-                        <span class="tool-name">${call.tool}</span>
+                        <span class="tool-name">${call.tool || '...'}</span>
                         <span class="tool-status-badge status-${status}">${status}</span>
                         <button class="toggle-tool-view-btn">Show JSON</button>
                     </div>
@@ -163,7 +185,8 @@ function tryFormatToolCall(code, isStreaming, toolStatuses) {
         });
         html += `</div>`;
         return html;
-    } catch (e) {
+    } catch (err) {
+        console.error("tryFormatToolCall error:", err);
         return null;
     }
 }
@@ -378,7 +401,7 @@ function formatMarkdown(text, turnNum, observations) {
 
             let renderedBlock = "";
             if (lang === "json") {
-                const formatted = tryFormatToolCall(code, !isClosed, toolStatuses);
+                const formatted = tryFormatToolCall(code, !isClosed, toolStatuses, activeTurn);
                 if (formatted) {
                     renderedBlock = formatted;
                 } else {
