@@ -55,6 +55,7 @@ async function loadSettings() {
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             agentPermissionMode = data.agentPermissionMode || "review";
             uiTransitionsEnabled = data.uiTransitionsEnabled !== undefined ? !!data.uiTransitionsEnabled : true;
+            enabledSkills = data.enabledSkills || {};
             loaded = true;
         } catch (e) {
             if (e.code !== 'ENOENT') {
@@ -73,6 +74,7 @@ async function loadSettings() {
         maxToolRetryLimit = 15;
         agentPermissionMode = "review";
         uiTransitionsEnabled = true;
+        enabledSkills = {};
     }
 
     // Sync into settings DOM
@@ -183,7 +185,8 @@ async function saveSettings(e) {
         webSearchEnabled: webSearchEnabled,
         maxToolRetryLimit: maxToolRetryLimit,
         agentPermissionMode: agentPermissionMode,
-        uiTransitionsEnabled: uiTransitionsEnabled
+        uiTransitionsEnabled: uiTransitionsEnabled,
+        enabledSkills: enabledSkills
     };
 
     if (fs) {
@@ -720,3 +723,83 @@ document.addEventListener("DOMContentLoaded", () => {
         providerSelect.addEventListener("change", handleProviderChange);
     }
 });
+
+function renderSkillsSettingsUI() {
+    const container = document.getElementById("settings-skills-list");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    if (!skillsList || skillsList.length === 0) {
+        container.innerHTML = `<div style="font-size: 10px; color: var(--text-secondary); font-style: italic; text-align: center; padding: 6px 0;">No skills found.</div>`;
+        return;
+    }
+    
+    skillsList.forEach(skill => {
+        const item = document.createElement("div");
+        item.style.display = "flex";
+        item.style.flexDirection = "column";
+        item.style.gap = "4px";
+        item.style.padding = "6px";
+        item.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+        
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.alignItems = "center";
+        header.style.justifyContent = "space-between";
+        
+        const titleWrap = document.createElement("div");
+        titleWrap.style.display = "flex";
+        titleWrap.style.alignItems = "center";
+        titleWrap.style.gap = "6px";
+        
+        const title = document.createElement("span");
+        title.style.fontWeight = "600";
+        title.style.color = "var(--text-primary)";
+        title.style.fontSize = "11px";
+        title.innerText = skill.title;
+        
+        const badge = document.createElement("span");
+        badge.style.fontSize = "8px";
+        badge.style.padding = "1px 4px";
+        badge.style.borderRadius = "2px";
+        badge.style.textTransform = "uppercase";
+        if (skill.isBuiltIn) {
+            badge.style.background = "rgba(20, 115, 230, 0.15)";
+            badge.style.color = "var(--text-accent)";
+            badge.innerText = "Built-in";
+        } else {
+            badge.style.background = "rgba(0, 200, 81, 0.15)";
+            badge.style.color = "var(--text-success)";
+            badge.innerText = "Custom";
+        }
+        
+        titleWrap.appendChild(title);
+        titleWrap.appendChild(badge);
+        
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!enabledSkills[skill.id];
+        checkbox.style.cursor = "pointer";
+        checkbox.style.width = "14px";
+        checkbox.style.height = "14px";
+        checkbox.style.accentColor = "var(--text-accent)";
+        checkbox.addEventListener("change", (e) => {
+            skillsManager.toggleSkill(skill.id, e.target.checked);
+        });
+        
+        header.appendChild(titleWrap);
+        header.appendChild(checkbox);
+        
+        const desc = document.createElement("span");
+        desc.style.fontSize = "9px";
+        desc.style.color = "var(--text-secondary)";
+        desc.style.lineHeight = "1.3";
+        desc.innerText = skill.description;
+        
+        item.appendChild(header);
+        item.appendChild(desc);
+        container.appendChild(item);
+    });
+}
+
+window.renderSkillsSettingsUI = renderSkillsSettingsUI;

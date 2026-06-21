@@ -396,6 +396,16 @@
                             </div>
                         </div>
 
+                        <div class="field-group" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="margin: 0; font-weight: 600;">Custom Agent Skills</label>
+                                <button type="button" id="btn-open-skills-folder" class="txt-btn" style="color: var(--text-accent); font-weight: 600; cursor: pointer; background: transparent; border: none; font-size: 10px;">Open Folder</button>
+                            </div>
+                            <div id="settings-skills-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; padding: 6px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--bg-input);">
+                                <!-- Populate skills dynamically -->
+                            </div>
+                        </div>
+
                         <div class="drawer-actions"
                             style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px;">
                             <button type="submit" id="btn-save-settings" class="btn-primary">Save & Apply</button>
@@ -424,6 +434,7 @@
     <script src="lib/CSInterface.js"></script>
     <!-- Modularized Controller components -->
     <script src="js/state.js"></script>
+    <script src="js/skills.js"></script>
     <script src="js/settings.js"></script>
     <script src="js/api-client.js"></script>
     <script src="js/timeline.js"></script>

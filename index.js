@@ -15,8 +15,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 2. Load configurations and states resiliently
     try {
         await loadSettings();
+        if (window.skillsManager && typeof window.skillsManager.initSkills === "function") {
+            await window.skillsManager.initSkills();
+        }
     } catch (e) {
-        console.error("Failed to load settings:", e);
+        console.error("Failed to load settings or skills:", e);
     }
     
     try {
@@ -107,9 +110,21 @@ function initUI() {
         if (typeof renderDeniedToolsList === "function") {
             renderDeniedToolsList();
         }
+        if (typeof renderSkillsSettingsUI === "function") {
+            renderSkillsSettingsUI();
+        }
     });
     btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     formSettings.addEventListener("submit", saveSettings);
+
+    const btnOpenSkillsFolder = document.getElementById("btn-open-skills-folder");
+    if (btnOpenSkillsFolder) {
+        btnOpenSkillsFolder.addEventListener("click", () => {
+            if (window.skillsManager && typeof window.skillsManager.openSkillsFolder === "function") {
+                window.skillsManager.openSkillsFolder();
+            }
+        });
+    }
 
     tabChat.addEventListener("click", () => switchTab("chat"));
     tabConsole.addEventListener("click", () => switchTab("console"));

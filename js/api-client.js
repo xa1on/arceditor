@@ -343,6 +343,25 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
 function getSystemInstructionsWithPlan(includePlan = true) {
     let instructions = typeof SYSTEM_INSTRUCTIONS !== "undefined" ? SYSTEM_INSTRUCTIONS : "";
     
+    // Inject active custom skills
+    if (typeof skillsList !== "undefined" && typeof enabledSkills !== "undefined" && fs) {
+        let skillsText = "";
+        for (let i = 0; i < skillsList.length; i++) {
+            const skill = skillsList[i];
+            if (enabledSkills[skill.id]) {
+                try {
+                    const content = fs.readFileSync(skill.filePath, 'utf8');
+                    skillsText += `\n---\n### SKILL: ${skill.title}\n${content}\n`;
+                } catch (err) {
+                    console.error(`Failed to read skill content for ${skill.id}:`, err);
+                }
+            }
+        }
+        if (skillsText) {
+            instructions += `\n\n=== ACTIVE CUSTOM SKILLS & WORKFLOWS ===\nYou have access to the following custom skills and workflows. Always follow these design patterns and code structures when appropriate:\n${skillsText}\n========================================\n`;
+        }
+    }
+    
     let catalog = "";
     if (typeof SYSTEM_TOOLS_ORDER !== "undefined" && typeof SYSTEM_TOOL_DESCRIPTIONS !== "undefined") {
         let counter = 1;

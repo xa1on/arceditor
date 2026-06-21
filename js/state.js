@@ -29,6 +29,8 @@ let agentHistory = [];
 let attachedFrames = [];
 let installedEffects = {};
 let lastApiUsage = null; // { promptTokens, completionTokens, totalTokens }
+let skillsList = [];
+let enabledSkills = {};
 
 // Safe Node.js loading (allows mockup testing inside standalone browsers)
 let fs = null, path = null, os = null, httpsClient = null, httpClient = null, url = null;
