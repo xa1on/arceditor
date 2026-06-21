@@ -1501,18 +1501,21 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
         restoreDetailsState(completedTurnsArea, completedTurnStates);
     }
 
-    // Collapse the previous completed turn in the DOM as soon as the active turn starts streaming content
+    // Collapse the previous completed turn in the DOM only once as soon as the active turn starts streaming content
     if (activeTurnHasContent && completedTurns.length > 0) {
         const lastTurnNum = completedTurns[completedTurns.length - 1].turnNum;
-        const lastTurnDetails = completedTurnsArea.querySelector(`#details-turn-${bubbleId}-${lastTurnNum}`);
-        if (lastTurnDetails && lastTurnDetails.hasAttribute("open")) {
-            if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
-                lastTurnDetails.removeAttribute("open");
-            } else if (typeof window.collapseDetailsWithAnimation === "function") {
-                window.collapseDetailsWithAnimation(lastTurnDetails);
-            } else {
-                lastTurnDetails.removeAttribute("open");
+        if (aiBubble._lastCollapsedTurnNum !== lastTurnNum) {
+            const lastTurnDetails = completedTurnsArea.querySelector(`#details-turn-${bubbleId}-${lastTurnNum}`);
+            if (lastTurnDetails && lastTurnDetails.hasAttribute("open")) {
+                if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+                    lastTurnDetails.removeAttribute("open");
+                } else if (typeof window.collapseDetailsWithAnimation === "function") {
+                    window.collapseDetailsWithAnimation(lastTurnDetails);
+                } else {
+                    lastTurnDetails.removeAttribute("open");
+                }
             }
+            aiBubble._lastCollapsedTurnNum = lastTurnNum;
         }
     }
 

@@ -1659,6 +1659,57 @@ select.form-input {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Keyframes for new element entry animations */
+@keyframes entry-slide-down {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes entry-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slide-down-bar {
+    from {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Entry animations for active turn container, confirmation prompts, and new completed turns */
+.active-turn-container,
+.tool-confirm-card,
+.completed-turns-area > .agent-turn-details:last-child {
+    animation: entry-slide-down 0.25s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Entry animations for chat bubbles */
+.message {
+    animation: entry-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Entry animation for active plan bar */
+.pinned-plan-bar:not(.hidden) {
+    animation: slide-down-bar 0.25s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 /* Global animations and transitions disable override */
 body.no-transitions *, 
 body.no-transitions *::before, 

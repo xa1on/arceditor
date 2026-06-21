@@ -35,15 +35,16 @@ function renderTurnImagesHtml(images) {
 
 function parseObservations(observations) {
     if (!observations) return [];
-    const lines = observations.split("\n");
+    const normalized = observations.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const parts = normalized.split(/\n(?=- Tool ")/);
     const results = [];
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (line.indexOf('- Tool "') === 0) {
-            const closingQuote = line.indexOf('"', 8);
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i].trim();
+        if (part.indexOf('- Tool "') === 0) {
+            const closingQuote = part.indexOf('"', 8);
             if (closingQuote !== -1) {
-                const tool = line.substring(8, closingQuote);
-                const rest = line.substring(closingQuote + 2).trim(); // Skip ": "
+                const tool = part.substring(8, closingQuote);
+                const rest = part.substring(closingQuote + 2).trim(); // Skip ": "
                 let status = "allowed";
                 let reason = "";
                 if (rest.indexOf("Denied by user.") === 0) {
@@ -55,14 +56,109 @@ function parseObservations(observations) {
                 } else if (rest.indexOf("Blocked by project security configuration.") === 0) {
                     status = "blocked";
                 }
-                results.push({ tool, status, reason });
+                results.push({ tool, status, reason, output: rest });
             }
         }
     }
     return results;
 }
 
-function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "default") {
+function formatToolObservation(toolName, output, turnNum) {
+    if (!output) return "";
+    
+    // Check if it's askQuestion
+    if (toolName === "askQuestion") {
+        const lines = output.split("\n");
+        let qaList = [];
+        let currentQA = null;
+        for (let j = 0; j < lines.length; j++) {
+            const line = lines[j].trim();
+            if (line.indexOf('- Question: "') === 0) {
+                if (currentQA) qaList.push(currentQA);
+                currentQA = {
+                    question: line.substring('- Question: "'.length, line.length - 1),
+                    answer: ""
+                };
+            } else if (line.indexOf('Answer: ') === 0 && currentQA) {
+                let ans = line.substring('Answer: '.length);
+                if (ans.startsWith('"') && ans.endsWith('"')) {
+                    ans = ans.substring(1, ans.length - 1);
+                } else if (ans.startsWith('[') && ans.endsWith(']')) {
+                    try {
+                        ans = JSON.parse(ans).join(", ");
+                    } catch (e) {}
+                }
+                currentQA.answer = ans;
+            }
+        }
+        if (currentQA) qaList.push(currentQA);
+        
+        if (qaList.length > 0) {
+            return `
+            <div style="font-size: 10px; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; background: var(--bg-input); padding: 6px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm);">
+                ${qaList.map(qa => `
+                    <div style="border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 2px; margin-bottom: 2px;">
+                        <div style="color: var(--text-secondary); font-weight: 500;">Q: ${qa.question}</div>
+                        <div style="color: var(--text-primary); padding-left: 6px; font-family: var(--font-mono); font-size: 9px; margin-top: 1px;">A: ${qa.answer}</div>
+                    </div>
+                `).join("")}
+            </div>
+            `;
+        }
+    }
+    
+    // Check if it's submitPlan
+    if (toolName === "submitPlan") {
+        const lines = output.split("\n");
+        let status = "approved";
+        let reason = "";
+        let planContent = "";
+        let isCapturingPlan = false;
+        
+        for (let j = 0; j < lines.length; j++) {
+            const line = lines[j];
+            if (line.indexOf("Plan rejected by user") !== -1 || line.indexOf("Denied by user") !== -1) {
+                status = "rejected";
+                const reasonIdx = line.indexOf("Reason: ");
+                if (reasonIdx !== -1) {
+                    reason = line.substring(reasonIdx + 8);
+                    if (reason.startsWith('"') && reason.endsWith('"')) {
+                        reason = reason.substring(1, reason.length - 1);
+                    }
+                }
+            } else if (line.indexOf("Plan approved by user") !== -1) {
+                status = "approved";
+                isCapturingPlan = true;
+            } else if (isCapturingPlan || line.indexOf("- Tool \"submitPlan\":") === -1) {
+                planContent += (planContent ? "\n" : "") + line;
+            }
+        }
+        
+        if (planContent.indexOf("Plan approved by user") === 0) {
+            planContent = planContent.substring("Plan approved by user. Plan details:\n".length);
+        }
+        
+        if (status === "approved") {
+            return `
+            <div style="font-size: 10px; margin-top: 4px; background: rgba(20, 115, 230, 0.05); padding: 8px; border: 1px solid var(--text-accent); border-radius: var(--border-radius-sm);">
+                ${formatMarkdown(planContent, turnNum)}
+            </div>
+            `;
+        } else {
+            const displayReason = reason ? `: "${reason}"` : "";
+            return `
+            <div style="color: var(--text-error); font-weight: 600; font-size: 10px; margin-top: 4px;">
+                Plan Rejected${displayReason}
+            </div>
+            `;
+        }
+    }
+    
+    // Generic display
+    return `<pre class="observation-pre" style="margin-top: 4px !important; background: #111 !important; color: var(--text-secondary) !important; font-family: var(--font-mono) !important; font-size: 9.5px !important; padding: 6px !important; border: 1px solid var(--border-color) !important; white-space: pre-wrap; word-break: break-all;">${output}</pre>`;
+}
+
+function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "default", images = null) {
     // Unescape HTML entities first (since formatMarkdown escapes them before processing code blocks)
     const cleanCode = code
         .replace(/&amp;/g, "&")
@@ -174,8 +270,39 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
                 </div>
             ` : "";
 
+            let observationHtml = "";
+            if (statusInfo && statusInfo.output) {
+                let imgHtml = "";
+                if ((call.tool === "captureActiveFrame" || call.tool === "captureCompositionSequence") && images) {
+                    imgHtml = renderTurnImagesHtml(images);
+                }
+
+                const isSuccess = statusInfo.output.trim().indexOf("Success:") === 0 || statusInfo.status === "allowed";
+                const isError = statusInfo.output.trim().toLowerCase().indexOf("error:") !== -1 || statusInfo.status === "blocked";
+
+                let titleColor = "var(--text-accent)";
+                let titleText = "Observation";
+                if (isSuccess) {
+                    titleColor = "var(--text-success)";
+                    if (call.tool === "askQuestion") titleText = "Questions Answered";
+                    else if (call.tool === "submitPlan") titleText = "Plan Approved";
+                }
+                if (isError) {
+                    titleColor = "var(--text-error)";
+                    if (call.tool === "submitPlan") titleText = "Plan Rejected";
+                }
+
+                observationHtml = `
+                    <div class="tool-observation-wrap" style="margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
+                        <div style="font-size: 9.5px; font-weight: 600; color: ${titleColor}; text-transform: uppercase; margin-bottom: 4px;">${titleText}:</div>
+                        ${formatToolObservation(call.tool, statusInfo.output, activeTurn)}
+                        ${imgHtml}
+                    </div>
+                `;
+            }
+
             html += `
-                <details class="tool-call-card status-${status}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}" open>
+                <details class="tool-call-card status-${status} ${isStreaming ? 'streaming' : ''}" id="${cardId}" data-tool="${call.tool}" data-index="${index}" data-status="${status}" open>
                     <summary class="tool-call-header">
                         <span class="tool-badge">Tool Call${isStreaming ? ' (Streaming...)' : ''}</span>
                         <span class="tool-name">${call.tool || '...'}</span>
@@ -189,6 +316,7 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
                         <div class="tool-raw-json-wrap">
                             ${rawJsonHtml}
                         </div>
+                        ${observationHtml}
                     </div>
                 </details>
             `;
@@ -212,13 +340,17 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = f
         const isMostRecent = i === turns.length - 1;
         const isOpen = (openTurnNums && openTurnNums.indexOf(turn.turnNum) !== -1) || (executing && isMostRecent && !activeTurnHasContent);
         const openAttr = isOpen ? " open" : "";
-        const imagesHtml = renderTurnImagesHtml(turn.images);
+
+        const contentHtml = formatMarkdown(turn.content !== undefined ? turn.content : turn.llmResponse, turn.turnNum, turn.observations, turn.images);
+        const hasToolCards = contentHtml.indexOf("tool-call-card") !== -1;
+        const hasCaptureToolCard = contentHtml.indexOf('data-tool="captureActiveFrame"') !== -1 || contentHtml.indexOf('data-tool="captureCompositionSequence"') !== -1;
+        
+        const imagesHtml = (!hasCaptureToolCard) ? renderTurnImagesHtml(turn.images) : "";
 
         const reasoningHtml = turn.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${prefix}${turn.turnNum}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(turn.reasoning, turn.turnNum)}</div></details>` : "";
-        const contentHtml = formatMarkdown(turn.content !== undefined ? turn.content : turn.llmResponse, turn.turnNum);
 
         let obsHtml = "";
-        if (turn.observations) {
+        if (turn.observations && !hasToolCards) {
             if (turn.observations.indexOf('- Tool "askQuestion":') !== -1) {
                 const lines = turn.observations.split("\n");
                 let qaList = [];
@@ -327,6 +459,15 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = f
         }
 
         if (turn.type === "failed") {
+            let failedObsHtml = "";
+            if (!hasToolCards) {
+                failedObsHtml = `
+                <div class="turn-observations">
+                    <strong style="color: var(--text-error);">Error Observation:</strong>
+                    <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${turn.observations}</pre>
+                </div>
+                `;
+            }
             html += `
             <details class="agent-turn-details" id="details-turn-${prefix}${turn.turnNum}" style="border-color: var(--text-error);"${openAttr}>
                 <summary class="agent-turn-summary" style="background-color: rgba(255, 68, 68, 0.15);">
@@ -337,10 +478,7 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = f
                     ${reasoningHtml}
                     ${contentHtml}
                     ${imagesHtml}
-                    <div class="turn-observations">
-                        <strong style="color: var(--text-error);">Error Observation:</strong>
-                        <pre class="observation-pre" style="border-color: var(--text-error); color: var(--text-error) !important;">${turn.observations}</pre>
-                    </div>
+                    ${failedObsHtml}
                 </div>
             </details>
             `;
@@ -364,7 +502,7 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = f
     return html;
 }
 
-function formatMarkdown(text, turnNum, observations) {
+function formatMarkdown(text, turnNum, observations, images) {
     if (!text) return "";
     const activeTurn = turnNum || "default";
 
@@ -414,7 +552,7 @@ function formatMarkdown(text, turnNum, observations) {
 
             let renderedBlock = "";
             if (lang === "json") {
-                const formatted = tryFormatToolCall(code, !isClosed, toolStatuses, activeTurn);
+                const formatted = tryFormatToolCall(code, !isClosed, toolStatuses, activeTurn, images);
                 if (formatted) {
                     renderedBlock = formatted;
                 } else {
@@ -423,7 +561,7 @@ function formatMarkdown(text, turnNum, observations) {
             } else if (lang === "javascript" || lang === "js" || lang === "extendscript" || lang === "jsx") {
                 jsxBlockCount++;
                 renderedBlock = `
-                <details class="jsx-code-details" id="jsx-code-turn-${activeTurn}-${jsxBlockCount}" ${!isClosed ? 'open' : ''}>
+                <details class="jsx-code-details ${!isClosed ? 'streaming' : ''}" id="jsx-code-turn-${activeTurn}-${jsxBlockCount}" ${!isClosed ? 'open' : ''}>
                     <summary class="jsx-code-summary">ExtendScript JSX Code Block${!isClosed ? ' (Streaming...)' : ''}</summary>
                     <pre class="code-viewport"><code>${highlightCode(code, lang)}</code></pre>
                 </details>

@@ -1199,7 +1199,14 @@ window.promptUserForToolConfirmation = function(tc) {
             </div>
         `;
 
-        contentDiv.appendChild(cardDiv);
+        let targetDiv = contentDiv;
+        if (activeContainer) {
+            const activeContentArea = activeContainer.querySelector(".active-content-area");
+            if (activeContentArea) {
+                targetDiv = activeContentArea;
+            }
+        }
+        targetDiv.appendChild(cardDiv);
         scrollToBottom(true);
 
         const btnAllow = cardDiv.querySelector(".btn-confirm-allow");
@@ -1331,7 +1338,14 @@ window.promptUserForQuestions = function(tc) {
         cardDiv.style.padding = "8px";
         cardDiv.style.background = "var(--bg-surface)";
 
-        contentDiv.appendChild(cardDiv);
+        let targetDiv = contentDiv;
+        if (activeContainer) {
+            const activeContentArea = activeContainer.querySelector(".active-content-area");
+            if (activeContentArea) {
+                targetDiv = activeContentArea;
+            }
+        }
+        targetDiv.appendChild(cardDiv);
         scrollToBottom(true);
 
         let currentQuestionIdx = 0;
@@ -1585,6 +1599,7 @@ window.collapseDetailsWithAnimation = function(detailsEl) {
     detailsEl.style.height = `${collapsedHeight}px`;
 
     const onEnd = (e) => {
+        if (e.target !== detailsEl) return;
         if (e.propertyName === "height") {
             detailsEl.removeEventListener("transitionend", onEnd);
             detailsEl.removeAttribute("open");
@@ -1645,6 +1660,7 @@ window.expandDetailsWithAnimation = function(detailsEl) {
     detailsEl.style.height = `${fullHeight}px`;
 
     const onEnd = (e) => {
+        if (e.target !== detailsEl) return;
         if (e.propertyName === "height") {
             detailsEl.removeEventListener("transitionend", onEnd);
             detailsEl.style.height = "";
