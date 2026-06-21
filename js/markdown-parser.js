@@ -623,6 +623,11 @@ function formatMarkdown(text, turnNum, observations, images) {
             const lTrim = line.trim();
             if (!lTrim) return "";
 
+            // Horizontal rule
+            if (/^(?:-\s*){3,}$|^(?:\*\s*){3,}$|^(?:_\s*){3,}$/.test(lTrim)) {
+                return `<hr>`;
+            }
+
             // Calculate indentation styling based on leading spaces
             const leadingSpaces = line.match(/^(\s*)/)[0];
             const indentLevel = leadingSpaces.length;
@@ -672,7 +677,7 @@ function formatMarkdown(text, turnNum, observations, images) {
             const lineHtml = processedLines[j];
             if (!lineHtml) continue;
 
-            const isBlock = lineHtml.startsWith("<div") || lineHtml.startsWith("<h") || lineHtml.startsWith("<block") || lineHtml.startsWith("<table") || lineHtml.startsWith("<ul") || lineHtml.startsWith("<ol");
+            const isBlock = lineHtml.startsWith("<div") || lineHtml.startsWith("<h") || lineHtml.startsWith("<block") || lineHtml.startsWith("<table") || lineHtml.startsWith("<ul") || lineHtml.startsWith("<ol") || lineHtml.startsWith("<hr");
             if (isBlock) {
                 if (inParagraph) {
                     finalHtml += "</p>";
