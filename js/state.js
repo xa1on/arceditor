@@ -15,6 +15,7 @@ let openaiReasoningEffort = "medium";
 let claudeThinkingBudget = 2048;
 let agentPermissionMode = "review";
 let webSearchEnabled = true;
+let uiTransitionsEnabled = true;
 
 let providerSettings = {
     lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },

@@ -353,17 +353,6 @@ ${code}`;
                 }
                 return;
             }
-
-            // 3. User manually toggled reasoning details block
-            const reasoningSummary = e.target.closest(".reasoning-details summary");
-            if (reasoningSummary) {
-                const details = reasoningSummary.closest(".reasoning-details");
-                if (details) {
-                    const willBeOpen = !details.hasAttribute("open");
-                    window._userReasoningState = willBeOpen;
-                    window._userToggledReasoning = true;
-                }
-            }
         });
     }
 
@@ -373,6 +362,29 @@ ${code}`;
             updatePermissionModeDescription(e.target.value);
         });
     }
+
+    // Global summary click animator delegator
+    document.addEventListener("click", (e) => {
+        const summary = e.target.closest("summary");
+        if (summary) {
+            const details = summary.closest("details");
+            if (details) {
+                e.preventDefault();
+                const wasOpen = details.hasAttribute("open");
+                if (wasOpen) {
+                    window.collapseDetailsWithAnimation(details);
+                } else {
+                    window.expandDetailsWithAnimation(details);
+                }
+
+                // Preserve reasoning toggling states
+                if (details.classList.contains("reasoning-details")) {
+                    window._userReasoningState = !wasOpen;
+                    window._userToggledReasoning = true;
+                }
+            }
+        }
+    });
 }
 
 window.updatePermissionModeDescription = function(mode) {
@@ -439,10 +451,32 @@ async function copyToClipboard(text) {
 
 function toggleSettingsDrawer(open) {
     const drawer = document.getElementById("settings-drawer");
+    if (!drawer) return;
+    
     if (open) {
         drawer.classList.remove("hidden");
+        // Force reflow
+        drawer.offsetHeight;
+        drawer.classList.add("active");
     } else {
-        drawer.classList.add("hidden");
+        drawer.classList.remove("active");
+        
+        // If transitions are disabled, hide it instantly
+        if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+            drawer.classList.add("hidden");
+            return;
+        }
+
+        // Otherwise, wait for transition to finish
+        const onTransitionEnd = (e) => {
+            if (e.target === drawer || e.propertyName === "visibility" || e.propertyName === "transform") {
+                drawer.removeEventListener("transitionend", onTransitionEnd);
+                if (!drawer.classList.contains("active")) {
+                    drawer.classList.add("hidden");
+                }
+            }
+        };
+        drawer.addEventListener("transitionend", onTransitionEnd);
     }
 }
 
@@ -560,13 +594,20 @@ window.toggleWelcomeScreen = toggleWelcomeScreen;
 let userHasScrolledUp = false;
 let isProgrammaticScroll = false;
 
-function scrollToBottom(force = false) {
+function scrollToBottom(force = false, smooth = false) {
     const scroller = document.getElementById("chat-messages");
     if (!scroller) return;
 
     if (force || !userHasScrolledUp) {
         isProgrammaticScroll = true;
-        scroller.scrollTop = scroller.scrollHeight;
+        if (smooth && typeof uiTransitionsEnabled !== "undefined" && uiTransitionsEnabled) {
+            scroller.scrollTo({
+                top: scroller.scrollHeight,
+                behavior: "smooth"
+            });
+        } else {
+            scroller.scrollTop = scroller.scrollHeight;
+        }
         setTimeout(() => {
             isProgrammaticScroll = false;
         }, 50);
@@ -650,7 +691,7 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
     }
 
     scroller.appendChild(wrapper);
-    scrollToBottom(true);
+    scrollToBottom(true, true);
 
     return id;
 }
@@ -666,7 +707,7 @@ function addSystemMessage(text) {
 
     wrapper.appendChild(content);
     scroller.appendChild(wrapper);
-    scrollToBottom(true);
+    scrollToBottom(true, true);
 }
 
 let tokenCountTimeout = null;
@@ -1502,6 +1543,97 @@ window.updatePinnedPlanUI = function() {
         container.classList.add("hidden");
         closePlanModal();
     }
+};
+
+window.collapseDetailsWithAnimation = function(detailsEl) {
+    if (!detailsEl || !detailsEl.hasAttribute("open") || detailsEl.dataset.animating === "true") return;
+
+    if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+        detailsEl.removeAttribute("open");
+        return;
+    }
+
+    detailsEl.dataset.animating = "true";
+    const summary = detailsEl.querySelector("summary");
+    
+    // Calculate exact collapsed height (summary height + details borders + details padding)
+    const computedStyle = window.getComputedStyle(detailsEl);
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
+    const collapsedHeight = (summary ? summary.offsetHeight : 24) + paddingTop + paddingBottom + borderTop + borderBottom;
+    
+    const startHeight = detailsEl.offsetHeight;
+
+    detailsEl.style.height = `${startHeight}px`;
+    detailsEl.style.overflow = "hidden";
+
+    // Force reflow
+    detailsEl.offsetHeight;
+
+    detailsEl.style.transition = "height 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+    detailsEl.style.height = `${collapsedHeight}px`;
+
+    const onEnd = (e) => {
+        if (e.propertyName === "height") {
+            detailsEl.removeEventListener("transitionend", onEnd);
+            detailsEl.removeAttribute("open");
+            detailsEl.style.height = "";
+            detailsEl.style.overflow = "";
+            detailsEl.style.transition = "";
+            detailsEl.dataset.animating = "false";
+        }
+    };
+    detailsEl.addEventListener("transitionend", onEnd);
+};
+
+window.expandDetailsWithAnimation = function(detailsEl) {
+    if (!detailsEl || detailsEl.hasAttribute("open") || detailsEl.dataset.animating === "true") return;
+
+    if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+        detailsEl.setAttribute("open", "");
+        return;
+    }
+
+    detailsEl.dataset.animating = "true";
+    const summary = detailsEl.querySelector("summary");
+    
+    // Calculate exact collapsed height (summary height + details borders + details padding)
+    const computedStyle = window.getComputedStyle(detailsEl);
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
+    const collapsedHeight = (summary ? summary.offsetHeight : 24) + paddingTop + paddingBottom + borderTop + borderBottom;
+
+    // First set open attribute so contents are rendered and we can measure
+    detailsEl.setAttribute("open", "");
+
+    // Measure full height
+    const fullHeight = detailsEl.offsetHeight;
+
+    // Set start height to collapsed height
+    detailsEl.style.height = `${collapsedHeight}px`;
+    detailsEl.style.overflow = "hidden";
+
+    // Force reflow
+    detailsEl.offsetHeight;
+
+    // Transition to full height
+    detailsEl.style.transition = "height 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+    detailsEl.style.height = `${fullHeight}px`;
+
+    const onEnd = (e) => {
+        if (e.propertyName === "height") {
+            detailsEl.removeEventListener("transitionend", onEnd);
+            detailsEl.style.height = "";
+            detailsEl.style.overflow = "";
+            detailsEl.style.transition = "";
+            detailsEl.dataset.animating = "false";
+        }
+    };
+    detailsEl.addEventListener("transitionend", onEnd);
 };
 
 

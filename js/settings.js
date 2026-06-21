@@ -54,6 +54,7 @@ async function loadSettings() {
             webSearchEnabled = data.webSearchEnabled !== undefined ? !!data.webSearchEnabled : true;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             agentPermissionMode = data.agentPermissionMode || "review";
+            uiTransitionsEnabled = data.uiTransitionsEnabled !== undefined ? !!data.uiTransitionsEnabled : true;
             loaded = true;
         } catch (e) {
             if (e.code !== 'ENOENT') {
@@ -71,6 +72,7 @@ async function loadSettings() {
         webSearchEnabled = true;
         maxToolRetryLimit = 15;
         agentPermissionMode = "review";
+        uiTransitionsEnabled = true;
     }
 
     // Sync into settings DOM
@@ -99,6 +101,14 @@ async function loadSettings() {
     if (webSearchCheckbox) webSearchCheckbox.checked = webSearchEnabled;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
+
+    const transitionsCheckbox = document.getElementById("setting-ui-transitions");
+    if (transitionsCheckbox) transitionsCheckbox.checked = uiTransitionsEnabled;
+    if (!uiTransitionsEnabled) {
+        document.body.classList.add("no-transitions");
+    } else {
+        document.body.classList.remove("no-transitions");
+    }
 
     const permissionModeSelect = document.getElementById("setting-permission-mode");
     if (permissionModeSelect) {
@@ -155,6 +165,16 @@ async function saveSettings(e) {
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxToolRetryLimit = parseInt(maxRetryInput.value, 10) || 15;
 
+    const transitionsCheckbox = document.getElementById("setting-ui-transitions");
+    if (transitionsCheckbox) {
+        uiTransitionsEnabled = transitionsCheckbox.checked;
+        if (!uiTransitionsEnabled) {
+            document.body.classList.add("no-transitions");
+        } else {
+            document.body.classList.remove("no-transitions");
+        }
+    }
+
     const config = {
         provider: currentProvider,
         providerSettings: providerSettings,
@@ -162,7 +182,8 @@ async function saveSettings(e) {
         includeBase64InDebugLog: includeBase64InDebugLog,
         webSearchEnabled: webSearchEnabled,
         maxToolRetryLimit: maxToolRetryLimit,
-        agentPermissionMode: agentPermissionMode
+        agentPermissionMode: agentPermissionMode,
+        uiTransitionsEnabled: uiTransitionsEnabled
     };
 
     if (fs) {

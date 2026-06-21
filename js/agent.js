@@ -1484,7 +1484,13 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
         const lastTurnNum = completedTurns[completedTurns.length - 1].turnNum;
         const lastTurnDetails = completedTurnsArea.querySelector(`#details-turn-${bubbleId}-${lastTurnNum}`);
         if (lastTurnDetails && lastTurnDetails.hasAttribute("open")) {
-            lastTurnDetails.removeAttribute("open");
+            if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+                lastTurnDetails.removeAttribute("open");
+            } else if (typeof window.collapseDetailsWithAnimation === "function") {
+                window.collapseDetailsWithAnimation(lastTurnDetails);
+            } else {
+                lastTurnDetails.removeAttribute("open");
+            }
         }
     }
 

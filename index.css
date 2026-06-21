@@ -664,6 +664,15 @@ textarea::placeholder {
     width: 100%;
     height: 100%;
     z-index: 100;
+    visibility: hidden;
+    pointer-events: none;
+    transition: visibility 0.25s step-end;
+}
+
+.drawer.active {
+    visibility: visible;
+    pointer-events: auto;
+    transition: visibility 0s;
 }
 
 .drawer.hidden {
@@ -676,7 +685,13 @@ textarea::placeholder {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drawer.active .drawer-overlay {
+    opacity: 1;
 }
 
 .drawer-content {
@@ -690,6 +705,9 @@ textarea::placeholder {
     border-left: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
 }
 
 .drawer-header {
@@ -1017,7 +1035,6 @@ select.form-input {
     background-position: 0 0, 8px 8px;
 }
 
-/* Collapsible Agent Turns Styling */
 .agent-turn-details {
     background-color: #1b1b1b;
     border: 1px solid var(--border-color);
@@ -1025,6 +1042,7 @@ select.form-input {
     margin-top: 4px;
     margin-bottom: 8px;
     overflow: hidden;
+    transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .agent-turn-details[open] {
@@ -1109,6 +1127,7 @@ select.form-input {
     border-left: 3px solid var(--text-accent);
     border-radius: var(--border-radius-md);
     overflow: hidden;
+    transition: border-left-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .tool-call-header {
@@ -1625,4 +1644,17 @@ select.form-input {
     margin: 2px 8px 0 0 !important;
     flex-shrink: 0 !important;
     accent-color: var(--text-accent);
+}
+
+/* UI Transition overrides and utility classes */
+.tab-btn, .chip, .icon-btn, .btn-primary, .btn-secondary, .send-btn, .stop-btn {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Global animations and transitions disable override */
+body.no-transitions *, 
+body.no-transitions *::before, 
+body.no-transitions *::after {
+    transition: none !important;
+    animation: none !important;
 }
