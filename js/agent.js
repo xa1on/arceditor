@@ -454,14 +454,14 @@ async function runAgenticExecutionLoop(userText) {
                     const parsedFinal = parseStreamingReasoning(llmResponse);
                     const reasoningHtml = parsedFinal.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedFinal.reasoning, completedTurns.length + 1)}</div></details>` : "";
                     const contentHtml = formatMarkdown(parsedFinal.content, completedTurns.length + 1);
-                    updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
+                    updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml, true);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
                 }
 
             } catch (err) {
                 console.error("Loop iteration failed:", err);
-                updateAiBubbleTurns(aiBubble, completedTurns, "", `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`);
+                updateAiBubbleTurns(aiBubble, completedTurns, "", `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`, true);
                 if (typeof scrollToBottom === "function") scrollToBottom();
                 isCompleted = true;
             }
@@ -476,7 +476,7 @@ async function runAgenticExecutionLoop(userText) {
             updateAiBubbleTurns(aiBubble, completedTurns, "",
                 `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
                 `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
-                `Execution stopped by user.</div>`);
+                `Execution stopped by user.</div>`, true);
             if (typeof scrollToBottom === "function") scrollToBottom();
         } else {
             if (loopRetries >= maxRetries) {
@@ -489,7 +489,7 @@ async function runAgenticExecutionLoop(userText) {
                 }
                 const extraMsg = hasEmptyResponse ? " (An empty response was detected, which could indicate a context window overflow on your local LLM server)." : " Check the JSX Console tab for syntax logs.";
                 updateAiBubbleTurns(aiBubble, completedTurns, "",
-                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached.${extraMsg}</div>`);
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-error);">⚠ Max correction attempts reached.${extraMsg}</div>`, true);
                 if (typeof scrollToBottom === "function") scrollToBottom();
             }
         }
@@ -1356,6 +1356,17 @@ function stopAgentExecution() {
                     activeTurn.remove();
                 }
 
+                const completedTurnsGroup = contentDiv.querySelector(".completed-turns-group");
+                if (completedTurnsGroup && completedTurnsGroup.hasAttribute("open")) {
+                    if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+                        completedTurnsGroup.removeAttribute("open");
+                    } else if (typeof window.collapseDetailsWithAnimation === "function") {
+                        window.collapseDetailsWithAnimation(completedTurnsGroup);
+                    } else {
+                        completedTurnsGroup.removeAttribute("open");
+                    }
+                }
+
                 const activeTurnArea = contentDiv.querySelector(".active-turn-area");
                 if (activeTurnArea) {
                     if (activeTurnArea.innerHTML.indexOf("Execution stopped by user.") === -1) {
@@ -1461,7 +1472,7 @@ function updateBubbleContent(aiBubble, html) {
     restoreDetailsState(content, detailsState);
 }
 
-function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, activeContentHtml) {
+function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, activeContentHtml, isExecutionCompleted = false) {
     const content = aiBubble.querySelector(".message-content");
     if (!content) return;
 
@@ -1516,6 +1527,19 @@ function updateAiBubbleTurns(aiBubble, completedTurns, activeReasoningHtml, acti
                 }
             }
             aiBubble._lastCollapsedTurnNum = lastTurnNum;
+        }
+    }
+
+    if (isExecutionCompleted) {
+        const completedTurnsGroup = completedTurnsArea.querySelector(".completed-turns-group");
+        if (completedTurnsGroup && completedTurnsGroup.hasAttribute("open")) {
+            if (typeof uiTransitionsEnabled !== "undefined" && !uiTransitionsEnabled) {
+                completedTurnsGroup.removeAttribute("open");
+            } else if (typeof window.collapseDetailsWithAnimation === "function") {
+                window.collapseDetailsWithAnimation(completedTurnsGroup);
+            } else {
+                completedTurnsGroup.removeAttribute("open");
+            }
         }
     }
 

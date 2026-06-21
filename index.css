@@ -1035,6 +1035,66 @@ select.form-input {
     background-position: 0 0, 8px 8px;
 }
 
+/* Master Collapsible Completed Turns Group */
+.completed-turns-group {
+    background-color: #1a1a1a;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    margin-top: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.completed-turns-group[open] {
+    border-color: rgba(20, 115, 230, 0.35); /* Subtle AE blue accent border when open */
+}
+
+.completed-turns-group-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background-color: #212121;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    user-select: none;
+    outline: none;
+    border-bottom: 1px solid transparent;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.completed-turns-group[open] > .completed-turns-group-summary {
+    border-bottom-color: var(--border-color);
+    background-color: #232323;
+}
+
+.completed-turns-group-summary:hover {
+    background-color: #262626;
+    color: var(--text-primary);
+}
+
+.completed-turns-group-summary .history-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-accent); /* AE blue accent color for the history icon */
+    flex-shrink: 0;
+}
+
+.completed-turns-group-summary .group-title {
+    flex: 1;
+    font-family: var(--font-sans);
+    letter-spacing: 0.2px;
+}
+
+.completed-turns-group-content {
+    padding: 4px 6px;
+    background-color: #161616;
+}
+
 .agent-turn-details {
     background-color: #1b1b1b;
     border: 1px solid var(--border-color);
@@ -1693,10 +1753,11 @@ select.form-input {
     }
 }
 
-/* Entry animations for active turn container, confirmation prompts, and new completed turns */
+/* Entry animations for active turn container, confirmation prompts, and new completed turns/observations */
 .active-turn-container,
 .tool-confirm-card,
-.completed-turns-area > .agent-turn-details:last-child {
+.turn-observations,
+.tool-observation-wrap {
     animation: entry-slide-down 0.25s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 

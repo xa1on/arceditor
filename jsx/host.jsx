@@ -138,8 +138,8 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
             } catch (e) { }
 
-            // Inspect all layers
-            for (var i = 1; i <= comp.numLayers; i++) {
+            // Inspect all layers from bottom to top
+            for (var i = comp.numLayers; i >= 1; i--) {
                 var layer = comp.layer(i);
                 var layerType = "Unknown";
 
@@ -186,7 +186,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 } catch (e) { }
 
                 var layerData = {
-                    index: layer.index,
+                    index: comp.numLayers - layer.index + 1,
                     id: layer.id,
                     name: layer.name,
                     sourceName: (layer.source && typeof layer.source.name !== "undefined") ? layer.source.name : "",
@@ -428,9 +428,10 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                         return comp.layer(i);
                     }
                 }
-                // Fallback to 1-based index
+                // Fallback to 1-based index (inverted mapping)
                 if (layerRef > 0 && layerRef <= comp.numLayers) {
-                    return comp.layer(layerRef);
+                    var nativeIdx = comp.numLayers - layerRef + 1;
+                    return comp.layer(nativeIdx);
                 }
             }
 
@@ -538,7 +539,8 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                         }
                     }
                 } else if (options.index !== undefined && options.index !== null) {
-                    var targetIdx = Number(options.index);
+                    var agentIdx = Number(options.index);
+                    var targetIdx = comp.numLayers - agentIdx + 1;
                     try {
                         if (targetIdx <= 1) {
                             layer.moveToBeginning();
@@ -1327,7 +1329,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     this.setLayerBlendMode(layer, props.blendMode);
                 }
 
-                return "Success: Added project asset '" + projectItem.name + "' as layer '" + layer.name + "' at index " + layer.index;
+                return "Success: Added project asset '" + projectItem.name + "' as layer '" + layer.name + "' at index " + (comp.numLayers - layer.index + 1);
             } catch (err) {
                 throw err;
             }

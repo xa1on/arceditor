@@ -499,7 +499,21 @@ function renderTurnsHtml(turns, openTurnNums, bubbleId, activeTurnHasContent = f
             `;
         }
     }
-    return html;
+
+    const groupId = `turns-group-${bubbleId || 'default'}`;
+    const folderIconSvg = `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; position:relative; top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline><path d="M20.47 5.58a10 10 0 0 0-16.94 4.42"></path></svg>`;
+
+    return `
+    <details class="completed-turns-group" id="${groupId}" open>
+        <summary class="completed-turns-group-summary">
+            <span class="history-icon">${folderIconSvg}</span>
+            <span class="group-title">Agent Execution History (${turns.length} Turn${turns.length !== 1 ? 's' : ''})</span>
+        </summary>
+        <div class="completed-turns-group-content">
+            ${html}
+        </div>
+    </details>
+    `;
 }
 
 function formatMarkdown(text, turnNum, observations, images) {
