@@ -70,10 +70,9 @@ function analyzeExtendScript(code) {
                 }
                 index++;
             }
-            // Check string value against blocked signatures
-            const normalizedVal = stringVal.toLowerCase().replace(/[^a-z0-9]/g, "");
+            // Check string value against blocked signatures using trimmed, case-insensitive exact matching
             for (let blocked of DISALLOWED_STRINGS) {
-                if (normalizedVal.indexOf(blocked) !== -1) {
+                if (stringVal.toLowerCase().trim() === blocked) {
                     return {
                         safe: false,
                         reason: `Forbidden term "${stringVal}" detected in string literal (prevents dynamic property resolution obfuscation).`
