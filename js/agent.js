@@ -868,21 +868,29 @@ async function executeToolCalls(jsonStr) {
                 observations.push(`- Tool "searchInstalledEffects": ${JSON.stringify(matched)}`);
                 continue;
             } else if (toolName === "captureActiveFrame") {
-                const base64Data = await captureCompositionFrame(true);
-                if (base64Data) {
-                    observations.push(`- Tool "captureActiveFrame": Success: Active frame successfully captured and visually attached.`);
-                    capturedFrameDataDuringLoop = base64Data;
-                } else {
-                    observations.push(`- Tool "captureActiveFrame": Error: Failed to capture active frame preview.`);
+                try {
+                    const base64Data = await captureCompositionFrame(true);
+                    if (base64Data) {
+                        observations.push(`- Tool "captureActiveFrame": Success: Active frame successfully captured and visually attached.`);
+                        capturedFrameDataDuringLoop = base64Data;
+                    } else {
+                        observations.push(`- Tool "captureActiveFrame": Error: Failed to capture active frame preview. No frame data was returned.`);
+                    }
+                } catch (err) {
+                    observations.push(`- Tool "captureActiveFrame": Error: Failed to capture active frame preview. Reason: ${err.message}`);
                 }
                 continue;
             } else if (toolName === "captureCompositionSequence") {
-                const base64List = await captureCompositionSequence(params.startTime, params.endTime, params.numFrames, true);
-                if (base64List && base64List.length > 0) {
-                    observations.push(`- Tool "captureCompositionSequence": Success: Captured and visually attached a sequence of ${base64List.length} frames.`);
-                    capturedFrameDataDuringLoop = base64List;
-                } else {
-                    observations.push(`- Tool "captureCompositionSequence": Error: Failed to capture composition sequence.`);
+                try {
+                    const base64List = await captureCompositionSequence(params.startTime, params.endTime, params.numFrames, true);
+                    if (base64List && base64List.length > 0) {
+                        observations.push(`- Tool "captureCompositionSequence": Success: Captured and visually attached a sequence of ${base64List.length} frames.`);
+                        capturedFrameDataDuringLoop = base64List;
+                    } else {
+                        observations.push(`- Tool "captureCompositionSequence": Error: Failed to capture composition sequence. No frames were returned.`);
+                    }
+                } catch (err) {
+                    observations.push(`- Tool "captureCompositionSequence": Error: Failed to capture composition sequence. Reason: ${err.message}`);
                 }
                 continue;
             } else if (toolName === "undoLastAction") {

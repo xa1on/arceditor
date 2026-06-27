@@ -272,7 +272,7 @@ async function captureCompositionFrame(isAgentCall) {
         if (isAgentCall !== true) {
             addSystemMessage("Visual capture not supported outside After Effects.");
         }
-        return null;
+        throw new Error("Visual capture not supported outside After Effects or CEP environment.");
     }
 
     const previewContainer = document.getElementById("frame-attachment-preview");
@@ -291,70 +291,75 @@ async function captureCompositionFrame(isAgentCall) {
     const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
     const result = await evalScriptAsync(jsxCommand);
 
-    if (result && result.indexOf("Success:") === 0) {
-        try {
-            const returnedPath = result.substring(8).trim();
-            let actualPath = returnedPath;
-
-            let fileFound = false;
-            let lastSize = -1;
-            for (let attempt = 0; attempt < 100; attempt++) {
-                try {
-                    const stats = await fs.promises.stat(actualPath);
-                    if (stats.size > 100 && stats.size === lastSize) {
-                        fileFound = true;
-                        break;
-                    }
-                    lastSize = stats.size;
-                } catch (e) {
-                    // File not ready or does not exist yet
-                }
-                await new Promise(resolve => setTimeout(resolve, 50));
-            }
-
-            if (fileFound) {
-                const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
-
-                if (isAgentCall !== true) {
-                    attachedFrames.push(base64Data);
-
-                    if (typeof renderAttachmentDock === "function") {
-                        renderAttachmentDock();
-                    } else {
-                        const extName = path.extname(actualPath).toLowerCase();
-                        let mimeType = 'image/png';
-                        if (extName === '.jpg' || extName === '.jpeg') {
-                            mimeType = 'image/jpeg';
-                        }
-                        if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
-                        if (previewContainer) previewContainer.classList.remove("hidden");
-                    }
-                    addSystemMessage("Canvas frame captured successfully.");
-                }
-
-                try {
-                    await fs.promises.unlink(actualPath);
-                } catch (e) { }
-
-                return base64Data;
-            } else {
-                console.warn("[ArcEditor] Direct save file did not appear in time.");
-                if (isAgentCall !== true) {
-                    addSystemMessage("Error: Frame capture file write timed out.");
-                }
-            }
-        } catch (err) {
-            console.error("[ArcEditor] Frame capture failed:", err);
-            if (isAgentCall !== true) {
-                addSystemMessage("Error capturing frame: " + err.message);
-            }
-        }
-    } else {
-        if (isAgentCall !== true) {
-            addSystemMessage("Error capturing frame: Save current frame command failed. Result: " + result);
-        }
+    if (!result) {
+        throw new Error("Empty response from After Effects frame capture execution.");
     }
-    return null;
+    if (result.indexOf("Error:") === 0) {
+        throw new Error(result.substring(6).trim());
+    }
+    if (result.indexOf("Success:") !== 0) {
+        throw new Error("Unexpected response from After Effects frame capture: " + result);
+    }
+
+    try {
+        const returnedPath = result.substring(8).trim();
+        let actualPath = returnedPath;
+
+        let fileFound = false;
+        let lastSize = -1;
+        for (let attempt = 0; attempt < 100; attempt++) {
+            try {
+                const stats = await fs.promises.stat(actualPath);
+                if (stats.size > 100 && stats.size === lastSize) {
+                    fileFound = true;
+                    break;
+                }
+                lastSize = stats.size;
+            } catch (e) {
+                // File not ready or does not exist yet
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        if (fileFound) {
+            const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
+
+            if (isAgentCall !== true) {
+                attachedFrames.push(base64Data);
+
+                if (typeof renderAttachmentDock === "function") {
+                    renderAttachmentDock();
+                } else {
+                    const extName = path.extname(actualPath).toLowerCase();
+                    let mimeType = 'image/png';
+                    if (extName === '.jpg' || extName === '.jpeg') {
+                        mimeType = 'image/jpeg';
+                    }
+                    if (previewImg) previewImg.src = `data:${mimeType};base64,${base64Data}`;
+                    if (previewContainer) previewContainer.classList.remove("hidden");
+                }
+                addSystemMessage("Canvas frame captured successfully.");
+            }
+
+            try {
+                await fs.promises.unlink(actualPath);
+            } catch (e) { }
+
+            return base64Data;
+        } else {
+            console.warn("[ArcEditor] Direct save file did not appear in time.");
+            if (isAgentCall !== true) {
+                addSystemMessage("Error: Frame capture file write timed out.");
+            }
+            throw new Error("Frame capture file write timed out on disk.");
+        }
+    } catch (err) {
+        console.error("[ArcEditor] Frame capture failed:", err);
+        if (isAgentCall !== true) {
+            addSystemMessage("Error capturing frame: " + err.message);
+        }
+        throw err;
+    }
 }
 
 async function getTimelineContext() {
@@ -401,12 +406,61 @@ async function captureFrameAtTime(time, tempPath) {
     return await evalScriptAsync(jsxCommand);
 }
 
+function resolveTimeValue(val, frameRate, relativeBaseTime) {
+    if (val === undefined || val === null || val === "") return val;
+    var frameDuration = 1 / frameRate;
+
+    if (typeof val === "number") {
+        return val * frameDuration;
+    }
+
+    if (typeof val === "string") {
+        var trimmed = val.replace(/\s+/g, "");
+        var lastChar = trimmed.charAt(trimmed.length - 1).toLowerCase();
+        
+        var isSeconds = (lastChar === "s");
+        var isFrames = (lastChar === "f");
+        
+        var cleanVal = trimmed;
+        if (isSeconds || isFrames) {
+            cleanVal = trimmed.substring(0, trimmed.length - 1);
+        }
+        
+        var num = parseFloat(cleanVal);
+        if (isNaN(num)) {
+            throw new Error("Invalid time/frame format: '" + val + "'");
+        }
+
+        var isRelative = (trimmed.charAt(0) === "+" || trimmed.charAt(0) === "-");
+        
+        if (isRelative) {
+            if (relativeBaseTime === undefined || relativeBaseTime === null) {
+                relativeBaseTime = 0;
+            }
+            if (isSeconds) {
+                return relativeBaseTime + num;
+            } else {
+                var currentFrame = Math.round(relativeBaseTime / frameDuration);
+                var targetFrame = currentFrame + num;
+                return targetFrame * frameDuration;
+            }
+        } else {
+            if (isSeconds) {
+                return num;
+            } else {
+                return num * frameDuration;
+            }
+        }
+    }
+    throw new Error("Unsupported time/frame parameter type.");
+}
+
 async function captureCompositionSequence(startTime, endTime, numFrames, isAgentCall) {
     if (!csInterface || !path || !fs) {
         if (isAgentCall !== true) {
             addSystemMessage("Visual capture not supported outside After Effects.");
         }
-        return null;
+        throw new Error("Visual capture not supported outside After Effects or CEP environment.");
     }
 
     if (isAgentCall !== true) {
@@ -421,13 +475,22 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     } catch (e) {}
 
     const frameRate = (compData && compData.frameRate) || 30;
-    const frameDuration = 1 / frameRate;
     const duration = (compData && compData.duration) || 5;
+    const frameDuration = 1 / frameRate;
 
-    let actualStart = typeof startTime === "number" ? startTime : 0;
-    let actualEnd = typeof endTime === "number" ? endTime : null;
+    let actualStart;
+    try {
+        actualStart = resolveTimeValue(startTime, frameRate);
+        if (actualStart === undefined || actualStart === null) actualStart = 0;
+    } catch (e) {
+        actualStart = 0;
+    }
 
-    if (actualEnd === null) {
+    let actualEnd;
+    try {
+        actualEnd = resolveTimeValue(endTime, frameRate);
+        if (actualEnd === undefined || actualEnd === null) actualEnd = duration;
+    } catch (e) {
         actualEnd = duration;
     }
 
@@ -486,37 +549,49 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
 
     const result = await evalScriptAsync(jsxCommand);
 
-    if (result && result.indexOf("Success:") === 0) {
-        const pathsList = result.substring(8).split(";");
-        for (let i = 0; i < pathsList.length; i++) {
-            const actualPath = pathsList[i].trim();
-            if (!actualPath) continue;
-            try {
-                let fileFound = false;
-                let lastSize = -1;
-                for (let attempt = 0; attempt < 100; attempt++) {
-                    try {
-                        const stats = await fs.promises.stat(actualPath);
-                        if (stats.size > 100 && stats.size === lastSize) {
-                            fileFound = true;
-                            break;
-                        }
-                        lastSize = stats.size;
-                    } catch (e) {}
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                }
+    if (!result) {
+        throw new Error("Empty response from After Effects composition sequence execution.");
+    }
+    if (result.indexOf("Error:") === 0) {
+        throw new Error(result.substring(6).trim());
+    }
+    if (result.indexOf("Success:") !== 0) {
+        throw new Error("Unexpected response from After Effects composition sequence: " + result);
+    }
 
-                if (fileFound) {
-                    const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
-                    base64List.push(base64Data);
-                    try {
-                        await fs.promises.unlink(actualPath);
-                    } catch (e) {}
-                }
-            } catch (err) {
-                console.error("[ArcEditor] Error processing frame file: " + actualPath, err);
+    const pathsList = result.substring(8).split(";");
+    for (let i = 0; i < pathsList.length; i++) {
+        const actualPath = pathsList[i].trim();
+        if (!actualPath) continue;
+        try {
+            let fileFound = false;
+            let lastSize = -1;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                try {
+                    const stats = await fs.promises.stat(actualPath);
+                    if (stats.size > 100 && stats.size === lastSize) {
+                        fileFound = true;
+                        break;
+                    }
+                    lastSize = stats.size;
+                } catch (e) {}
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
+
+            if (fileFound) {
+                const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
+                base64List.push(base64Data);
+                try {
+                    await fs.promises.unlink(actualPath);
+                } catch (e) {}
+            }
+        } catch (err) {
+            console.error("[ArcEditor] Error processing frame file: " + actualPath, err);
         }
+    }
+
+    if (base64List.length === 0) {
+        throw new Error("Failed to read any captured sequence frames from disk. Please check disk permissions or temp folder access.");
     }
 
     if (isAgentCall !== true) {

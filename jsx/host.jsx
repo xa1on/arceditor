@@ -509,12 +509,18 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
             // Post-creation configuration from options
             if (options) {
-                if (options.startTime !== undefined && options.startTime !== null) layer.startTime = Number(options.startTime);
-                if (options.inPoint !== undefined && options.inPoint !== null) layer.inPoint = Number(options.inPoint);
-                if (options.outPoint !== undefined && options.outPoint !== null) {
-                    layer.outPoint = Number(options.outPoint);
-                } else if (options.duration !== undefined && options.duration !== null) {
-                    layer.outPoint = layer.inPoint + Number(options.duration);
+                var frameRate = comp.frameRate;
+                var startTime = this.resolveTimeValue(options.startTime, frameRate);
+                var inPoint = this.resolveTimeValue(options.inPoint, frameRate);
+                var outPoint = this.resolveTimeValue(options.outPoint, frameRate);
+                var duration = this.resolveTimeValue(options.duration, frameRate);
+
+                if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
+                if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
+                if (outPoint !== undefined && outPoint !== null) {
+                    layer.outPoint = outPoint;
+                } else if (duration !== undefined && duration !== null) {
+                    layer.outPoint = layer.inPoint + duration;
                 }
 
                 // Layer relative or index positioning
@@ -681,6 +687,11 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
 
+            var frameRate = comp.frameRate;
+            if (time !== undefined && time !== null) {
+                time = this.resolveTimeValue(time, frameRate);
+            }
+
             // Intercept deep path visibility toggles (e.g. ending in "enabled")
             var pathArray = null;
             if (propPath instanceof Array) {
@@ -746,20 +757,20 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     layer.selected = (value === true || value === 1 || String(value).toLowerCase() === "true");
                     return true;
                 }
-                if (lowerPath === "inpoint" || lowerPath === "in_point") {
-                    layer.inPoint = Number(value);
+                if (lowerPath === "inpoint" || lowerPath === "in_point" || lowerPath === "inframe" || lowerPath === "in_frame") {
+                    layer.inPoint = this.resolveTimeValue(value, frameRate);
                     return true;
                 }
-                if (lowerPath === "outpoint" || lowerPath === "out_point") {
-                    layer.outPoint = Number(value);
+                if (lowerPath === "outpoint" || lowerPath === "out_point" || lowerPath === "outframe" || lowerPath === "out_frame") {
+                    layer.outPoint = this.resolveTimeValue(value, frameRate);
                     return true;
                 }
-                if (lowerPath === "starttime" || lowerPath === "start_time") {
-                    layer.startTime = Number(value);
+                if (lowerPath === "starttime" || lowerPath === "start_time" || lowerPath === "startframe" || lowerPath === "start_frame") {
+                    layer.startTime = this.resolveTimeValue(value, frameRate);
                     return true;
                 }
-                if (lowerPath === "duration" || lowerPath === "length") {
-                    layer.outPoint = layer.inPoint + Number(value);
+                if (lowerPath === "duration" || lowerPath === "length" || lowerPath === "durationframes" || lowerPath === "duration_frames") {
+                    layer.outPoint = layer.inPoint + this.resolveTimeValue(value, frameRate);
                     return true;
                 }
                 if (lowerPath === "stretch") {
@@ -855,19 +866,18 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             return prop.value;
         },
 
-        setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut, useTime) {
+        setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut) {
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
 
-            if (useTime !== true && useTime !== "time") {
-                var secondsTimes = [];
-                for (var i = 0; i < times.length; i++) {
-                    secondsTimes.push(times[i] / comp.frameRate);
-                }
-                times = secondsTimes;
+            var frameRate = comp.frameRate;
+            var resolvedTimes = [];
+            for (var i = 0; i < times.length; i++) {
+                resolvedTimes.push(this.resolveTimeValue(times[i], frameRate));
             }
+            times = resolvedTimes;
 
             prop.setValuesAtTimes(times, values);
 
@@ -919,6 +929,20 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
+
+            if (inPoint !== null && typeof inPoint === "object") {
+                var opts = inPoint;
+                inPoint = opts.inPoint;
+                outPoint = opts.outPoint;
+                startTime = opts.startTime;
+                duration = opts.duration;
+            }
+
+            var frameRate = comp.frameRate;
+            inPoint = this.resolveTimeValue(inPoint, frameRate);
+            outPoint = this.resolveTimeValue(outPoint, frameRate);
+            startTime = this.resolveTimeValue(startTime, frameRate);
+            duration = this.resolveTimeValue(duration, frameRate);
 
             if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
             if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
@@ -1027,6 +1051,18 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
+            if (time !== null && typeof time === "object") {
+                var opts = time;
+                time = opts.time;
+                comment = opts.comment;
+                duration = opts.duration;
+                labelIndex = opts.labelIndex;
+            }
+
+            var frameRate = comp.frameRate;
+            time = this.resolveTimeValue(time, frameRate);
+            duration = this.resolveTimeValue(duration, frameRate);
+
             var markerVal = new MarkerValue(comment || "");
             if (duration !== undefined && duration !== null) {
                 markerVal.duration = duration;
@@ -1037,14 +1073,14 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
             if (type && type.toLowerCase() === "comp") {
                 comp.markerProperty.setValueAtTime(time, markerVal);
-                return "Success: Added composition marker at " + time + "s";
+                return "Success: Added composition marker at " + time.toFixed(3) + "s";
             } else {
                 var layer = this.resolveLayer(layerRef);
                 if (!layer) throw new Error("Layer not found for marker: " + layerRef);
                 var markerProp = layer.property("Marker") || layer.property("ADBE Marker");
                 if (!markerProp) throw new Error("Layer does not support markers.");
                 markerProp.setValueAtTime(time, markerVal);
-                return "Success: Added layer marker at " + time + "s on layer '" + layer.name + "'";
+                return "Success: Added layer marker at " + time.toFixed(3) + "s on layer '" + layer.name + "'";
             }
         },
 
@@ -1066,9 +1102,26 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
             if (!markerProp) throw new Error("Marker property not found.");
 
+            var resolvedTime = null;
+            if (typeof timeOrIndex === "string") {
+                var lastChar = timeOrIndex.charAt(timeOrIndex.length - 1).toLowerCase();
+                if (lastChar === "s" || lastChar === "f") {
+                    resolvedTime = this.resolveTimeValue(timeOrIndex, comp.frameRate);
+                }
+            } else if (typeof timeOrIndex === "number") {
+                if (timeOrIndex % 1 !== 0 || timeOrIndex < 1 || timeOrIndex > markerProp.numKeys) {
+                    resolvedTime = this.resolveTimeValue(timeOrIndex, comp.frameRate);
+                }
+            }
+
+            if (resolvedTime !== null) {
+                timeOrIndex = resolvedTime;
+            }
+
             if (typeof timeOrIndex === "number") {
                 var keyIndex = -1;
-                if (timeOrIndex > 0 && timeOrIndex <= markerProp.numKeys && timeOrIndex % 1 === 0) {
+                if (timeOrIndex > 0 && timeOrIndex <= markerProp.numKeys && timeOrIndex % 1 === 0 && resolvedTime === null) {
+                    // It was an index input and not resolved as a time
                     keyIndex = timeOrIndex;
                 } else {
                     for (var i = 1; i <= markerProp.numKeys; i++) {
@@ -1321,9 +1374,14 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     }
                 }
 
-                if (props.startTime !== undefined && props.startTime !== null) layer.startTime = Number(props.startTime);
-                if (props.inPoint !== undefined && props.inPoint !== null) layer.inPoint = Number(props.inPoint);
-                if (props.outPoint !== undefined && props.outPoint !== null) layer.outPoint = Number(props.outPoint);
+                var frameRate = comp.frameRate;
+                var startTime = this.resolveTimeValue(props.startTime, frameRate);
+                var inPoint = this.resolveTimeValue(props.inPoint, frameRate);
+                var outPoint = this.resolveTimeValue(props.outPoint, frameRate);
+
+                if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
+                if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
+                if (outPoint !== undefined && outPoint !== null) layer.outPoint = outPoint;
 
                 if (props.parentLayerRef) {
                     var pLayer = this.resolveLayer(props.parentLayerRef);
@@ -1349,19 +1407,9 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 return "Error: No active composition found.";
             }
 
-            var targetTime = comp.time;
-            if (typeof timeVal === "string") {
-                var val = parseFloat(timeVal);
-                if (isNaN(val)) return "Error: Invalid relative offset time format.";
-                if (timeVal.charAt(0) === "+" || timeVal.charAt(0) === "-") {
-                    targetTime += val;
-                } else {
-                    targetTime = val;
-                }
-            } else if (typeof timeVal === "number") {
-                targetTime = timeVal;
-            } else {
-                return "Error: Invalid time parameter type.";
+            var targetTime = this.resolveTimeValue(timeVal, comp.frameRate, comp.time);
+            if (targetTime === undefined) {
+                return "Error: Invalid time/frame format.";
             }
 
             // Clamp within composition bounds
@@ -1580,6 +1628,61 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var name = layer.name;
             layer.remove();
             return "Success: Deleted layer '" + name + "'";
+        },
+
+        /**
+         * Resolves a suffix-based time or frame value to seconds.
+         */
+        resolveTimeValue: function (val, frameRate, relativeBaseTime) {
+            if (val === undefined || val === null || val === "") return val;
+            var frameDuration = 1 / frameRate;
+
+            if (typeof val === "number") {
+                // Raw numbers default to frames
+                return val * frameDuration;
+            }
+
+            if (typeof val === "string") {
+                var trimmed = val.replace(/\s+/g, "");
+                var lastChar = trimmed.charAt(trimmed.length - 1).toLowerCase();
+                
+                var isSeconds = (lastChar === "s");
+                var isFrames = (lastChar === "f");
+                
+                var cleanVal = trimmed;
+                if (isSeconds || isFrames) {
+                    cleanVal = trimmed.substring(0, trimmed.length - 1);
+                }
+                
+                var num = parseFloat(cleanVal);
+                if (isNaN(num)) {
+                    throw new Error("Invalid time/frame format: '" + val + "'");
+                }
+
+                var isRelative = (trimmed.charAt(0) === "+" || trimmed.charAt(0) === "-");
+                
+                if (isRelative) {
+                    if (relativeBaseTime === undefined || relativeBaseTime === null) {
+                        relativeBaseTime = 0;
+                    }
+                    if (isSeconds) {
+                        return relativeBaseTime + num;
+                    } else {
+                        // Snap current time to nearest frame index first
+                        var currentFrame = Math.round(relativeBaseTime / frameDuration);
+                        var targetFrame = currentFrame + num;
+                        return targetFrame * frameDuration;
+                    }
+                } else {
+                    if (isSeconds) {
+                        return num;
+                    } else {
+                        // Default to frames (if ends with 'f' or has no suffix)
+                        return num * frameDuration;
+                    }
+                }
+            }
+            throw new Error("Unsupported time/frame parameter type.");
         },
 
         /**
