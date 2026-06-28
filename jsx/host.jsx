@@ -437,9 +437,10 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
             // If layerRef is a string (exact name matching)
             if (typeof layerRef === "string") {
+                var lowerRef = layerRef.toLowerCase();
                 var matches = [];
                 for (var i = 1; i <= comp.numLayers; i++) {
-                    if (comp.layer(i).name === layerRef) {
+                    if (comp.layer(i).name.toLowerCase() === lowerRef) {
                         matches.push(comp.layer(i));
                     }
                 }
@@ -457,6 +458,113 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         },
 
         /**
+         * Safely resolves a shape reference (index or name) to a shape property inside layer contents.
+         */
+        resolveShape: function (contents, shapeRef) {
+            if (!shapeRef) return null;
+
+            // Normalize stringified integer IDs/indexes up-front
+            if (typeof shapeRef === "string") {
+                var numericId = parseInt(shapeRef, 10);
+                if (!isNaN(numericId) && String(numericId) === shapeRef) {
+                    shapeRef = numericId;
+                }
+            }
+
+            // If shapeRef is a number (agent index)
+            if (typeof shapeRef === "number") {
+                if (shapeRef > 0 && shapeRef <= contents.numProperties) {
+                    var nativeIdx = contents.numProperties - shapeRef + 1;
+                    return contents.property(nativeIdx);
+                }
+            }
+
+            // If shapeRef is a string (exact name matching)
+            if (typeof shapeRef === "string") {
+                var lowerRef = shapeRef.toLowerCase();
+                for (var i = 1; i <= contents.numProperties; i++) {
+                    var p = contents.property(i);
+                    if (p && p.name.toLowerCase() === lowerRef) {
+                        return p;
+                    }
+                }
+            }
+
+            throw new Error("Could not resolve shape reference: " + shapeRef);
+        },
+
+        moveShapeGroup: function (contents, groupRef, targetNativeIdx) {
+            var targetGroup = null;
+            if (typeof groupRef === "string") {
+                targetGroup = contents.property(groupRef);
+            } else {
+                targetGroup = groupRef;
+            }
+            if (!targetGroup) throw new Error("Shape group reference not found.");
+
+            var currentIdx = targetGroup.propertyIndex;
+            if (currentIdx === targetNativeIdx) return;
+
+            targetGroup.moveTo(targetNativeIdx);
+        },
+
+        /**
+         * Reorders a shape group within a Shape Layer contents group.
+         */
+        reorderShapeInLayer: function (layerRef, shapeRef, position, relativeToShapeRef) {
+            var layer = this.resolveLayer(layerRef);
+            if (!layer) throw new Error("Layer not found: " + layerRef);
+            if (typeof ShapeLayer !== "undefined" && !(layer instanceof ShapeLayer)) {
+                throw new Error("Layer '" + layer.name + "' is not a ShapeLayer.");
+            }
+            var contents = layer.property("Contents") || layer.property("ADBE Root Vectors Group");
+            if (!contents) throw new Error("Could not access shape layer contents.");
+
+            var shape = this.resolveShape(contents, shapeRef);
+            if (!shape) throw new Error("Shape to reorder not found: " + shapeRef);
+
+            var cleanPos = String(position).toLowerCase();
+            var targetIdx;
+            var relativeShape = null;
+
+            if (cleanPos === "top" || cleanPos === "beginning") {
+                targetIdx = 1;
+            } else if (cleanPos === "bottom" || cleanPos === "end") {
+                targetIdx = contents.numProperties;
+            } else if (cleanPos === "before" || cleanPos === "above") {
+                if (!relativeToShapeRef) throw new Error("Missing relativeToShapeRef parameter.");
+                relativeShape = this.resolveShape(contents, relativeToShapeRef);
+                if (!relativeShape) throw new Error("Relative shape not found: " + relativeToShapeRef);
+                
+                if (shape.propertyIndex < relativeShape.propertyIndex) {
+                    targetIdx = relativeShape.propertyIndex - 1;
+                } else {
+                    targetIdx = relativeShape.propertyIndex;
+                }
+            } else if (cleanPos === "after" || cleanPos === "below") {
+                if (!relativeToShapeRef) throw new Error("Missing relativeToShapeRef parameter.");
+                relativeShape = this.resolveShape(contents, relativeToShapeRef);
+                if (!relativeShape) throw new Error("Relative shape not found: " + relativeToShapeRef);
+                
+                if (shape.propertyIndex < relativeShape.propertyIndex) {
+                    targetIdx = relativeShape.propertyIndex;
+                } else {
+                    targetIdx = Math.min(contents.numProperties, relativeShape.propertyIndex + 1);
+                }
+            } else {
+                throw new Error("Invalid move position: " + position + ". Supported options: 'top', 'bottom', 'before', 'after'.");
+            }
+
+            this.moveShapeGroup(contents, shape, targetIdx);
+
+            if (relativeShape) {
+                return "Success: Moved shape '" + shape.name + "' " + position + " shape '" + relativeShape.name + "'";
+            } else {
+                return "Success: Moved shape '" + shape.name + "' to " + position;
+            }
+        },
+
+        /**
          * Creates a new layer in the active composition.
          * 
          * @param {string} type Layer type: "Solid", "Text", "Shape", "Null", "Camera", "Light".
@@ -466,6 +574,18 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         createLayer: function (type, name, size, color, options) {
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+            // Parameter normalization/shifting for optional parameters
+            var realOptions = null;
+            if (options && typeof options === "object") {
+                realOptions = options;
+            } else if (color && typeof color === "object" && !(color instanceof Array)) {
+                realOptions = color;
+                color = null;
+            } else if (size && typeof size === "object" && !(size instanceof Array)) {
+                realOptions = size;
+                size = null;
+            }
 
             var w = (size && size[0]) ? size[0] : comp.width;
             var h = (size && size[1]) ? size[1] : comp.height;
@@ -508,12 +628,12 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             }
 
             // Post-creation configuration from options
-            if (options) {
+            if (realOptions) {
                 var frameRate = comp.frameRate;
-                var startTime = this.resolveTimeValue(options.startTime, frameRate);
-                var inPoint = this.resolveTimeValue(options.inPoint, frameRate);
-                var outPoint = this.resolveTimeValue(options.outPoint, frameRate);
-                var duration = this.resolveTimeValue(options.duration, frameRate);
+                var startTime = this.resolveTimeValue(realOptions.startTime, frameRate);
+                var inPoint = this.resolveTimeValue(realOptions.inPoint, frameRate);
+                var outPoint = this.resolveTimeValue(realOptions.outPoint, frameRate);
+                var duration = this.resolveTimeValue(realOptions.duration, frameRate);
 
                 if (startTime !== undefined && startTime !== null) layer.startTime = startTime;
                 if (inPoint !== undefined && inPoint !== null) layer.inPoint = inPoint;
@@ -524,11 +644,11 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
 
                 // Layer relative or index positioning
-                var orderingVal = options.ordering || options.position;
+                var orderingVal = realOptions.ordering || realOptions.position;
                 var hasRelativeOrdering = (orderingVal !== undefined && orderingVal !== null);
                 if (hasRelativeOrdering) {
                     var pos = String(orderingVal).toLowerCase();
-                    var rel = options.relativeTo || options.relativeToLayerRef;
+                    var rel = realOptions.relativeTo || realOptions.relativeToLayerRef;
                     try {
                         // Try to resolve reference layer first
                         if (pos === "before" || pos === "above" || pos === "after" || pos === "below") {
@@ -537,15 +657,15 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                             }
                             ArcEditor.resolveLayer(rel); // verify target exists
                         }
-                        ArcEditor.moveLayer(layer, pos, rel);
+                        ArcEditor.reorderLayer(layer, pos, rel);
                     } catch (posErr) {
                         // Graceful fallback to top and console warning as decided in design alignment
                         if (typeof $.writeln === "function") {
                             $.writeln("[ArcEditor] Relative ordering failed (" + posErr.message + "). Placed layer at top.");
                         }
                     }
-                } else if (options.index !== undefined && options.index !== null) {
-                    var agentIdx = Number(options.index);
+                } else if (realOptions.index !== undefined && realOptions.index !== null) {
+                    var agentIdx = Number(realOptions.index);
                     var targetIdx = comp.numLayers - agentIdx + 1;
                     try {
                         if (targetIdx <= 1) {
@@ -553,7 +673,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                         } else if (targetIdx >= comp.numLayers) {
                             layer.moveToEnd();
                         } else {
-                            layer.moveBefore(comp.layer(targetIdx));
+                            layer.moveAfter(comp.layer(targetIdx));
                         }
                     } catch (idxErr) {
                         if (typeof $.writeln === "function") {
@@ -562,6 +682,8 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     }
                 }
             }
+
+
 
             return layer;
         },
@@ -961,7 +1083,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * @param {string} position Target position: "top", "bottom", "before", or "after".
          * @param {string|number} relativeToLayerRef (Optional) Reference layer if position is "before" or "after".
          */
-        moveLayer: function (layerRef, position, relativeToLayerRef) {
+        reorderLayer: function (layerRef, position, relativeToLayerRef) {
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
@@ -970,22 +1092,29 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var cleanPos = String(position).toLowerCase();
             if (cleanPos === "top" || cleanPos === "beginning") {
                 layer.moveToBeginning();
+                return "Success: Moved layer '" + layer.name + "' to the top of the composition stack";
             } else if (cleanPos === "bottom" || cleanPos === "end") {
                 layer.moveToEnd();
+                return "Success: Moved layer '" + layer.name + "' to the bottom of the composition stack";
             } else if (cleanPos === "before" || cleanPos === "above") {
                 if (!relativeToLayerRef) throw new Error("Missing relativeToLayerRef parameter for 'before' position.");
                 var relativeLayer = this.resolveLayer(relativeToLayerRef);
                 if (!relativeLayer) throw new Error("Relative reference layer not found: " + relativeToLayerRef);
                 layer.moveBefore(relativeLayer);
+                return "Success: Moved layer '" + layer.name + "' " + position + " layer '" + relativeLayer.name + "'";
             } else if (cleanPos === "after" || cleanPos === "below") {
                 if (!relativeToLayerRef) throw new Error("Missing relativeToLayerRef parameter for 'after' position.");
                 var relativeLayer = this.resolveLayer(relativeToLayerRef);
                 if (!relativeLayer) throw new Error("Relative reference layer not found: " + relativeToLayerRef);
                 layer.moveAfter(relativeLayer);
+                return "Success: Moved layer '" + layer.name + "' " + position + " layer '" + relativeLayer.name + "'";
             } else {
                 throw new Error("Invalid move position: " + position + ". Supported options: 'top', 'bottom', 'before', 'after'.");
             }
-            return true;
+        },
+
+        moveLayer: function (layerRef, position, relativeToLayerRef) {
+            return this.reorderLayer(layerRef, position, relativeToLayerRef);
         },
 
         /**
@@ -1501,7 +1630,8 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 if (depth > 4) return;
                 if (!propGroup) return;
 
-                for (var i = 1; i <= propGroup.numProperties; i++) {
+                // Inspect all properties from bottom to top (inverted)
+                for (var i = propGroup.numProperties; i >= 1; i--) {
                     var prop = propGroup.property(i);
                     if (!prop) continue;
 
@@ -1509,7 +1639,8 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     var propInfo = {
                         name: prop.name,
                         matchName: prop.matchName,
-                        path: newPath
+                        path: newPath,
+                        index: propGroup.numProperties - prop.propertyIndex + 1
                     };
 
                     if (prop.propertyType === PropertyType.PROPERTY) {
@@ -1645,22 +1776,22 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             if (typeof val === "string") {
                 var trimmed = val.replace(/\s+/g, "");
                 var lastChar = trimmed.charAt(trimmed.length - 1).toLowerCase();
-                
+
                 var isSeconds = (lastChar === "s");
                 var isFrames = (lastChar === "f");
-                
+
                 var cleanVal = trimmed;
                 if (isSeconds || isFrames) {
                     cleanVal = trimmed.substring(0, trimmed.length - 1);
                 }
-                
+
                 var num = parseFloat(cleanVal);
                 if (isNaN(num)) {
                     throw new Error("Invalid time/frame format: '" + val + "'");
                 }
 
                 var isRelative = (trimmed.charAt(0) === "+" || trimmed.charAt(0) === "-");
-                
+
                 if (isRelative) {
                     if (relativeBaseTime === undefined || relativeBaseTime === null) {
                         relativeBaseTime = 0;
@@ -1807,7 +1938,61 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
             }
 
-            return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "'";
+            // 6. Shape relative or index positioning
+            var finalName = group.name;
+            var orderingVal = props.ordering;
+            var hasRelativeOrdering = (orderingVal !== undefined && orderingVal !== null);
+            var targetIdx = contents.numProperties;
+
+            if (hasRelativeOrdering) {
+                var pos = String(orderingVal).toLowerCase();
+                var rel = props.relativeTo || props.relativeToShapeRef;
+                try {
+                    if (pos === "top" || pos === "beginning") {
+                        targetIdx = 1;
+                    } else if (pos === "bottom" || pos === "end") {
+                        targetIdx = contents.numProperties;
+                    } else if (pos === "before" || pos === "above" || pos === "after" || pos === "below") {
+                        if (!rel) throw new Error("Missing relativeTo parameter for shape ordering.");
+                        var relativeShape = this.resolveShape(contents, rel);
+                        if (!relativeShape) throw new Error("Relative shape not found: " + rel);
+                        if (pos === "before" || pos === "above") {
+                            targetIdx = relativeShape.propertyIndex;
+                        } else {
+                            targetIdx = Math.min(contents.numProperties, relativeShape.propertyIndex + 1);
+                        }
+                    }
+                    this.moveShapeGroup(contents, group, targetIdx);
+                } catch (posErr) {
+                    if (typeof $.writeln === "function") {
+                        $.writeln("[ArcEditor] Shape relative ordering failed (" + posErr.message + ").");
+                    }
+                    try { targetIdx = group.propertyIndex; } catch (e) { targetIdx = contents.numProperties; }
+                }
+            } else if (props.index !== undefined && props.index !== null) {
+                var agentIdx = Number(props.index);
+                targetIdx = contents.numProperties - agentIdx + 1;
+                try {
+                    this.moveShapeGroup(contents, group, targetIdx);
+                } catch (idxErr) {
+                    if (typeof $.writeln === "function") {
+                        $.writeln("[ArcEditor] Shape index ordering failed (" + idxErr.message + ").");
+                    }
+                    try { targetIdx = group.propertyIndex; } catch (e) { targetIdx = contents.numProperties; }
+                }
+            } else {
+                // Default: move the shape to native index 1 (visual top)
+                try {
+                    targetIdx = 1;
+                    this.moveShapeGroup(contents, group, 1);
+                } catch (e) {
+                    try { targetIdx = group.propertyIndex; } catch (err) { targetIdx = contents.numProperties; }
+                }
+            }
+
+            var finalIndex = contents.numProperties - targetIdx + 1;
+
+            return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "' at index " + finalIndex;
         }
     };
 
