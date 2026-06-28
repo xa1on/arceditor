@@ -99,7 +99,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 name: comp.name,
                 width: comp.width,
                 height: comp.height,
-                duration: comp.duration,
+                duration: Math.round(comp.duration * comp.frameRate) + "f",
                 frameRate: comp.frameRate,
                 currentTime: comp.time,
                 numLayers: comp.numLayers,
@@ -1613,7 +1613,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 name: targetComp.name,
                 width: targetComp.width,
                 height: targetComp.height,
-                duration: targetComp.duration,
+                duration: Math.round(targetComp.duration * targetComp.frameRate) + "f",
                 frameRate: targetComp.frameRate,
                 currentTime: targetComp.time,
                 numLayers: targetComp.numLayers

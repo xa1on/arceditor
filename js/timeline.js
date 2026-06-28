@@ -475,7 +475,14 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     } catch (e) {}
 
     const frameRate = (compData && compData.frameRate) || 30;
-    const duration = (compData && compData.duration) || 5;
+    let duration = 5;
+    if (compData && compData.duration !== undefined && compData.duration !== null) {
+        if (typeof compData.duration === "number") {
+            duration = compData.duration;
+        } else {
+            duration = resolveTimeValue(compData.duration, frameRate);
+        }
+    }
     const frameDuration = 1 / frameRate;
 
     let actualStart;
