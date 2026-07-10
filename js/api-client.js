@@ -48,6 +48,33 @@ function sanitizePayload(obj) {
     return obj;
 }
 
+function sanitizeLogHeaders(headers) {
+    if (!headers) return headers;
+    const sanitized = { ...headers };
+    const sensitive = ["authorization", "x-api-key", "api-key", "apikey"];
+    for (const key in sanitized) {
+        if (Object.prototype.hasOwnProperty.call(sanitized, key)) {
+            if (sensitive.indexOf(key.toLowerCase()) !== -1) {
+                sanitized[key] = "[Redacted]";
+            }
+        }
+    }
+    return sanitized;
+}
+
+function sanitizeLogUrl(urlStr) {
+    if (!urlStr) return urlStr;
+    try {
+        const urlObj = new URL(urlStr);
+        if (urlObj.searchParams.has("key")) {
+            urlObj.searchParams.set("key", "[Redacted]");
+        }
+        return urlObj.toString();
+    } catch (e) {
+        return urlStr.replace(/([?&]key=)[^&]+/ig, "$1[Redacted]");
+    }
+}
+
 let activeRequests = [];
 
 function addActiveRequest(req) {
@@ -534,413 +561,428 @@ Here is the ExtendScript to build it:
         });
     }
 
-    const headers = { "Content-Type": "application/json" };
+    let headers = { "Content-Type": "application/json" };
     let payload = {};
     let targetUrl = apiUrl.replace(/\/$/, "");
 
-    // Deep clone and clean past assistant reasoning blocks
-    const cleanedMessages = messages.map(m => {
-        const copy = { ...m };
-        if (copy.role === "assistant" && copy.reasoning) {
-            copy.content = `<thinking>\n${copy.reasoning}\n</thinking>\n\n${copy.content}`;
-            delete copy.reasoning;
-        }
-        delete copy.isIntermediate;
-        delete copy.intermediateTurns;
-        return copy;
-    });
-
-    // Append the active plan to the very last user message to optimize prefix caching
-    if (typeof window !== "undefined" && window.activePlan && cleanedMessages.length > 0) {
-        let lastUserMsgIdx = -1;
-        for (let i = cleanedMessages.length - 1; i >= 0; i--) {
-            if (cleanedMessages[i].role === "user") {
-                lastUserMsgIdx = i;
-                break;
+    try {
+        // Deep clone and clean past assistant reasoning blocks
+        const cleanedMessages = messages.map(m => {
+            const copy = { ...m };
+            if (copy.role === "assistant" && copy.reasoning) {
+                copy.content = `<thinking>\n${copy.reasoning}\n</thinking>\n\n${copy.content}`;
+                delete copy.reasoning;
             }
-        }
-        if (lastUserMsgIdx !== -1) {
-            const lastMsg = cleanedMessages[lastUserMsgIdx];
-            const planSection = `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
-            
-            if (typeof lastMsg.content === "string") {
-                lastMsg.content += planSection;
-            } else if (Array.isArray(lastMsg.content)) {
-                const textPart = lastMsg.content.find(p => p.type === "text");
-                if (textPart) {
-                    textPart.text += planSection;
-                } else {
-                    lastMsg.content.push({ type: "text", text: planSection });
-                }
-            }
-        }
-    }
-
-    if (currentProvider === "lemonade" || currentProvider === "openai") {
-        targetUrl = targetUrl.endsWith("/chat/completions") ? targetUrl : `${targetUrl}/chat/completions`;
-        if (currentProvider === "openai") {
-            headers["Authorization"] = `Bearer ${apiKey}`;
-        }
-
-        payload = {
-            model: modelName,
-            messages: skipSystemInstructions ? cleanedMessages : [
-                { role: "system", content: getSystemInstructionsWithPlan(false) },
-                ...cleanedMessages
-            ],
-            stream: !!onChunkReceived
-        };
-
-        if (modelSupportsNativeReasoning) {
-            payload.max_completion_tokens = 8192;
-            if (currentProvider === "openai" && typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
-                payload.reasoning_effort = openaiReasoningEffort;
-            }
-        } else {
-            payload.temperature = 0.2;
-        }
-
-        if (typeof writeToDebugLog === "function") {
-            writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
-                provider: currentProvider,
-                url: targetUrl,
-                headers: { ...headers, "Authorization": headers["Authorization"] ? "Bearer [Omitted]" : undefined },
-                payload: sanitizePayload(payload)
-            }, null, 2));
-        }
-
-        if (onChunkReceived) {
-            payload.stream_options = { include_usage: true };
-            let accumulatedText = "";
-            let isThinkingOpen = false;
-            let isThinkingClosed = false;
-
-            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
-                if (line.startsWith("data: ")) {
-                    const dataStr = line.substring(6).trim();
-                    if (dataStr === "[DONE]") return;
-                    try {
-                        const parsed = JSON.parse(dataStr);
-                        if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-                            const delta = parsed.choices[0].delta;
-                            const content = delta.content;
-                            const reasoning = delta.reasoning_content;
-
-                            if (reasoning) {
-                                if (!isThinkingOpen) {
-                                    accumulatedText = "<thinking>\n" + reasoning;
-                                    isThinkingOpen = true;
-                                } else {
-                                    accumulatedText += reasoning;
-                                }
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            } else if (content) {
-                                if (isThinkingOpen && !isThinkingClosed) {
-                                    accumulatedText += "\n</thinking>\n\n" + content;
-                                    isThinkingClosed = true;
-                                } else {
-                                    accumulatedText += content;
-                                }
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            }
-                        }
-                        if (parsed.usage) {
-                            lastApiUsage = {
-                                promptTokens: parsed.usage.prompt_tokens,
-                                completionTokens: parsed.usage.completion_tokens,
-                                totalTokens: parsed.usage.total_tokens
-                            };
-                        }
-                    } catch (e) { }
-                }
-            });
-
-            if (isThinkingOpen && !isThinkingClosed) {
-                accumulatedText += "\n</thinking>\n\n";
-                isThinkingClosed = true;
-                onChunkReceived(normalizeResponse(accumulatedText));
-            }
-
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", normalizeResponse(accumulatedText));
-            }
-            return normalizeResponse(accumulatedText);
-        } else {
-            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            const responseData = JSON.parse(responseText);
-            if (responseData.usage) {
-                lastApiUsage = {
-                    promptTokens: responseData.usage.prompt_tokens,
-                    completionTokens: responseData.usage.completion_tokens,
-                    totalTokens: responseData.usage.total_tokens
-                };
-            }
-            const msgObj = responseData.choices && responseData.choices[0] && responseData.choices[0].message ? responseData.choices[0].message : null;
-            let content = msgObj ? msgObj.content : "";
-            const reasoning = msgObj ? msgObj.reasoning_content : null;
-            if (reasoning) {
-                content = `<thinking>\n${reasoning}\n</thinking>\n\n${content}`;
-            }
-            content = normalizeResponse(content);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (OpenAI/Lemonade)", content);
-            }
-            return content;
-        }
-
-    } else if (currentProvider === "gemini") {
-        // Target Gemini generateContent API
-        let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
-        const cleanBaseUrl = apiUrl.replace(/\/$/, "");
-        targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
-        if (onChunkReceived) {
-            targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
-        }
-
-        payload = prepareGeminiPayload(cleanedMessages, skipSystemInstructions);
-        payload.generationConfig = {
-            temperature: 0.2
-        };
-        payload.safetySettings = [
-            {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            }
-        ];
-
-        if (typeof writeToDebugLog === "function") {
-            writeToDebugLog("API Request Sent (Gemini)", JSON.stringify({
-                provider: currentProvider,
-                url: targetUrl.replace(/\?key=.*$/, "?key=[Omitted]"),
-                headers: headers,
-                payload: sanitizePayload(payload)
-            }, null, 2));
-        }
-
-
-        if (onChunkReceived) {
-            let accumulatedText = "";
-            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
-                if (line.startsWith("data: ")) {
-                    const dataStr = line.substring(6).trim();
-                    try {
-                        const parsed = JSON.parse(dataStr);
-                        if (parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0]) {
-                            const text = parsed.candidates[0].content.parts[0].text;
-                            if (text) {
-                                accumulatedText += text;
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            }
-                        }
-                        if (parsed.usageMetadata) {
-                            lastApiUsage = {
-                                promptTokens: parsed.usageMetadata.promptTokenCount,
-                                completionTokens: parsed.usageMetadata.candidatesTokenCount,
-                                totalTokens: parsed.usageMetadata.totalTokenCount
-                            };
-                        }
-                    } catch (e) { }
-                }
-            });
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Gemini Stream Finished)", normalizeResponse(accumulatedText));
-            }
-            return normalizeResponse(accumulatedText);
-        } else {
-            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            const responseData = JSON.parse(responseText);
-            if (responseData.usageMetadata) {
-                lastApiUsage = {
-                    promptTokens: responseData.usageMetadata.promptTokenCount,
-                    completionTokens: responseData.usageMetadata.candidatesTokenCount,
-                    totalTokens: responseData.usageMetadata.totalTokenCount
-                };
-            }
-            let content = responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content && responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] ? responseData.candidates[0].content.parts[0].text : "";
-            content = normalizeResponse(content);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Gemini)", content);
-            }
-            return content;
-        }
-
-    } else if (currentProvider === "anthropic") {
-        // Target Claude API
-        const cleanBaseUrl = targetUrl.replace(/\/$/, "");
-        targetUrl = cleanBaseUrl.endsWith("/messages") ? cleanBaseUrl : `${cleanBaseUrl}/v1/messages`;
-        headers["x-api-key"] = apiKey;
-        headers["anthropic-version"] = "2023-06-01";
-
-        // Convert vision base64 input to Anthropic's block format
-        const anthropicMessages = cleanedMessages.map(m => {
-            let contentArr = [];
-            if (typeof m.content === "string") {
-                contentArr.push({ type: "text", text: m.content });
-            } else if (Array.isArray(m.content)) {
-                m.content.forEach(c => {
-                    if (c.type === "text") contentArr.push({ type: "text", text: c.text });
-                    if (c.type === "image_url") {
-                        const partsOfUrl = c.image_url.url.split(',');
-                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
-                        contentArr.push({
-                            type: "image",
-                            source: {
-                                type: "base64",
-                                media_type: "image/png",
-                                data: base64Data
-                            }
-                        });
-                    }
-                });
-            }
-            return {
-                role: m.role === "user" ? "user" : "assistant",
-                content: contentArr
-            };
+            delete copy.isIntermediate;
+            delete copy.intermediateTurns;
+            return copy;
         });
 
-        payload = {
-            model: modelName,
-            messages: anthropicMessages,
-            stream: !!onChunkReceived
-        };
-
-        if (modelSupportsNativeReasoning) {
-            payload.thinking = {
-                type: "enabled",
-                budget_tokens: claudeThinkingBudget
-            };
-            payload.max_tokens = Math.max(claudeThinkingBudget + 2048, 4096);
-        } else {
-            payload.max_tokens = 4096;
-            payload.temperature = 0.2;
-        }
-
-        if (!skipSystemInstructions) {
-            payload.system = getSystemInstructionsWithPlan(false);
-        }
-
-        if (typeof writeToDebugLog === "function") {
-            writeToDebugLog("API Request Sent (Anthropic)", JSON.stringify({
-                provider: currentProvider,
-                url: targetUrl,
-                headers: { ...headers, "x-api-key": "[Omitted]" },
-                payload: sanitizePayload(payload)
-            }, null, 2));
-        }
-
-        if (onChunkReceived) {
-            let accumulatedText = "";
-            let isThinkingOpen = false;
-            let isThinkingClosed = false;
-
-            await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
-                if (line.startsWith("data: ")) {
-                    const dataStr = line.substring(6).trim();
-                    try {
-                        const parsed = JSON.parse(dataStr);
-                        if (parsed.type === "content_block_delta" && parsed.delta) {
-                            const delta = parsed.delta;
-                            if (delta.type === "thinking_delta" && delta.thinking) {
-                                if (!isThinkingOpen) {
-                                    accumulatedText = "<thinking>\n" + delta.thinking;
-                                    isThinkingOpen = true;
-                                } else {
-                                    accumulatedText += delta.thinking;
-                                }
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            } else if (delta.type === "text_delta" && delta.text) {
-                                if (isThinkingOpen && !isThinkingClosed) {
-                                    accumulatedText += "\n</thinking>\n\n" + delta.text;
-                                    isThinkingClosed = true;
-                                } else {
-                                    accumulatedText += delta.text;
-                                }
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            } else if (delta.text) {
-                                accumulatedText += delta.text;
-                                onChunkReceived(normalizeResponse(accumulatedText));
-                            }
-                        } else if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
-                            accumulatedText += parsed.delta.text;
-                            onChunkReceived(normalizeResponse(accumulatedText));
-                        }
-
-                        if (parsed.type === "message_start" && parsed.message && parsed.message.usage) {
-                            lastApiUsage = {
-                                promptTokens: parsed.message.usage.input_tokens || 0,
-                                completionTokens: parsed.message.usage.output_tokens || 0,
-                                totalTokens: (parsed.message.usage.input_tokens || 0) + (parsed.message.usage.output_tokens || 0)
-                            };
-                        } else if (parsed.type === "message_delta" && parsed.usage) {
-                            if (lastApiUsage) {
-                                lastApiUsage.completionTokens = parsed.usage.output_tokens || 0;
-                                lastApiUsage.totalTokens = lastApiUsage.promptTokens + lastApiUsage.completionTokens;
-                            }
-                        }
-                    } catch (e) { }
+        // Append the active plan to the very last user message to optimize prefix caching
+        if (typeof window !== "undefined" && window.activePlan && cleanedMessages.length > 0) {
+            let lastUserMsgIdx = -1;
+            for (let i = cleanedMessages.length - 1; i >= 0; i--) {
+                if (cleanedMessages[i].role === "user") {
+                    lastUserMsgIdx = i;
+                    break;
                 }
-            });
+            }
+            if (lastUserMsgIdx !== -1) {
+                const lastMsg = cleanedMessages[lastUserMsgIdx];
+                const planSection = `\n\n=== ACTIVE EXECUTION PLAN ===\nYou are currently executing the following plan. Refer to this plan to see what tasks are remaining or completed:\n${window.activePlan}\n=============================\n`;
+                
+                if (typeof lastMsg.content === "string") {
+                    lastMsg.content += planSection;
+                } else if (Array.isArray(lastMsg.content)) {
+                    const textPart = lastMsg.content.find(p => p.type === "text");
+                    if (textPart) {
+                        textPart.text += planSection;
+                    } else {
+                        lastMsg.content.push({ type: "text", text: planSection });
+                    }
+                }
+            }
+        }
 
-            if (isThinkingOpen && !isThinkingClosed) {
-                accumulatedText += "\n</thinking>\n\n";
-                isThinkingClosed = true;
-                onChunkReceived(normalizeResponse(accumulatedText));
+        if (currentProvider === "lemonade" || currentProvider === "openai") {
+            // Target OpenAI chat completions endpoint
+            const cleanBaseUrl = targetUrl.replace(/\/$/, "");
+            targetUrl = cleanBaseUrl.endsWith("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/v1/chat/completions`;
+            headers["Authorization"] = `Bearer ${apiKey}`;
+
+            payload = {
+                model: modelName,
+                messages: skipSystemInstructions ? cleanedMessages : [
+                    { role: "system", content: getSystemInstructionsWithPlan(false) },
+                    ...cleanedMessages
+                ],
+                stream: !!onChunkReceived
+            };
+
+            if (modelSupportsNativeReasoning) {
+                payload.max_completion_tokens = 8192;
+                if (currentProvider === "openai" && typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
+                    payload.reasoning_effort = openaiReasoningEffort;
+                }
+            } else {
+                payload.temperature = 0.2;
             }
 
             if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Anthropic Stream Finished)", normalizeResponse(accumulatedText));
-            }
-            return normalizeResponse(accumulatedText);
-        } else {
-            const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
-            const responseData = JSON.parse(responseText);
-            if (responseData.usage) {
-                lastApiUsage = {
-                    promptTokens: responseData.usage.input_tokens || 0,
-                    completionTokens: responseData.usage.output_tokens || 0,
-                    totalTokens: (responseData.usage.input_tokens || 0) + (responseData.usage.output_tokens || 0)
-                };
+                writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
+                    provider: currentProvider,
+                    url: targetUrl,
+                    headers: { ...headers, "Authorization": headers["Authorization"] ? "Bearer [Omitted]" : undefined },
+                    payload: sanitizePayload(payload)
+                }, null, 2));
             }
 
-            let content = "";
-            if (responseData.content && Array.isArray(responseData.content)) {
-                let reasoningText = "";
-                let textContent = "";
-                responseData.content.forEach(c => {
-                    if (c.type === "thinking" && c.thinking) {
-                        reasoningText += c.thinking;
-                    } else if (c.type === "text" && c.text) {
-                        textContent += c.text;
+            if (onChunkReceived) {
+                payload.stream_options = { include_usage: true };
+                let accumulatedText = "";
+                let isThinkingOpen = false;
+                let isThinkingClosed = false;
+
+                await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                    if (line.startsWith("data: ")) {
+                        const dataStr = line.substring(6).trim();
+                        if (dataStr === "[DONE]") return;
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                                const delta = parsed.choices[0].delta;
+                                const content = delta.content;
+                                const reasoning = delta.reasoning_content;
+
+                                if (reasoning) {
+                                    if (!isThinkingOpen) {
+                                        accumulatedText = "<thinking>\n" + reasoning;
+                                        isThinkingOpen = true;
+                                    } else {
+                                        accumulatedText += reasoning;
+                                    }
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                } else if (content) {
+                                    if (isThinkingOpen && !isThinkingClosed) {
+                                        accumulatedText += "\n</thinking>\n\n" + content;
+                                        isThinkingClosed = true;
+                                    } else {
+                                        accumulatedText += content;
+                                    }
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                }
+                            }
+                            if (parsed.usage) {
+                                lastApiUsage = {
+                                    promptTokens: parsed.usage.prompt_tokens,
+                                    completionTokens: parsed.usage.completion_tokens,
+                                    totalTokens: parsed.usage.total_tokens
+                                };
+                            }
+                        } catch (e) { }
                     }
                 });
-                if (reasoningText) {
-                    content = `<thinking>\n${reasoningText}\n</thinking>\n\n${textContent}`;
-                } else {
-                    content = textContent;
+
+                if (isThinkingOpen && !isThinkingClosed) {
+                    accumulatedText += "\n</thinking>\n\n";
+                    isThinkingClosed = true;
+                    onChunkReceived(normalizeResponse(accumulatedText));
                 }
-            } else if (responseData.content && responseData.content[0]) {
-                content = responseData.content[0].text || "";
+
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (OpenAI/Lemonade Stream Finished)", normalizeResponse(accumulatedText));
+                }
+                return normalizeResponse(accumulatedText);
+            } else {
+                const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+                const responseData = JSON.parse(responseText);
+                if (responseData.usage) {
+                    lastApiUsage = {
+                        promptTokens: responseData.usage.prompt_tokens,
+                        completionTokens: responseData.usage.completion_tokens,
+                        totalTokens: responseData.usage.total_tokens
+                    };
+                }
+                const msgObj = responseData.choices && responseData.choices[0] && responseData.choices[0].message ? responseData.choices[0].message : null;
+                let content = msgObj ? msgObj.content : "";
+                const reasoning = msgObj ? msgObj.reasoning_content : null;
+                if (reasoning) {
+                    content = `<thinking>\n${reasoning}\n</thinking>\n\n${content}`;
+                }
+                content = normalizeResponse(content);
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (OpenAI/Lemonade)", content);
+                }
+                return content;
             }
 
-            content = normalizeResponse(content);
-            if (typeof writeToDebugLog === "function") {
-                writeToDebugLog("API Response Received (Anthropic)", content);
+        } else if (currentProvider === "gemini") {
+            // Target Gemini generateContent API
+            let endpointName = onChunkReceived ? "streamGenerateContent" : "generateContent";
+            const cleanBaseUrl = apiUrl.replace(/\/$/, "");
+            targetUrl = `${cleanBaseUrl}/v1beta/models/${modelName}:${endpointName}?key=${apiKey}`;
+            if (onChunkReceived) {
+                targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
             }
-            return content;
+
+            payload = prepareGeminiPayload(cleanedMessages, skipSystemInstructions);
+            payload.generationConfig = {
+                temperature: 0.2
+            };
+            payload.safetySettings = [
+                {
+                    category: "HARM_CATEGORY_HARASSMENT",
+                    threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    category: "HARM_CATEGORY_HATE_SPEECH",
+                    threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                },
+                {
+                    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                }
+            ];
+
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Request Sent (Gemini)", JSON.stringify({
+                    provider: currentProvider,
+                    url: targetUrl.replace(/\?key=.*$/, "?key=[Omitted]"),
+                    headers: headers,
+                    payload: sanitizePayload(payload)
+                }, null, 2));
+            }
+
+
+            if (onChunkReceived) {
+                let accumulatedText = "";
+                await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                    if (line.startsWith("data: ")) {
+                        const dataStr = line.substring(6).trim();
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0]) {
+                                const text = parsed.candidates[0].content.parts[0].text;
+                                if (text) {
+                                    accumulatedText += text;
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                }
+                            }
+                            if (parsed.usageMetadata) {
+                                lastApiUsage = {
+                                    promptTokens: parsed.usageMetadata.promptTokenCount,
+                                    completionTokens: parsed.usageMetadata.candidatesTokenCount,
+                                    totalTokens: parsed.usageMetadata.totalTokenCount
+                                };
+                            }
+                        } catch (e) { }
+                    }
+                });
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (Gemini Stream Finished)", normalizeResponse(accumulatedText));
+                }
+                return normalizeResponse(accumulatedText);
+            } else {
+                const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+                const responseData = JSON.parse(responseText);
+                if (responseData.usageMetadata) {
+                    lastApiUsage = {
+                        promptTokens: responseData.usageMetadata.promptTokenCount,
+                        completionTokens: responseData.usageMetadata.candidatesTokenCount,
+                        totalTokens: responseData.usageMetadata.totalTokenCount
+                    };
+                }
+                let content = responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content && responseData.candidates[0].content.parts && responseData.candidates[0].content.parts[0] ? responseData.candidates[0].content.parts[0].text : "";
+                content = normalizeResponse(content);
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (Gemini)", content);
+                }
+                return content;
+            }
+
+        } else if (currentProvider === "anthropic") {
+            // Target Claude API
+            const cleanBaseUrl = targetUrl.replace(/\/$/, "");
+            targetUrl = cleanBaseUrl.endsWith("/messages") ? cleanBaseUrl : `${cleanBaseUrl}/v1/messages`;
+            headers["x-api-key"] = apiKey;
+            headers["anthropic-version"] = "2023-06-01";
+
+            // Convert vision base64 input to Anthropic's block format
+            const anthropicMessages = cleanedMessages.map(m => {
+                let contentArr = [];
+                if (typeof m.content === "string") {
+                    contentArr.push({ type: "text", text: m.content });
+                } else if (Array.isArray(m.content)) {
+                    m.content.forEach(c => {
+                        if (c.type === "text") contentArr.push({ type: "text", text: c.text });
+                        if (c.type === "image_url") {
+                            const partsOfUrl = c.image_url.url.split(',');
+                            const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                            contentArr.push({
+                                type: "image",
+                                source: {
+                                    type: "base64",
+                                    media_type: "image/png",
+                                    data: base64Data
+                                }
+                            });
+                        }
+                    });
+                }
+                return {
+                    role: m.role === "user" ? "user" : "assistant",
+                    content: contentArr
+                };
+            });
+
+            payload = {
+                model: modelName,
+                messages: anthropicMessages,
+                stream: !!onChunkReceived
+            };
+
+            if (modelSupportsNativeReasoning) {
+                payload.thinking = {
+                    type: "enabled",
+                    budget_tokens: claudeThinkingBudget
+                };
+                payload.max_tokens = Math.max(claudeThinkingBudget + 2048, 4096);
+            } else {
+                payload.max_tokens = 4096;
+                payload.temperature = 0.2;
+            }
+
+            if (!skipSystemInstructions) {
+                payload.system = getSystemInstructionsWithPlan(false);
+            }
+
+            if (typeof writeToDebugLog === "function") {
+                writeToDebugLog("API Request Sent (Anthropic)", JSON.stringify({
+                    provider: currentProvider,
+                    url: targetUrl,
+                    headers: { ...headers, "x-api-key": "[Omitted]" },
+                    payload: sanitizePayload(payload)
+                }, null, 2));
+            }
+
+            if (onChunkReceived) {
+                let accumulatedText = "";
+                let isThinkingOpen = false;
+                let isThinkingClosed = false;
+
+                await makeStreamingRequest(targetUrl, 'POST', headers, payload, (line) => {
+                    if (line.startsWith("data: ")) {
+                        const dataStr = line.substring(6).trim();
+                        try {
+                            const parsed = JSON.parse(dataStr);
+                            if (parsed.type === "content_block_delta" && parsed.delta) {
+                                const delta = parsed.delta;
+                                if (delta.type === "thinking_delta" && delta.thinking) {
+                                    if (!isThinkingOpen) {
+                                        accumulatedText = "<thinking>\n" + delta.thinking;
+                                        isThinkingOpen = true;
+                                    } else {
+                                        accumulatedText += delta.thinking;
+                                    }
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                } else if (delta.type === "text_delta" && delta.text) {
+                                    if (isThinkingOpen && !isThinkingClosed) {
+                                        accumulatedText += "\n</thinking>\n\n" + delta.text;
+                                        isThinkingClosed = true;
+                                    } else {
+                                        accumulatedText += delta.text;
+                                    }
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                } else if (delta.text) {
+                                    accumulatedText += delta.text;
+                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                }
+                            } else if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
+                                accumulatedText += parsed.delta.text;
+                                onChunkReceived(normalizeResponse(accumulatedText));
+                            }
+
+                            if (parsed.type === "message_start" && parsed.message && parsed.message.usage) {
+                                lastApiUsage = {
+                                    promptTokens: parsed.message.usage.input_tokens || 0,
+                                    completionTokens: parsed.message.usage.output_tokens || 0,
+                                    totalTokens: (parsed.message.usage.input_tokens || 0) + (parsed.message.usage.output_tokens || 0)
+                                };
+                            } else if (parsed.type === "message_delta" && parsed.usage) {
+                                if (lastApiUsage) {
+                                    lastApiUsage.completionTokens = parsed.usage.output_tokens || 0;
+                                    lastApiUsage.totalTokens = lastApiUsage.promptTokens + lastApiUsage.completionTokens;
+                                }
+                            }
+                        } catch (e) { }
+                    }
+                });
+
+                if (isThinkingOpen && !isThinkingClosed) {
+                    accumulatedText += "\n</thinking>\n\n";
+                    isThinkingClosed = true;
+                    onChunkReceived(normalizeResponse(accumulatedText));
+                }
+
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (Anthropic Stream Finished)", normalizeResponse(accumulatedText));
+                }
+                return normalizeResponse(accumulatedText);
+            } else {
+                const responseText = await makeRequest(targetUrl, 'POST', headers, payload);
+                const responseData = JSON.parse(responseText);
+                if (responseData.usage) {
+                    lastApiUsage = {
+                        promptTokens: responseData.usage.input_tokens || 0,
+                        completionTokens: responseData.usage.output_tokens || 0,
+                        totalTokens: (responseData.usage.input_tokens || 0) + (responseData.usage.output_tokens || 0)
+                    };
+                }
+
+                let content = "";
+                if (responseData.content && Array.isArray(responseData.content)) {
+                    let reasoningText = "";
+                    let textContent = "";
+                    responseData.content.forEach(c => {
+                        if (c.type === "thinking" && c.thinking) {
+                            reasoningText += c.thinking;
+                        } else if (c.type === "text" && c.text) {
+                            textContent += c.text;
+                        }
+                    });
+                    if (reasoningText) {
+                        content = `<thinking>\n${reasoningText}\n</thinking>\n\n${textContent}`;
+                    } else {
+                        content = textContent;
+                    }
+                } else if (responseData.content && responseData.content[0]) {
+                    content = responseData.content[0].text || "";
+                }
+
+                content = normalizeResponse(content);
+                if (typeof writeToDebugLog === "function") {
+                    writeToDebugLog("API Response Received (Anthropic)", content);
+                }
+                return content;
+            }
         }
+    } catch (err) {
+        if (typeof writeToDebugLog === "function") {
+            const sanitizedUrl = sanitizeLogUrl(targetUrl);
+            const sanitizedHeaders = sanitizeLogHeaders(headers);
+            writeToDebugLog("API Network Error", JSON.stringify({
+                provider: currentProvider,
+                url: sanitizedUrl,
+                method: "POST",
+                headers: sanitizedHeaders,
+                error: err.message || String(err)
+            }, null, 2));
+        }
+        throw err;
     }
 }
 
@@ -1017,7 +1059,7 @@ async function searchWeb(query) {
         return { error: `Web search request failed: ${err.message || err}` };
     }
 }
-window.searchWeb = searchWeb;
+if (typeof window !== "undefined") window.searchWeb = searchWeb;
 
 function normalizeResponse(text) {
     if (!text) return "";
@@ -1104,4 +1146,6 @@ function normalizeResponse(text) {
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports.normalizeResponse = normalizeResponse;
+    module.exports.sanitizeLogHeaders = sanitizeLogHeaders;
+    module.exports.sanitizeLogUrl = sanitizeLogUrl;
 }

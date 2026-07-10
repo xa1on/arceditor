@@ -1301,20 +1301,22 @@ function stripCodeBlocks(text) {
 }
 
 function writeToDebugLog(category, text) {
-    // Allow API Request, API Response, and Tool Execution Error categories in the debug log
-    const isRequest = category.indexOf("API Request Sent") === 0;
-    const isResponse = category.indexOf("API Response Received") === 0;
-    const isError = category.indexOf("Tool Execution Error") === 0;
-    if (!isRequest && !isResponse && !isError) {
+    // Allow API Request, API Response, Tool Execution, and API Network Error categories in the debug log
+    const ALLOWED_CATEGORIES = {
+        "API Request Sent": true,
+        "API Response Received": true,
+        "Tool Calls Extracted": true,
+        "Tool Execution": true,
+        "Tool Execution Error": true,
+        "API Network Error": true
+    };
+
+    const catKey = Object.keys(ALLOWED_CATEGORIES).find(key => category.indexOf(key) === 0);
+    if (!catKey) {
         return;
     }
 
     let loggedText = text;
-
-    if (isResponse) {
-        // Only keep reasoning and text blocks of the response, strip code blocks
-        loggedText = stripCodeBlocks(loggedText);
-    }
 
     if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog && typeof loggedText === "string") {
         // Replace base64 data URIs (escaped or unescaped)
@@ -1336,14 +1338,12 @@ function writeToDebugLog(category, text) {
         debugTextarea.scrollTop = debugTextarea.scrollHeight; // auto-scroll to bottom
     }
 
-    // 2. Append to persistent file in workspace if active
-    if (typeof require !== "undefined" && currentProjectPath && currentProjectPath !== "Unsaved Project") {
+    // 2. Append to persistent file in global appConfigDir
+    if (typeof require !== "undefined" && appConfigDir) {
         try {
             const fs = require('fs');
             const path = require('path');
-            const lastSeparator = Math.max(currentProjectPath.lastIndexOf('/'), currentProjectPath.lastIndexOf('\\'));
-            const projectDir = currentProjectPath.substring(0, lastSeparator);
-            const debugLogPath = path.join(projectDir, "arceditor_debug.log");
+            const debugLogPath = path.join(appConfigDir, "arceditor_debug.log");
             fs.appendFile(debugLogPath, logEntry, 'utf8', (err) => {
                 if (err) {
                     console.error("Failed to write to arceditor_debug.log asynchronously: ", err);
