@@ -948,7 +948,7 @@ async function executeToolCalls(jsonStr) {
                             app.activate();
                             app.executeCommand(16);
                         } catch (undoErr) {}
-                        return "Error: " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+                        return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
                     }
                 })()`;
             } else {
@@ -976,12 +976,8 @@ async function executeToolCalls(jsonStr) {
 }
 
 function repairJSON(jsonStr) {
-    let repaired = jsonStr.trim();
-    if (!repaired) return null;
-
-    // Remove any trailing commas or commas followed by space at the end
-    repaired = repaired.replace(/,\s*$/g, '');
-    repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+    let raw = jsonStr.trim();
+    if (!raw) return null;
 
     let result = "";
     let structure = [];
@@ -989,27 +985,29 @@ function repairJSON(jsonStr) {
     let escaping = false;
     let lastValidIndex = 0;
 
-    for (let i = 0; i < repaired.length; i++) {
-        const char = repaired[i];
-        
+    for (let i = 0; i < raw.length; i++) {
+        const char = raw[i];
+
         if (escaping) {
             result += char;
             escaping = false;
             continue;
         }
-        
+
         if (char === '\\') {
             result += char;
-            escaping = true;
+            if (inString) {
+                escaping = true;
+            }
             continue;
         }
-        
+
         if (char === '"') {
             result += char;
             inString = !inString;
             continue;
         }
-        
+
         if (inString) {
             if (char === '\n') {
                 result += '\\n';
@@ -1019,6 +1017,21 @@ function repairJSON(jsonStr) {
                 result += char;
             }
         } else {
+            // Outside of string literal: intercept trailing commas
+            if (char === ',') {
+                let nextNonWhitespaceIdx = -1;
+                for (let k = i + 1; k < raw.length; k++) {
+                    if (!/\s/.test(raw[k])) {
+                        nextNonWhitespaceIdx = k;
+                        break;
+                    }
+                }
+                if (nextNonWhitespaceIdx !== -1 && (raw[nextNonWhitespaceIdx] === '}' || raw[nextNonWhitespaceIdx] === ']')) {
+                    // Skip trailing comma
+                    continue;
+                }
+            }
+
             result += char;
             if (char === '{' || char === '[') {
                 structure.push(char);
@@ -1040,14 +1053,12 @@ function repairJSON(jsonStr) {
         }
     }
 
+    let repaired = result;
     if (structure.length === 0) {
         if (lastValidIndex > 0) {
             repaired = result.substring(0, lastValidIndex);
-        } else {
-            repaired = result;
         }
     } else {
-        repaired = result;
         if (inString) {
             if (repaired.endsWith('\\')) {
                 repaired = repaired.substring(0, repaired.length - 1);
@@ -1055,7 +1066,11 @@ function repairJSON(jsonStr) {
             repaired += '"';
         }
 
-        repaired = repaired.trim().replace(/,\s*$/g, '');
+        repaired = repaired.trim();
+        let lastCommaMatch = repaired.match(/,\s*$/);
+        if (lastCommaMatch) {
+            repaired = repaired.substring(0, lastCommaMatch.index);
+        }
 
         while (structure.length > 0) {
             const openChar = structure.pop();

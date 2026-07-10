@@ -291,45 +291,45 @@ async function syncProjectPath() {
         // Defer syncing project path and session migration while the agent loop is actively running
         return;
     }
-    let path = "Unsaved Project";
+    let activePath = "Unsaved Project";
     if (csInterface) {
         const result = await evalScriptAsync("$._com_arceditor_.ArcInspector.getProjectPath()");
         if (result && result.indexOf("Error") !== 0) {
-            path = result.trim();
+            activePath = result.trim();
         }
     }
 
-    if (path !== currentProjectPath) {
+    if (activePath !== currentProjectPath) {
         const oldProjectPath = currentProjectPath;
-        currentProjectPath = path;
+        currentProjectPath = activePath;
 
         // Update UI Label
         const label = document.getElementById("label-active-project");
         if (label) {
-            const lastSeparator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-            const baseName = path.substring(lastSeparator + 1);
+            const lastSeparator = Math.max(activePath.lastIndexOf('/'), activePath.lastIndexOf('\\'));
+            const baseName = activePath.substring(lastSeparator + 1);
             label.innerText = baseName || "Unsaved Project";
-            label.title = path;
+            label.title = activePath;
         }
 
         // Auto-migration: If transitioning from "Unsaved Project" to a saved project path,
         // move all chat sessions from "Unsaved Project" to the new project path key.
-        if (oldProjectPath === "Unsaved Project" && path !== "Unsaved Project") {
+        if (oldProjectPath === "Unsaved Project" && activePath !== "Unsaved Project") {
             const unsavedSessions = allProjectChats["Unsaved Project"];
             if (unsavedSessions && unsavedSessions.length > 0) {
-                if (!allProjectChats[path] || allProjectChats[path].length === 0) {
-                    allProjectChats[path] = unsavedSessions;
+                if (!allProjectChats[activePath] || allProjectChats[activePath].length === 0) {
+                    allProjectChats[activePath] = unsavedSessions;
                     delete allProjectChats["Unsaved Project"];
                     
                     // Also migrate project-specific settings (allowed tools)
                     const unsavedSettings = allProjectChats["settings_Unsaved Project"];
                     if (unsavedSettings) {
-                        allProjectChats["settings_" + path] = unsavedSettings;
+                        allProjectChats["settings_" + activePath] = unsavedSettings;
                         delete allProjectChats["settings_Unsaved Project"];
                     }
                     
                     saveChats();
-                    console.log("[ArcEditor] Migrated active chat history from Unsaved Project to: " + path);
+                    console.log("[ArcEditor] Migrated active chat history from Unsaved Project to: " + activePath);
                 }
             }
         }

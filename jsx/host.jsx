@@ -457,6 +457,22 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             throw new Error("Could not resolve layer reference: " + layerRef);
         },
 
+        moveLayerToNativeIndex: function (layer, targetIdx) {
+            var comp = layer.containingComp;
+            if (layer.index === targetIdx) return;
+            if (targetIdx <= 1) {
+                layer.moveToBeginning();
+            } else if (targetIdx >= comp.numLayers) {
+                layer.moveToEnd();
+            } else {
+                if (layer.index < targetIdx) {
+                    layer.moveAfter(comp.layer(targetIdx));
+                } else {
+                    layer.moveBefore(comp.layer(targetIdx));
+                }
+            }
+        },
+
         /**
          * Safely resolves a shape reference (index or name) to a shape property inside layer contents.
          */
@@ -474,8 +490,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             // If shapeRef is a number (agent index)
             if (typeof shapeRef === "number") {
                 if (shapeRef > 0 && shapeRef <= contents.numProperties) {
-                    var nativeIdx = contents.numProperties - shapeRef + 1;
-                    return contents.property(nativeIdx);
+                    return contents.property(shapeRef);
                 }
             }
 
@@ -528,16 +543,16 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var relativeShape = null;
 
             if (cleanPos === "top" || cleanPos === "beginning") {
-                targetIdx = 1;
-            } else if (cleanPos === "bottom" || cleanPos === "end") {
                 targetIdx = contents.numProperties;
+            } else if (cleanPos === "bottom" || cleanPos === "end") {
+                targetIdx = 1;
             } else if (cleanPos === "before" || cleanPos === "above") {
                 if (!relativeToShapeRef) throw new Error("Missing relativeToShapeRef parameter.");
                 relativeShape = this.resolveShape(contents, relativeToShapeRef);
                 if (!relativeShape) throw new Error("Relative shape not found: " + relativeToShapeRef);
                 
-                if (shape.propertyIndex < relativeShape.propertyIndex) {
-                    targetIdx = relativeShape.propertyIndex - 1;
+                if (shape.propertyIndex > relativeShape.propertyIndex) {
+                    targetIdx = relativeShape.propertyIndex + 1;
                 } else {
                     targetIdx = relativeShape.propertyIndex;
                 }
@@ -547,9 +562,9 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 if (!relativeShape) throw new Error("Relative shape not found: " + relativeToShapeRef);
                 
                 if (shape.propertyIndex < relativeShape.propertyIndex) {
-                    targetIdx = relativeShape.propertyIndex;
+                    targetIdx = relativeShape.propertyIndex - 1;
                 } else {
-                    targetIdx = Math.min(contents.numProperties, relativeShape.propertyIndex + 1);
+                    targetIdx = relativeShape.propertyIndex;
                 }
             } else {
                 throw new Error("Invalid move position: " + position + ". Supported options: 'top', 'bottom', 'before', 'after'.");
@@ -668,13 +683,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     var agentIdx = Number(realOptions.index);
                     var targetIdx = comp.numLayers - agentIdx + 1;
                     try {
-                        if (targetIdx <= 1) {
-                            layer.moveToBeginning();
-                        } else if (targetIdx >= comp.numLayers) {
-                            layer.moveToEnd();
-                        } else {
-                            layer.moveAfter(comp.layer(targetIdx));
-                        }
+                        ArcEditor.moveLayerToNativeIndex(layer, targetIdx);
                     } catch (idxErr) {
                         if (typeof $.writeln === "function") {
                             $.writeln("[ArcEditor] Index ordering failed (" + idxErr.message + "). Placed layer at top.");

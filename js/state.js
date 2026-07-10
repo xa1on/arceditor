@@ -39,6 +39,7 @@ let extensionPath = "./";
 let configPath = "./config.json";
 let chatsConfigPath = "./chats.json";
 let effectsCachePath = "./effects_cache.json";
+let appConfigDir = "";
 
 try {
     if (typeof require !== "undefined") {
@@ -65,7 +66,7 @@ try {
 
 // Set writable config path in dynamic Documents/ArcEditor folder (avoids Program Files read-only permission issues!)
 if (os && path && fs) {
-    let appConfigDir = "";
+    appConfigDir = "";
     try {
         let docsPath = "";
         if (csInterface && typeof csInterface.getSystemPath === "function") {

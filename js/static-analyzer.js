@@ -6,12 +6,12 @@
 
 const DISALLOWED_IDENTIFIERS = new Set([
     "system", "socket", "file", "folder", "require", "process", 
-    "child_process", "eval", "function", "global", "window", "$"
+    "child_process", "eval", "global", "window"
 ]);
 
 const DISALLOWED_STRINGS = new Set([
     "system", "socket", "file", "folder", "require", "process", 
-    "child_process", "eval", "function", "global", "window",
+    "child_process", "eval", "global", "window",
     "callsystem", "execute", "write", "open", "save"
 ]);
 
