@@ -4,7 +4,6 @@ const EXCLUDED_KEYS = {
     safetySettings: true,
     generationConfig: true,
     temperature: true,
-    model: true,
     max_tokens: true,
     stream: true,
     stream_options: true

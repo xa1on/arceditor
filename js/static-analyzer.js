@@ -24,6 +24,8 @@ function analyzeExtendScript(code) {
     let braceDepth = 0;
     let parenDepth = 0;
     let ternaryCount = 0;
+    const functionStack = [];
+    let lastFunctionName = "";
 
     while (index < length) {
         let char = code[index];
@@ -65,7 +67,7 @@ function analyzeExtendScript(code) {
                     stringVal += sChar;
                     escaped = false;
                 } else if (sChar === '\\') {
-                    escaped = true;
+                     escaped = true;
                 } else if (sChar === quote) {
                     index++;
                     break;
@@ -100,6 +102,14 @@ function analyzeExtendScript(code) {
                     reason: `Forbidden identifier "${identifier}" detected in code execution path.`
                 };
             }
+            // Look ahead to see if the next non-whitespace character is '('
+            let peek = index;
+            while (peek < length && /\s/.test(code[peek])) {
+                peek++;
+            }
+            if (code[peek] === '(') {
+                lastFunctionName = identifier;
+            }
             continue;
         }
 
@@ -110,8 +120,11 @@ function analyzeExtendScript(code) {
             braceDepth = Math.max(0, braceDepth - 1);
         } else if (char === '(') {
             parenDepth++;
+            functionStack.push(lastFunctionName || 'anonymous');
+            lastFunctionName = "";
         } else if (char === ')') {
             parenDepth = Math.max(0, parenDepth - 1);
+            functionStack.pop();
             // Reset ternary count at the end of a paren scope to prevent state leakage
             if (parenDepth === 0) {
                 ternaryCount = 0;
@@ -125,9 +138,10 @@ function analyzeExtendScript(code) {
                 if (ternaryCount > 0) {
                     ternaryCount--;
                 } else if (parenDepth > 0) {
+                    const currentFunc = functionStack[functionStack.length - 1] || 'anonymous';
                     return {
                         safe: false,
-                        reason: "Invalid named parameter syntax (key: value) detected inside function call arguments. ExtendScript requires positional arguments."
+                        reason: `Invalid named parameter syntax (key: value) detected inside call to function "${currentFunc}". JavaScript requires positional arguments.`
                     };
                 }
             }
