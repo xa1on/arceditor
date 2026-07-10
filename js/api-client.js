@@ -607,8 +607,10 @@ Here is the ExtendScript to build it:
         if (currentProvider === "lemonade" || currentProvider === "openai") {
             // Target OpenAI chat completions endpoint
             const cleanBaseUrl = targetUrl.replace(/\/$/, "");
-            targetUrl = cleanBaseUrl.endsWith("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/v1/chat/completions`;
-            headers["Authorization"] = `Bearer ${apiKey}`;
+            targetUrl = cleanBaseUrl.endsWith("/chat/completions") ? cleanBaseUrl : (cleanBaseUrl.endsWith("/v1") ? `${cleanBaseUrl}/chat/completions` : `${cleanBaseUrl}/v1/chat/completions`);
+            if (apiKey) {
+                headers["Authorization"] = `Bearer ${apiKey}`;
+            }
 
             payload = {
                 model: modelName,
