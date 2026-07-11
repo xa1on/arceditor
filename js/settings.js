@@ -352,28 +352,41 @@ function initializeProjectSessions() {
             title: "New Chat",
             history: [],
             agentHistory: [],
-            created: Date.now()
+            created: Date.now(),
+            isOpen: true
         };
         sessions.push(newSession);
         saveChats();
     }
 
-    // Populate Dropdown selector
-    const select = document.getElementById("select-chat-session");
-    if (select) {
-        select.innerHTML = '<option value="new">+ New Chat...</option>';
-
-        sessions.forEach(s => {
-            const opt = document.createElement("option");
-            opt.value = s.id;
-            opt.innerText = s.title;
-            select.appendChild(opt);
-        });
-
-        // Select the last active session or the first one
-        activeSessionId = sessions[sessions.length - 1].id;
-        select.value = activeSessionId;
+    // Find all open sessions
+    const openSessions = sessions.filter(s => s.isOpen !== false);
+    if (openSessions.length === 0) {
+        if (sessions.length > 0) {
+            sessions[sessions.length - 1].isOpen = true;
+            activeSessionId = sessions[sessions.length - 1].id;
+        } else {
+            const newSession = {
+                id: "session_" + Date.now(),
+                title: "New Chat",
+                history: [],
+                agentHistory: [],
+                created: Date.now(),
+                isOpen: true
+            };
+            sessions.push(newSession);
+            activeSessionId = newSession.id;
+        }
+        saveChats();
+    } else {
+        const activeExists = openSessions.some(s => s.id === activeSessionId);
+        if (!activeExists) {
+            activeSessionId = openSessions[openSessions.length - 1].id;
+        }
     }
+
+    // Render tabs
+    renderChatTabs();
 
     // Load history of this active session
     loadSessionHistory(activeSessionId);
@@ -428,9 +441,9 @@ function loadSessionHistory(sessionId) {
         });
     }
 
-    // Sync selection in dropdown UI
-    const select = document.getElementById("select-chat-session");
-    if (select) select.value = activeSessionId;
+    if (typeof renderChatTabs === "function") {
+        renderChatTabs();
+    }
 
     if (typeof toggleWelcomeScreen === "function") {
         toggleWelcomeScreen(chatHistory.length === 0, false);
@@ -463,11 +476,8 @@ function updateCurrentSessionHistory() {
                 if (rawPrompt.length > 20) summary += "...";
                 session.title = summary || "New Chat";
 
-                // Re-populate select list to show the new title
-                const select = document.getElementById("select-chat-session");
-                if (select) {
-                    const opt = select.querySelector(`option[value="${activeSessionId}"]`);
-                    if (opt) opt.innerText = session.title;
+                if (typeof renderChatTabs === "function") {
+                    renderChatTabs();
                 }
             }
         }
@@ -477,6 +487,11 @@ function updateCurrentSessionHistory() {
 }
 
 function createNewSession() {
+    if (isExecuting) {
+        addSystemMessage("Cannot create a new chat while the agent is active.");
+        return;
+    }
+
     if (!allProjectChats[currentProjectPath]) {
         allProjectChats[currentProjectPath] = [];
     }
@@ -492,39 +507,94 @@ function createNewSession() {
         history: [],
         agentHistory: [],
         activePlan: null,
-        created: Date.now()
+        created: Date.now(),
+        isOpen: true
     };
 
     allProjectChats[currentProjectPath].push(newSession);
     saveChats();
 
-    // Add to select dropdown
-    const select = document.getElementById("select-chat-session");
-    if (select) {
-        const opt = document.createElement("option");
-        opt.value = newSession.id;
-        opt.innerText = newSession.title;
-        select.appendChild(opt);
-
-        activeSessionId = newSession.id;
-        select.value = activeSessionId;
-    }
-
+    activeSessionId = newSession.id;
     loadSessionHistory(activeSessionId);
 }
 
-function deleteSession() {
+function closeSession(sessionId) {
+    if (isExecuting) {
+        addSystemMessage("Cannot close chat while the agent is active.");
+        return;
+    }
+
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+        session.isOpen = false;
+        saveChats();
+
+        // If we closed the active session, switch to another open one
+        if (sessionId === activeSessionId) {
+            const openSessions = sessions.filter(s => s.isOpen !== false);
+            if (openSessions.length > 0) {
+                activeSessionId = openSessions[openSessions.length - 1].id;
+                loadSessionHistory(activeSessionId);
+            } else {
+                createNewSession();
+            }
+        } else {
+            renderChatTabs();
+        }
+    }
+}
+
+function restoreSession(sessionId) {
+    if (isExecuting) {
+        addSystemMessage("Cannot restore chat while the agent is active.");
+        return;
+    }
+
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const session = sessions.find(s => s.id === sessionId);
+    if (session) {
+        session.isOpen = true;
+        saveChats();
+        activeSessionId = sessionId;
+        loadSessionHistory(activeSessionId);
+    }
+}
+
+function deleteSession(sessionId) {
+    if (isExecuting) {
+        addSystemMessage("Cannot delete chat while the agent is active.");
+        return;
+    }
+
+    const sessionToDeleteId = sessionId || activeSessionId;
+    
+    // Find the session info for confirmation prompt
+    let sessionTitle = "this chat";
+    for (const projPath in allProjectChats) {
+        const sessions = allProjectChats[projPath] || [];
+        const s = sessions.find(x => x.id === sessionToDeleteId);
+        if (s) {
+            sessionTitle = `"${s.title}"`;
+            break;
+        }
+    }
+
+    if (!confirm(`Are you sure you want to permanently delete ${sessionTitle}? This cannot be undone.`)) {
+        return;
+    }
+
     let deleted = false;
 
     // 1. Try to find and delete the session across ALL project keys to handle any project path desyncs
     for (const projPath in allProjectChats) {
         if (Object.prototype.hasOwnProperty.call(allProjectChats, projPath)) {
             const sessions = allProjectChats[projPath] || [];
-            const idx = sessions.findIndex(s => s.id === activeSessionId);
+            const idx = sessions.findIndex(s => s.id === sessionToDeleteId);
             if (idx !== -1) {
                 sessions.splice(idx, 1);
                 deleted = true;
-                console.log("[ArcEditor] Deleted session " + activeSessionId + " from project path: " + projPath);
+                console.log("[ArcEditor] Deleted session " + sessionToDeleteId + " from project path: " + projPath);
                 break;
             }
         }
@@ -533,21 +603,132 @@ function deleteSession() {
     // 2. Save changes to disk
     saveChats();
 
-    // 3. Re-initialize sessions for the current project path
-    initializeProjectSessions();
-
-    // 4. Update UI scroll & message bubbles
-    if (deleted) {
-        addSystemMessage("Chat deleted successfully. Spun up a new clean chat session.");
-    } else {
-        // Fallback: If we couldn't find the activeSessionId anywhere, force a clean reset of the current project's sessions
-        console.warn("[ArcEditor] activeSessionId (" + activeSessionId + ") not found. Forcing clean reset of current project chats.");
-        if (allProjectChats[currentProjectPath]) {
-            allProjectChats[currentProjectPath] = [];
-        }
+    // 3. Re-initialize sessions if the deleted session was the active one
+    if (sessionToDeleteId === activeSessionId) {
         initializeProjectSessions();
-        addSystemMessage("Session state was out of sync. Active chat successfully reset.");
+    } else {
+        renderChatTabs();
     }
+
+    if (deleted) {
+        addSystemMessage("Chat deleted permanently.");
+    }
+}
+
+function renderChatTabs() {
+    const listContainer = document.getElementById("chat-tabs-list");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "";
+
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const openSessions = sessions.filter(s => s.isOpen !== false);
+
+    openSessions.forEach(s => {
+        const tab = document.createElement("div");
+        tab.className = "chat-tab" + (s.id === activeSessionId ? " active" : "") + (isExecuting ? " disabled" : "");
+        tab.title = s.title;
+
+        // Click to load history
+        tab.addEventListener("click", (e) => {
+            if (isExecuting) return;
+            // Prevent trigger if they clicked the close button
+            if (e.target.closest(".chat-tab-close")) return;
+            
+            loadSessionHistory(s.id);
+            
+            // Switch view back to Chat pane automatically!
+            if (typeof switchTab === "function") {
+                switchTab("chat");
+            }
+        });
+
+        // Tab Title
+        const titleSpan = document.createElement("span");
+        titleSpan.className = "chat-tab-title";
+        titleSpan.innerText = s.title;
+        tab.appendChild(titleSpan);
+
+        // Close Button
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "chat-tab-close";
+        closeBtn.title = "Close chat";
+        closeBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="8" height="8" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        `;
+        closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (isExecuting) return;
+            closeSession(s.id);
+        });
+        tab.appendChild(closeBtn);
+
+        listContainer.appendChild(tab);
+    });
+
+    // Populate past chats dropdown
+    renderPastChatsDropdown();
+}
+
+function renderPastChatsDropdown() {
+    const dropdown = document.getElementById("past-chats-dropdown");
+    if (!dropdown) return;
+
+    dropdown.innerHTML = "";
+
+    const sessions = allProjectChats[currentProjectPath] || [];
+    const closedSessions = sessions.filter(s => s.isOpen === false);
+
+    if (closedSessions.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.style.padding = "8px";
+        emptyDiv.style.color = "var(--text-secondary)";
+        emptyDiv.style.textAlign = "center";
+        emptyDiv.style.fontStyle = "italic";
+        emptyDiv.style.fontSize = "10px";
+        emptyDiv.innerText = "No past chats";
+        dropdown.appendChild(emptyDiv);
+        return;
+    }
+
+    closedSessions.forEach(s => {
+        const item = document.createElement("div");
+        item.className = "past-chat-item";
+
+        // Click title to restore
+        const titleBtn = document.createElement("button");
+        titleBtn.className = "past-chat-title-btn";
+        titleBtn.title = `Restore: ${s.title}`;
+        titleBtn.innerText = s.title;
+        titleBtn.addEventListener("click", () => {
+            if (isExecuting) return;
+            restoreSession(s.id);
+            dropdown.classList.add("hidden");
+        });
+        item.appendChild(titleBtn);
+
+        // Delete button
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "past-chat-delete";
+        deleteBtn.title = "Delete permanently";
+        deleteBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+        `;
+        deleteBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (isExecuting) return;
+            deleteSession(s.id);
+        });
+        item.appendChild(deleteBtn);
+
+        dropdown.appendChild(item);
+    });
 }
 
 // --- DYNAMIC MODEL SELECTOR & CACHING LOGIC ---
@@ -803,3 +984,8 @@ function renderSkillsSettingsUI() {
 }
 
 window.renderSkillsSettingsUI = renderSkillsSettingsUI;
+window.renderChatTabs = renderChatTabs;
+window.closeSession = closeSession;
+window.restoreSession = restoreSession;
+window.deleteSession = deleteSession;
+window.createNewSession = createNewSession;

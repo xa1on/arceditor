@@ -1028,62 +1028,174 @@ select.form-input {
     color: var(--text-primary);
 }
 
-/* Chat Sessions Control Bar styling */
+/* Chat Sessions Control Bar (Tab System) styling */
 .chat-sessions-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 2px 8px;
     background-color: var(--bg-surface);
     border-bottom: 1px solid var(--border-color);
-    font-size: 10px;
-    color: var(--text-secondary);
+    height: 28px;
+    padding: 0 4px;
+    user-select: none;
+    overflow: visible;
 }
 
-.project-info {
+.chat-tabs-list {
+    display: flex;
+    align-items: flex-end;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 100%;
+    gap: 2px;
+    padding-top: 4px;
+    flex: 1;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.chat-tabs-list::-webkit-scrollbar {
+    display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.chat-tabs-list {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+
+.chat-tab {
     display: flex;
     align-items: center;
-    gap: 4px;
-    max-width: 60%;
-    overflow: hidden;
+    gap: 6px;
+    padding: 0 8px 0 10px;
+    height: 24px;
+    background-color: #282828;
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-top-left-radius: var(--border-radius-sm);
+    border-top-right-radius: var(--border-radius-sm);
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    min-width: 60px;
+    max-width: 120px;
+    transition: background-color 0.15s, color 0.15s;
+    position: relative;
 }
 
-.project-info span {
-    font-weight: 500;
+.chat-tab:hover {
+    background-color: var(--bg-tab-hover);
     color: var(--text-primary);
+}
+
+.chat-tab.active {
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    border-top: 2px solid var(--text-accent);
+    height: 25px; /* overlay the border bottom */
+    font-weight: 500;
+}
+
+.chat-tab.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.chat-tab-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 80px;
 }
 
-.session-selector-wrap {
+.chat-tab-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
     display: flex;
     align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    transition: background-color 0.15s, color 0.15s;
 }
 
-.session-select {
-    background: var(--bg-input);
+.chat-tab-close:hover {
+    color: var(--text-error);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Past Chats Dropdown styling */
+.past-chats-dropdown {
+    position: absolute;
+    top: 26px;
+    right: 0;
+    background-color: var(--bg-surface);
     border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    z-index: 1000;
+    min-width: 200px;
+    max-width: 280px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.past-chats-dropdown.hidden {
+    display: none !important;
+}
+
+.past-chat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border-color);
+    gap: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.past-chat-item:last-child {
+    border-bottom: none;
+}
+
+.past-chat-item:hover {
+    background-color: var(--bg-tab-hover);
+}
+
+.past-chat-title-btn {
+    flex: 1;
+    background: none;
+    border: none;
     color: var(--text-primary);
     font-size: 10px;
-    padding: 2px 4px;
-    border-radius: var(--border-radius-sm);
-    outline: none;
-    max-width: 120px;
+    text-align: left;
     cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
 }
 
-.session-select:focus {
-    border-color: var(--border-focus);
+.past-chat-delete {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--border-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
 }
 
-.btn-delete-session svg {
-    opacity: 0.6;
-    transition: opacity 0.15s, color 0.15s;
-}
-
-.btn-delete-session:hover svg {
-    opacity: 1;
+.past-chat-delete:hover {
     color: var(--text-error);
 }
 

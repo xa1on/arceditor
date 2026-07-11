@@ -329,22 +329,34 @@ ${code}`;
         welcomeBtnSend.addEventListener("click", triggerWelcomeUserMessage);
     }
 
-    // Chat Sessions Dropdown Selector
-    const selectSession = document.getElementById("select-chat-session");
-    if (selectSession) {
-        selectSession.addEventListener("change", (e) => {
-            if (e.target.value === "new") {
-                createNewSession();
-            } else {
-                loadSessionHistory(e.target.value);
-            }
+    // Chat Sessions New Tab Button
+    const btnNewChatTab = document.getElementById("btn-new-chat-tab");
+    if (btnNewChatTab) {
+        btnNewChatTab.addEventListener("click", () => {
+            if (isExecuting) return;
+            createNewSession();
         });
     }
 
-    const btnDeleteSession = document.getElementById("btn-delete-session");
-    if (btnDeleteSession) {
-        btnDeleteSession.addEventListener("click", deleteSession);
+    // Past Chats Dropdown Button
+    const btnPastChats = document.getElementById("btn-past-chats");
+    const pastChatsDropdown = document.getElementById("past-chats-dropdown");
+    if (btnPastChats && pastChatsDropdown) {
+        btnPastChats.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (isExecuting) return;
+            pastChatsDropdown.classList.toggle("hidden");
+        });
     }
+
+    // Close past chats dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        if (pastChatsDropdown && !pastChatsDropdown.classList.contains("hidden")) {
+            if (!e.target.closest(".past-chats-wrap")) {
+                pastChatsDropdown.classList.add("hidden");
+            }
+        }
+    });
 
     // Copy Bubble Text & Toggle Tool View Event Delegation
     const chatMessages = document.getElementById("chat-messages");
@@ -1076,6 +1088,8 @@ function setUIReadyState(ready) {
     const btnSend = document.getElementById("btn-send");
     const selectSession = document.getElementById("select-chat-session");
     const btnDeleteSession = document.getElementById("btn-delete-session");
+    const btnNewChatTab = document.getElementById("btn-new-chat-tab");
+    const btnPastChats = document.getElementById("btn-past-chats");
     const chipCapture = document.getElementById("chip-capture");
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     const btnSettings = document.getElementById("btn-settings");
@@ -1126,10 +1140,16 @@ function setUIReadyState(ready) {
     }
     if (selectSession) selectSession.disabled = !ready;
     if (btnDeleteSession) btnDeleteSession.disabled = !ready;
+    if (btnNewChatTab) btnNewChatTab.disabled = !ready;
+    if (btnPastChats) btnPastChats.disabled = !ready;
     if (chipCapture) chipCapture.disabled = !ready;
     if (chipCaptureSequence) chipCaptureSequence.disabled = !ready;
     if (btnSettings) btnSettings.disabled = !ready;
     if (btnInspectComp) btnInspectComp.disabled = !ready;
+
+    if (typeof renderChatTabs === "function") {
+        renderChatTabs();
+    }
 
     // Apply transient style classes for visual execution lock feedback
     const quickUtilities = document.querySelector(".quick-utilities");
