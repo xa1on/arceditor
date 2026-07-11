@@ -70,9 +70,10 @@
                     </div>
                     <p class="welcome-subtext">Ask Arc to edit, splice, or animate your compositions</p>
                     <div class="welcome-input-wrapper"
-                        style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
+                        style="display: flex; flex-direction: column; align-items: stretch; gap: 4px; position: relative;">
                         <textarea id="welcome-chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1"
                             style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
+                        <div id="welcome-command-popup" class="command-autocomplete-popup hidden"></div>
                         <div class="input-controls-row"
                             style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
                             <div class="input-controls-left" style="display: flex; align-items: center; gap: 6px;">
@@ -195,9 +196,10 @@
         <!-- FOOTER INPUT -->
         <footer class="app-footer" style="display: flex; flex-direction: column;">
             <div class="input-glow-wrapper"
-                style="display: flex; flex-direction: column; align-items: stretch; gap: 4px;">
+                style="display: flex; flex-direction: column; align-items: stretch; gap: 4px; position: relative;">
                 <textarea id="chat-input" placeholder="Ask Arc to edit, splice, or animate..." rows="1"
                     style="width: 100%; border: none; outline: none; background: transparent; resize: none;"></textarea>
+                <div id="chat-command-popup" class="command-autocomplete-popup hidden"></div>
                 <div class="input-controls-row"
                     style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
                     <div class="input-controls-left" style="display: flex; align-items: center; gap: 6px;">
@@ -465,6 +467,7 @@
     <script src="js/markdown-parser.js"></script>
     <script src="js/static-analyzer.js"></script>
     <script src="js/agent.js"></script>
+    <script src="js/commands.js"></script>
     <!-- DRAG AND DROP OVERLAY -->
     <div id="drag-overlay" class="drag-overlay hidden">
         <div class="drag-overlay-content">

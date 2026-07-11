@@ -456,6 +456,11 @@ ${code}`;
             }
         }
     });
+
+    // Initialize autocomplete slash command system
+    if (window.commandsManager && typeof window.commandsManager.init === "function") {
+        window.commandsManager.init();
+    }
 }
 
 window.updatePermissionModeDescription = function(mode) {
