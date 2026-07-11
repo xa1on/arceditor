@@ -88,7 +88,17 @@ async function runAgenticExecutionLoop(userText) {
             attachments.forEach(item => {
                 const isObject = typeof item === "object" && item !== null;
                 if (isObject) {
-                    if (item.type === "text" || item.textContent !== undefined) {
+                    if (item.type === "video") {
+                        embeddedText += `\n\n[Uploaded Video: ${item.name} - 5 extracted frames attached below]`;
+                        if (item.frames && item.frames.length > 0) {
+                            item.frames.forEach(frame => {
+                                contentParts.push({
+                                    type: "image_url",
+                                    image_url: { url: `data:image/png;base64,${frame.data}` }
+                                });
+                            });
+                        }
+                    } else if (item.type === "text" || item.textContent !== undefined) {
                         embeddedText += `\n\n[Uploaded File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
                     } else if (item.type === "pdf") {
                         if (item.textContent) {

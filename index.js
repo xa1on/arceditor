@@ -747,11 +747,20 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
                         }
                     }
 
-                    fileWrap.innerHTML = `
+                    const isVideo = isObject && item.type === "video";
+                    const iconSvg = isVideo ? `
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                        </svg>
+                    ` : `
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
                         </svg>
+                    `;
+                    fileWrap.innerHTML = `
+                        ${iconSvg}
                         <span class="bubble-file-name" title="${name}">${name}</span>
                         ${sizeStr ? `<span class="bubble-file-size">${sizeStr}</span>` : ""}
                     `;
@@ -867,7 +876,17 @@ function updateContextSizeInfo() {
             attachedFrames.forEach(item => {
                 const isObject = typeof item === "object" && item !== null;
                 if (isObject) {
-                    if (item.type === "text" || item.textContent !== undefined) {
+                    if (item.type === "video") {
+                        embeddedText += `\n\n[Uploaded Video: ${item.name} - 5 extracted frames attached below]`;
+                        if (item.frames && item.frames.length > 0) {
+                            item.frames.forEach(frame => {
+                                contentParts.push({
+                                    type: "image_url",
+                                    image_url: { url: `data:image/png;base64,${frame.data}` }
+                                });
+                            });
+                        }
+                    } else if (item.type === "text" || item.textContent !== undefined) {
                         embeddedText += `\n\n[Uploaded File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
                     } else if (item.type === "pdf") {
                         if (item.textContent) {
@@ -990,11 +1009,20 @@ function renderAttachmentDock() {
         } else {
             const fileIcon = document.createElement("div");
             fileIcon.className = "dock-file-icon";
-            fileIcon.innerHTML = `
+            const isVideo = isObject && item.type === "video";
+            const iconSvg = isVideo ? `
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+            ` : `
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
+            `;
+            fileIcon.innerHTML = `
+                ${iconSvg}
                 <span class="dock-file-name" title="${name}">${name}</span>
             `;
             wrap.appendChild(fileIcon);
@@ -1987,7 +2015,26 @@ function processUploadedFile(file) {
     return new Promise((resolve, reject) => {
         const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
         
-        if (file.type.startsWith("image/")) {
+        if (file.type.startsWith("video/") || [".mp4", ".webm", ".mov", ".ogg", ".avi", ".mkv"].includes(ext)) {
+            addSystemMessage(`Extracting frames from video ${file.name}...`);
+            extractVideoFrames(file).then(frames => {
+                if (frames && frames.length > 0) {
+                    attachedFrames.push({
+                        type: "video",
+                        name: file.name,
+                        mimeType: file.type || "video/mp4",
+                        size: file.size,
+                        frames: frames
+                    });
+                    renderAttachmentDock();
+                    updateContextSizeInfo();
+                    addSystemMessage(`Successfully extracted ${frames.length} frames from ${file.name}.`);
+                    resolve();
+                } else {
+                    reject(new Error("No frames could be extracted from the video file. Make sure it is a valid, playable video."));
+                }
+            }).catch(reject);
+        } else if (file.type.startsWith("image/")) {
             const reader = new FileReader();
             reader.onerror = () => reject(new Error("Error reading image file"));
             reader.onload = (e) => {
@@ -2078,6 +2125,75 @@ function processUploadedFile(file) {
             };
             reader.readAsDataURL(file);
         }
+    });
+}
+
+function extractVideoFrames(file) {
+    return new Promise((resolve) => {
+        const video = document.createElement("video");
+        video.preload = "auto";
+        video.muted = true;
+        video.playsInline = true;
+
+        const fileURL = URL.createObjectURL(file);
+        video.src = fileURL;
+
+        video.addEventListener("loadedmetadata", async () => {
+            const duration = video.duration;
+            if (!duration || isNaN(duration)) {
+                URL.revokeObjectURL(fileURL);
+                resolve([]);
+                return;
+            }
+
+            const frameCount = 5;
+            const frames = [];
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            
+            const targetWidth = 640;
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            canvas.width = targetWidth;
+            canvas.height = targetWidth / (aspectRatio || 1);
+
+            const intervals = [0.1, 0.3, 0.5, 0.7, 0.9];
+
+            for (let i = 0; i < intervals.length; i++) {
+                const targetTime = duration * intervals[i];
+                video.currentTime = targetTime;
+                
+                await new Promise((seekResolve) => {
+                    const onSeeked = () => {
+                        video.removeEventListener("seeked", onSeeked);
+                        try {
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            const base64Data = canvas.toDataURL("image/png").split(",")[1];
+                            frames.push({
+                                type: "image",
+                                name: `${file.name} (Frame ${i + 1})`,
+                                mimeType: "image/png",
+                                data: base64Data
+                            });
+                        } catch (err) {
+                            console.error("Failed to capture video frame at " + targetTime, err);
+                        }
+                        seekResolve();
+                    };
+                    video.addEventListener("seeked", onSeeked);
+                });
+            }
+
+            URL.revokeObjectURL(fileURL);
+            video.src = "";
+            video.load();
+            resolve(frames);
+        });
+
+        video.addEventListener("error", (e) => {
+            console.error("Video load error:", e);
+            URL.revokeObjectURL(fileURL);
+            resolve([]);
+        });
     });
 }
 
