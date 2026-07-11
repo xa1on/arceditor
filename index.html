@@ -222,6 +222,7 @@
                     </div>
                 </div>
             </div>
+            <input type="file" id="file-upload-input" multiple style="display: none;">
         </footer>
 
         <!-- DRAWER SETTINGS PANEL -->
@@ -443,6 +444,18 @@
     <script src="js/markdown-parser.js"></script>
     <script src="js/static-analyzer.js"></script>
     <script src="js/agent.js"></script>
+    <!-- DRAG AND DROP OVERLAY -->
+    <div id="drag-overlay" class="drag-overlay hidden">
+        <div class="drag-overlay-content">
+            <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="2.5" fill="none">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Drop files anywhere to upload</span>
+        </div>
+    </div>
+
     <!-- Entry UI Bindings -->
     <script src="index.js"></script>
 </body>

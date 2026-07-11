@@ -448,10 +448,23 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
                     if (c.type === "image_url") {
                         const partsOfUrl = c.image_url.url.split(',');
                         const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        let mimeType = "image/png";
+                        const match = partsOfUrl[0].match(/data:(.*?);/);
+                        if (match && match[1]) {
+                            mimeType = match[1];
+                        }
                         parts.push({
                             inlineData: {
-                                mimeType: "image/png",
+                                mimeType: mimeType,
                                 data: base64Data
+                            }
+                        });
+                    }
+                    if (c.type === "inline_data") {
+                        parts.push({
+                            inlineData: {
+                                mimeType: c.inline_data.mimeType,
+                                data: c.inline_data.data
                             }
                         });
                     }
@@ -823,11 +836,16 @@ Here is the ExtendScript to build it:
                         if (c.type === "image_url") {
                             const partsOfUrl = c.image_url.url.split(',');
                             const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                            let mimeType = "image/png";
+                            const match = partsOfUrl[0].match(/data:(.*?);/);
+                            if (match && match[1]) {
+                                mimeType = match[1];
+                            }
                             contentArr.push({
                                 type: "image",
                                 source: {
                                     type: "base64",
-                                    media_type: "image/png",
+                                    media_type: mimeType,
                                     data: base64Data
                                 }
                             });

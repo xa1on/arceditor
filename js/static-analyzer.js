@@ -5,12 +5,12 @@
  */
 
 const DISALLOWED_IDENTIFIERS = new Set([
-    "system", "socket", "file", "folder", "require", "process", 
+    "system", "socket", "file", "folder", "require", "process",
     "child_process", "eval", "global", "window"
 ]);
 
 const DISALLOWED_STRINGS = new Set([
-    "system", "socket", "file", "folder", "require", "process", 
+    "system", "socket", "file", "folder", "require", "process",
     "child_process", "eval", "global", "window",
     "callsystem", "execute", "write", "open", "save"
 ]);
@@ -26,6 +26,8 @@ function analyzeExtendScript(code) {
     let ternaryCount = 0;
     const functionStack = [];
     let lastFunctionName = "";
+    let sawNew = false;
+    let sawDot = false;
 
     while (index < length) {
         let char = code[index];
@@ -67,7 +69,7 @@ function analyzeExtendScript(code) {
                     stringVal += sChar;
                     escaped = false;
                 } else if (sChar === '\\') {
-                     escaped = true;
+                    escaped = true;
                 } else if (sChar === quote) {
                     index++;
                     break;
@@ -102,6 +104,41 @@ function analyzeExtendScript(code) {
                     reason: `Forbidden identifier "${identifier}" detected in code execution path.`
                 };
             }
+
+            // Quality Guardrails
+            if (normalizedId === "path" && sawNew) {
+                return {
+                    safe: false,
+                    reason: `Forbidden constructor "new Path()" detected. In After Effects ExtendScript, mask geometries must be created using "new Shape()".`
+                };
+            }
+            if (normalizedId === "mask" && sawDot) {
+                return {
+                    safe: false,
+                    reason: `Forbidden property access ".mask" detected. In After Effects ExtendScript, layers do not have a ".mask" property. To draw vector geometry, you must create a Shape Layer (using ArcEditor.addShapeToLayer). If you truly need a layer mask, use "layer.property('ADBE Mask Group')".`
+                };
+            }
+            if (normalizedId === "redo") {
+                let peek = index;
+                while (peek < length && /\s/.test(code[peek])) {
+                    peek++;
+                }
+                if (code[peek] === '(') {
+                    return {
+                        safe: false,
+                        reason: `Forbidden function call "redo()" detected. Use the tool to undo, but there is no tool for redo.`
+                    };
+                }
+            }
+
+            // Update flags
+            if (normalizedId === "new") {
+                sawNew = true;
+            } else {
+                sawNew = false;
+            }
+            sawDot = false;
+
             // Look ahead to see if the next non-whitespace character is '('
             let peek = index;
             while (peek < length && /\s/.test(code[peek])) {
@@ -148,6 +185,18 @@ function analyzeExtendScript(code) {
         }
 
         // 7. Non-significant characters (operators, numbers)
+        if (char === '.') {
+            let nextChar = code[index + 1];
+            if (nextChar && /[0-9]/.test(nextChar)) {
+                sawDot = false;
+            } else {
+                sawDot = true;
+            }
+        } else {
+            sawDot = false;
+        }
+        sawNew = false;
+
         index++;
     }
 

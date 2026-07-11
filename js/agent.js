@@ -75,17 +75,63 @@ async function runAgenticExecutionLoop(userText) {
     const executionId = currentExecutionId;
 
     try {
-        let visualFrameInputs = [...attachedFrames];
+        let attachments = [...attachedFrames];
 
         // Reset attachments
         clearAttachmentDock();
 
         let userMsg;
-        if (visualFrameInputs && visualFrameInputs.length > 0) {
-            const contentParts = [{ type: "text", text: userText }];
-            visualFrameInputs.forEach(img => {
-                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+        if (attachments && attachments.length > 0) {
+            let embeddedText = userText;
+            const contentParts = [];
+
+            attachments.forEach(item => {
+                const isObject = typeof item === "object" && item !== null;
+                if (isObject) {
+                    if (item.type === "text" || item.textContent !== undefined) {
+                        embeddedText += `\n\n[Uploaded File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
+                    } else if (item.type === "pdf") {
+                        if (item.textContent) {
+                            embeddedText += `\n\n[Uploaded PDF File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
+                        }
+                        if (currentProvider === "gemini") {
+                            contentParts.push({
+                                type: "inline_data",
+                                inline_data: {
+                                    mimeType: item.mimeType,
+                                    data: item.data
+                                }
+                            });
+                        } else {
+                            embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes) - Note: Model provider does not support native PDF uploads]`;
+                        }
+                    } else if (item.type === "image" || item.mimeType.startsWith("image/")) {
+                        contentParts.push({
+                            type: "image_url",
+                            image_url: { url: `data:${item.mimeType};base64,${item.data}` }
+                        });
+                    } else {
+                        if (currentProvider === "gemini") {
+                            contentParts.push({
+                                type: "inline_data",
+                                inline_data: {
+                                    mimeType: item.mimeType,
+                                    data: item.data
+                                }
+                            });
+                        } else {
+                            embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes)]`;
+                        }
+                    }
+                } else {
+                    contentParts.push({
+                        type: "image_url",
+                        image_url: { url: `data:image/png;base64,${item}` }
+                    });
+                }
             });
+
+            contentParts.unshift({ type: "text", text: embeddedText });
             userMsg = {
                 role: "user",
                 content: contentParts
@@ -1137,7 +1183,7 @@ function estimateMessagesTokenCount(messagesArray) {
                 if (part) {
                     if (part.type === "text" && part.text) {
                         textForEstimation += part.text + "\n";
-                    } else if (part.type === "image_url") {
+                    } else if (part.type === "image_url" || part.type === "inline_data") {
                         imageBlocksCount++;
                     }
                 }

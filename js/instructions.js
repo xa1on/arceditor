@@ -319,7 +319,7 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
       * \`layerRef\`: Layer unique ID, name, or index.
 
 18. \`ArcEditor.addShapeToLayer(layerRef, shapeType, groupName, properties)\`
-    - Description: Procedurally draws a styled shape group (with optional vector sizes, position offsets, color fills, and strokes) inside an existing Shape Layer.
+    - Description: Procedurally draws a styled shape group (with optional vector sizes, position offsets, color fills, and strokes) inside an existing Shape Layer. Make sure to disable stroke color via the strokeWidth property by setting strokeWidth to 0 if you do not want a stroke on your layer (it's a thin black stroke by default).
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index of the target Shape Layer.
       * \`shapeType\`: String. "Ellipse" (or "Circle") or "Rect" (or "Rectangle").

@@ -325,7 +325,12 @@ async function captureCompositionFrame(isAgentCall) {
             const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
 
             if (isAgentCall !== true) {
-                attachedFrames.push(base64Data);
+                attachedFrames.push({
+                    type: "image",
+                    name: `Captured Frame ${attachedFrames.length + 1}`,
+                    mimeType: "image/png",
+                    data: base64Data
+                });
 
                 if (typeof renderAttachmentDock === "function") {
                     renderAttachmentDock();
@@ -603,7 +608,12 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
 
     if (isAgentCall !== true) {
         base64List.forEach(data => {
-            attachedFrames.push(data);
+            attachedFrames.push({
+                type: "image",
+                name: `Captured Frame ${attachedFrames.length + 1}`,
+                mimeType: "image/png",
+                data: data
+            });
         });
         if (typeof renderAttachmentDock === "function") {
             renderAttachmentDock();

@@ -190,13 +190,53 @@ ${code}`;
 
     chipCapture.addEventListener("click", () => captureCompositionFrame(false));
 
+    const fileUploadInput = document.getElementById("file-upload-input");
+    if (fileUploadInput) {
+        fileUploadInput.addEventListener("change", handleFileSelection);
+    }
+
+    const dragOverlay = document.getElementById("drag-overlay");
+    document.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dragOverlay) dragOverlay.classList.remove("hidden");
+    });
+    document.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.relatedTarget === null || e.toElement === null) {
+            if (dragOverlay) dragOverlay.classList.add("hidden");
+        }
+    });
+    document.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dragOverlay) dragOverlay.classList.add("hidden");
+
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    await processUploadedFile(file);
+                } catch (err) {
+                    addSystemMessage(`Failed to read file ${file.name}: ${err.message}`);
+                }
+            }
+        }
+    });
+
     const btnPlus = document.getElementById("btn-plus");
     if (btnPlus) {
-        btnPlus.addEventListener("click", () => captureCompositionFrame(false));
+        btnPlus.addEventListener("click", () => {
+            if (fileUploadInput) fileUploadInput.click();
+        });
     }
     const welcomeBtnPlus = document.getElementById("welcome-btn-plus");
     if (welcomeBtnPlus) {
-        welcomeBtnPlus.addEventListener("click", () => captureCompositionFrame(false));
+        welcomeBtnPlus.addEventListener("click", () => {
+            if (fileUploadInput) fileUploadInput.click();
+        });
     }
 
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
@@ -242,7 +282,7 @@ ${code}`;
             this.style.height = scrollHeight + "px";
             this.style.overflowY = "hidden";
         }
-        btnSend.disabled = !this.value.trim();
+        updateSendButtonState();
         updateContextSizeInfo();
     });
 
@@ -276,7 +316,7 @@ ${code}`;
                 this.style.height = scrollHeight + "px";
                 this.style.overflowY = "hidden";
             }
-            welcomeBtnSend.disabled = !this.value.trim();
+            updateSendButtonState();
         });
         
         welcomeChatInput.addEventListener("keydown", (e) => {
@@ -679,12 +719,44 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
             containerWrap.style.gap = "6px";
             containerWrap.style.marginTop = "6px";
 
-            imagesArray.forEach((imgData, index) => {
-                const imgWrap = document.createElement("div");
-                imgWrap.className = "bubble-image-wrap";
-                imgWrap.style.marginTop = "0"; // Reset margin since container has gap
-                imgWrap.innerHTML = `<img src="data:image/png;base64,${imgData}" alt="User attachment ${index + 1}" />`;
-                containerWrap.appendChild(imgWrap);
+            imagesArray.forEach((item, index) => {
+                const isObject = typeof item === "object" && item !== null;
+                const mimeType = isObject ? (item.mimeType || "image/png") : "image/png";
+                const data = isObject ? item.data : item;
+                const name = isObject ? item.name : `User attachment ${index + 1}`;
+                const isImage = isObject ? (item.type === "image" || mimeType.startsWith("image/")) : true;
+
+                if (isImage) {
+                    const imgWrap = document.createElement("div");
+                    imgWrap.className = "bubble-image-wrap";
+                    imgWrap.style.marginTop = "0"; // Reset margin since container has gap
+                    imgWrap.innerHTML = `<img src="data:${mimeType};base64,${data}" alt="${name}" title="${name}" />`;
+                    containerWrap.appendChild(imgWrap);
+                } else {
+                    const fileWrap = document.createElement("div");
+                    fileWrap.className = "bubble-file-attachment";
+                    
+                    let sizeStr = "";
+                    if (isObject && typeof item.size === "number") {
+                        if (item.size < 1024) {
+                            sizeStr = `${item.size} B`;
+                        } else if (item.size < 1024 * 1024) {
+                            sizeStr = `${(item.size / 1024).toFixed(1)} KB`;
+                        } else {
+                            sizeStr = `${(item.size / (1024 * 1024)).toFixed(1)} MB`;
+                        }
+                    }
+
+                    fileWrap.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        <span class="bubble-file-name" title="${name}">${name}</span>
+                        ${sizeStr ? `<span class="bubble-file-size">${sizeStr}</span>` : ""}
+                    `;
+                    containerWrap.appendChild(fileWrap);
+                }
             });
             content.appendChild(containerWrap);
         }
@@ -763,6 +835,22 @@ function estimateTrueTokens(text) {
     return Math.round(count);
 }
 
+function updateSendButtonState() {
+    const chatInput = document.getElementById("chat-input");
+    const btnSend = document.getElementById("btn-send");
+    const welcomeInput = document.getElementById("welcome-chat-input");
+    const welcomeBtnSend = document.getElementById("welcome-btn-send");
+    
+    const hasAttachments = attachedFrames && attachedFrames.length > 0;
+    
+    if (btnSend && chatInput) {
+        btnSend.disabled = !chatInput.value.trim() && !hasAttachments;
+    }
+    if (welcomeBtnSend && welcomeInput) {
+        welcomeBtnSend.disabled = !welcomeInput.value.trim() && !hasAttachments;
+    }
+}
+
 function updateContextSizeInfo() {
     const metaElement = document.getElementById("input-meta-info");
     if (!metaElement) return;
@@ -771,12 +859,55 @@ function updateContextSizeInfo() {
 
     // Reconstruct prospective messages payload (including text input and attachments)
     const prospectiveHistory = [...agentHistory];
-    if (inputText.trim()) {
+    if (inputText.trim() || (attachedFrames && attachedFrames.length > 0)) {
         if (attachedFrames && attachedFrames.length > 0) {
-            const contentParts = [{ type: "text", text: inputText }];
-            attachedFrames.forEach(img => {
-                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+            let embeddedText = inputText;
+            const contentParts = [];
+            
+            attachedFrames.forEach(item => {
+                const isObject = typeof item === "object" && item !== null;
+                if (isObject) {
+                    if (item.type === "text" || item.textContent !== undefined) {
+                        embeddedText += `\n\n[Uploaded File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
+                    } else if (item.type === "pdf") {
+                        if (item.textContent) {
+                            embeddedText += `\n\n[Uploaded PDF File: ${item.name}]\n\`\`\`\n${item.textContent}\n\`\`\``;
+                        }
+                        if (currentProvider === "gemini") {
+                            contentParts.push({
+                                type: "inline_data",
+                                inline_data: {
+                                    mimeType: item.mimeType,
+                                    data: item.data
+                                }
+                            });
+                        } else {
+                            embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes) - Note: Model provider does not support native PDF uploads]`;
+                        }
+                    } else if (item.type === "image" || item.mimeType.startsWith("image/")) {
+                        contentParts.push({
+                            type: "image_url",
+                            image_url: { url: `data:${item.mimeType};base64,${item.data}` }
+                        });
+                    } else {
+                        if (currentProvider === "gemini") {
+                            contentParts.push({
+                                type: "inline_data",
+                                inline_data: {
+                                    mimeType: item.mimeType,
+                                    data: item.data
+                                }
+                            });
+                        } else {
+                            embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes)]`;
+                        }
+                    }
+                } else {
+                    contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${item}` } });
+                }
             });
+            
+            contentParts.unshift({ type: "text", text: embeddedText });
             prospectiveHistory.push({
                 role: "user",
                 content: contentParts
@@ -813,7 +944,7 @@ function updateContextSizeInfo() {
     for (const msg of prospectiveHistory) {
         if (Array.isArray(msg.content)) {
             for (const part of msg.content) {
-                if (part.type === "image_url") {
+                if (part.type === "image_url" || part.type === "inline_data") {
                     imageBlocksCount++;
                 }
             }
@@ -841,13 +972,33 @@ function renderAttachmentDock() {
         return;
     }
 
-    attachedFrames.forEach((base64Data, idx) => {
+    attachedFrames.forEach((item, idx) => {
         const wrap = document.createElement("div");
         wrap.className = "dock-img-wrap";
 
-        const img = document.createElement("img");
-        img.src = `data:image/png;base64,${base64Data}`;
-        img.alt = `Frame ${idx + 1}`;
+        const isObject = typeof item === "object" && item !== null;
+        const mimeType = isObject ? (item.mimeType || "image/png") : "image/png";
+        const data = isObject ? item.data : item;
+        const name = isObject ? item.name : `Frame ${idx + 1}`;
+        const isImage = isObject ? (item.type === "image" || mimeType.startsWith("image/")) : true;
+
+        if (isImage) {
+            const img = document.createElement("img");
+            img.src = `data:${mimeType};base64,${data}`;
+            img.alt = name;
+            wrap.appendChild(img);
+        } else {
+            const fileIcon = document.createElement("div");
+            fileIcon.className = "dock-file-icon";
+            fileIcon.innerHTML = `
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                <span class="dock-file-name" title="${name}">${name}</span>
+            `;
+            wrap.appendChild(fileIcon);
+        }
 
         const btn = document.createElement("button");
         btn.className = "close-badge";
@@ -859,13 +1010,19 @@ function renderAttachmentDock() {
             updateContextSizeInfo();
         });
 
-        wrap.appendChild(img);
         wrap.appendChild(btn);
         dockThumbnails.appendChild(wrap);
     });
 
+    const dockLabel = previewContainer.querySelector(".dock-label");
+    if (dockLabel) {
+        const hasNonImages = attachedFrames.some(f => typeof f === "object" && f.type !== "image");
+        dockLabel.innerText = hasNonImages ? "Attached files" : "Captured frames";
+    }
+
     previewContainer.classList.remove("hidden");
     updateContextSizeInfo();
+    updateSendButtonState();
 }
 
 function clearAttachmentDock() {
@@ -874,6 +1031,7 @@ function clearAttachmentDock() {
     if (dockThumbnails) dockThumbnails.innerHTML = "";
     document.getElementById("frame-attachment-preview").classList.add("hidden");
     updateContextSizeInfo();
+    updateSendButtonState();
 }
 
 function updateConsolePane(code) {
@@ -928,11 +1086,8 @@ function setUIReadyState(ready) {
     if (ready) {
         if (btnSend) {
             btnSend.classList.remove("hidden");
-            btnSend.disabled = !chatInput.value.trim();
         }
-        if (welcomeBtnSend) {
-            welcomeBtnSend.disabled = !welcomeInput || !welcomeInput.value.trim();
-        }
+        updateSendButtonState();
         if (btnStop) btnStop.classList.add("hidden");
     } else {
         if (btnSend) btnSend.classList.add("hidden");
@@ -1686,5 +1841,244 @@ window.expandDetailsWithAnimation = function(detailsEl) {
     };
     detailsEl.addEventListener("transitionend", onEnd);
 };
+
+function isTextFile(file) {
+    if (file.type && file.type.startsWith("text/")) return true;
+    if (file.type && (file.type === "application/json" || file.type === "application/javascript" || file.type === "application/xml" || file.type.includes("json") || file.type.includes("xml"))) return true;
+    const textExtensions = [
+        ".txt", ".js", ".jsx", ".ts", ".tsx", ".json", ".html", ".css", ".md", 
+        ".xml", ".yaml", ".yml", ".py", ".sh", ".bat", ".ps1", ".svg", 
+        ".c", ".cpp", ".h", ".java", ".cs", ".go", ".rs", ".php", ".rb", ".ini", ".conf", ".cfg", ".csv"
+    ];
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    return textExtensions.includes(ext);
+}
+
+function extractTextFromPDF(arrayBuffer) {
+    let zlibModule = null;
+    try {
+        if (typeof require !== "undefined") {
+            zlibModule = require('zlib');
+        }
+    } catch (e) {
+        console.warn("Node zlib module not available for PDF text extraction.", e);
+    }
+
+    if (!zlibModule) {
+        return parseUncompressedPDFText(arrayBuffer);
+    }
+
+    const pdfBuffer = Buffer.from(arrayBuffer);
+    let text = "";
+    let pos = 0;
+    
+    while (true) {
+        const streamStartIdx = pdfBuffer.indexOf(Buffer.from("stream"), pos);
+        if (streamStartIdx === -1) break;
+        
+        let contentStart = streamStartIdx + 6;
+        if (pdfBuffer[contentStart] === 13) contentStart++; 
+        if (pdfBuffer[contentStart] === 10) contentStart++; 
+        
+        const streamEndIdx = pdfBuffer.indexOf(Buffer.from("endstream"), contentStart);
+        if (streamEndIdx === -1) break;
+        
+        const streamData = pdfBuffer.slice(contentStart, streamEndIdx);
+        
+        const dictStartIdx = pdfBuffer.lastIndexOf(Buffer.from("<<"), streamStartIdx);
+        let isFlate = false;
+        if (dictStartIdx !== -1 && dictStartIdx < streamStartIdx) {
+            const dictData = pdfBuffer.slice(dictStartIdx, streamStartIdx).toString('ascii');
+            if (dictData.includes("/FlateDecode") || dictData.includes("/Flate")) {
+                isFlate = true;
+            }
+        }
+        
+        let decompressed = null;
+        if (isFlate) {
+            try {
+                decompressed = zlibModule.inflateSync(streamData);
+            } catch (err) {
+                // If FlateDecode fails, fallback raw
+            }
+        } else {
+            decompressed = streamData;
+        }
+        
+        if (decompressed) {
+            const decompressedStr = decompressed.toString('binary');
+            let btIdx = 0;
+            while (true) {
+                btIdx = decompressedStr.indexOf("BT", btIdx);
+                if (btIdx === -1) break;
+                
+                const etIdx = decompressedStr.indexOf("ET", btIdx);
+                if (etIdx === -1) {
+                    btIdx += 2;
+                    continue;
+                }
+                
+                const textBlock = decompressedStr.substring(btIdx + 2, etIdx);
+                const regex = /\(((?:[^)\\]|\\.)*)\)/g;
+                let match;
+                while ((match = regex.exec(textBlock)) !== null) {
+                    let matchedText = match[1];
+                    matchedText = matchedText
+                        .replace(/\\([\(\)])/g, '$1')
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\r/g, '\r')
+                        .replace(/\\t/g, '\t');
+                    text += matchedText + " ";
+                }
+                
+                btIdx = etIdx + 2;
+            }
+        }
+        
+        pos = streamEndIdx + 9;
+    }
+    
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+function parseUncompressedPDFText(arrayBuffer) {
+    const view = new DataView(arrayBuffer);
+    let str = "";
+    for (let i = 0; i < view.byteLength; i++) {
+        str += String.fromCharCode(view.getUint8(i));
+    }
+    let text = "";
+    let btIdx = 0;
+    while (true) {
+        btIdx = str.indexOf("BT", btIdx);
+        if (btIdx === -1) break;
+        const etIdx = str.indexOf("ET", btIdx);
+        if (etIdx === -1) {
+            btIdx += 2;
+            continue;
+        }
+        const textBlock = str.substring(btIdx + 2, etIdx);
+        const regex = /\(((?:[^)\\]|\\.)*)\)/g;
+        let match;
+        while ((match = regex.exec(textBlock)) !== null) {
+            text += match[1] + " ";
+        }
+        btIdx = etIdx + 2;
+    }
+    return text.replace(/\s+/g, ' ').trim();
+}
+
+async function handleFileSelection(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+            await processUploadedFile(file);
+        } catch (err) {
+            addSystemMessage(`Failed to read file ${file.name}: ${err.message}`);
+        }
+    }
+    event.target.value = "";
+}
+
+function processUploadedFile(file) {
+    return new Promise((resolve, reject) => {
+        const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+        
+        if (file.type.startsWith("image/")) {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("Error reading image file"));
+            reader.onload = (e) => {
+                const base64Data = e.target.result.split(',')[1];
+                attachedFrames.push({
+                    type: "image",
+                    name: file.name,
+                    mimeType: file.type || "image/png",
+                    size: file.size,
+                    data: base64Data
+                });
+                renderAttachmentDock();
+                updateContextSizeInfo();
+                resolve();
+            };
+            reader.readAsDataURL(file);
+        } else if (ext === ".pdf") {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("Error reading PDF file"));
+            reader.onload = (e) => {
+                const arrayBuffer = e.target.result;
+                let extractedText = "";
+                try {
+                    extractedText = extractTextFromPDF(arrayBuffer);
+                } catch (err) {
+                    console.error("PDF text extraction failed:", err);
+                }
+
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = "";
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64Data = btoa(binary);
+
+                attachedFrames.push({
+                    type: "pdf",
+                    name: file.name,
+                    mimeType: "application/pdf",
+                    size: file.size,
+                    data: base64Data,
+                    textContent: extractedText
+                });
+                renderAttachmentDock();
+                updateContextSizeInfo();
+                resolve();
+            };
+            reader.readAsArrayBuffer(file);
+        } else if (isTextFile(file)) {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("Error reading text file"));
+            reader.onload = (e) => {
+                const textContent = e.target.result;
+                let base64Data = "";
+                try {
+                    base64Data = btoa(unescape(encodeURIComponent(textContent)));
+                } catch (err) {
+                    base64Data = btoa(textContent);
+                }
+                attachedFrames.push({
+                    type: "text",
+                    name: file.name,
+                    mimeType: file.type || "text/plain",
+                    size: file.size,
+                    data: base64Data,
+                    textContent: textContent
+                });
+                renderAttachmentDock();
+                updateContextSizeInfo();
+                resolve();
+            };
+            reader.readAsText(file);
+        } else {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("Error reading binary file"));
+            reader.onload = (e) => {
+                const base64Data = e.target.result.split(',')[1];
+                attachedFrames.push({
+                    type: "binary",
+                    name: file.name,
+                    mimeType: file.type || "application/octet-stream",
+                    size: file.size,
+                    data: base64Data
+                });
+                renderAttachmentDock();
+                updateContextSizeInfo();
+                resolve();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+}
 
 
