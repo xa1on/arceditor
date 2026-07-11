@@ -632,16 +632,15 @@ Here is the ExtendScript to build it:
                 ],
                 stream: !!onChunkReceived
             };
-
             if (modelSupportsNativeReasoning) {
                 payload.max_completion_tokens = 8192;
                 if (currentProvider === "openai" && typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
                     payload.reasoning_effort = openaiReasoningEffort;
                 }
             } else {
-                payload.temperature = 0.2;
+                payload.temperature = typeof apiTemperature !== "undefined" ? apiTemperature : 0.2;
+                payload.top_p = typeof apiTopP !== "undefined" ? apiTopP : 0.95;
             }
-
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
                     provider: currentProvider,
@@ -738,10 +737,10 @@ Here is the ExtendScript to build it:
             if (onChunkReceived) {
                 targetUrl += "&alt=sse"; // Request SSE format for easy parsing!
             }
-
             payload = prepareGeminiPayload(cleanedMessages, skipSystemInstructions);
             payload.generationConfig = {
-                temperature: 0.2
+                temperature: typeof apiTemperature !== "undefined" ? apiTemperature : 0.2,
+                topP: typeof apiTopP !== "undefined" ? apiTopP : 0.95
             };
             payload.safetySettings = [
                 {
@@ -872,7 +871,8 @@ Here is the ExtendScript to build it:
                 payload.max_tokens = Math.max(claudeThinkingBudget + 2048, 4096);
             } else {
                 payload.max_tokens = 4096;
-                payload.temperature = 0.2;
+                payload.temperature = typeof apiTemperature !== "undefined" ? apiTemperature : 0.2;
+                payload.top_p = typeof apiTopP !== "undefined" ? apiTopP : 0.95;
             }
 
             if (!skipSystemInstructions) {

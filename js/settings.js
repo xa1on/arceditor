@@ -55,6 +55,8 @@ async function loadSettings() {
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             agentPermissionMode = data.agentPermissionMode || "review";
             uiTransitionsEnabled = data.uiTransitionsEnabled !== undefined ? !!data.uiTransitionsEnabled : true;
+            apiTemperature = data.apiTemperature !== undefined ? parseFloat(data.apiTemperature) : 0.2;
+            apiTopP = data.apiTopP !== undefined ? parseFloat(data.apiTopP) : 0.95;
             enabledSkills = data.enabledSkills || {};
             loaded = true;
         } catch (e) {
@@ -74,6 +76,8 @@ async function loadSettings() {
         maxToolRetryLimit = 15;
         agentPermissionMode = "review";
         uiTransitionsEnabled = true;
+        apiTemperature = 0.2;
+        apiTopP = 0.95;
         enabledSkills = {};
     }
 
@@ -103,6 +107,11 @@ async function loadSettings() {
     if (webSearchCheckbox) webSearchCheckbox.checked = webSearchEnabled;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
+
+    const tempInput = document.getElementById("setting-temperature");
+    if (tempInput) tempInput.value = apiTemperature;
+    const topPInput = document.getElementById("setting-top-p");
+    if (topPInput) topPInput.value = apiTopP;
 
     const transitionsCheckbox = document.getElementById("setting-ui-transitions");
     if (transitionsCheckbox) transitionsCheckbox.checked = uiTransitionsEnabled;
@@ -167,6 +176,17 @@ async function saveSettings(e) {
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxToolRetryLimit = parseInt(maxRetryInput.value, 10) || 15;
 
+    const tempInput = document.getElementById("setting-temperature");
+    if (tempInput) {
+        const val = parseFloat(tempInput.value);
+        apiTemperature = isNaN(val) ? 0.2 : val;
+    }
+    const topPInput = document.getElementById("setting-top-p");
+    if (topPInput) {
+        const val = parseFloat(topPInput.value);
+        apiTopP = isNaN(val) ? 0.95 : val;
+    }
+
     const transitionsCheckbox = document.getElementById("setting-ui-transitions");
     if (transitionsCheckbox) {
         uiTransitionsEnabled = transitionsCheckbox.checked;
@@ -186,6 +206,8 @@ async function saveSettings(e) {
         maxToolRetryLimit: maxToolRetryLimit,
         agentPermissionMode: agentPermissionMode,
         uiTransitionsEnabled: uiTransitionsEnabled,
+        apiTemperature: apiTemperature,
+        apiTopP: apiTopP,
         enabledSkills: enabledSkills
     };
 

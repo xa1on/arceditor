@@ -366,6 +366,19 @@
                                 placeholder="15">
                         </div>
 
+                        <div class="field-group" style="display: flex; gap: 8px;">
+                            <div style="flex: 1;">
+                                <label for="setting-temperature">Temperature</label>
+                                <input type="number" id="setting-temperature" class="form-input" min="0.0" max="2.0" step="0.05"
+                                    placeholder="0.2" style="padding: 4px 8px; font-size: 10px; width: 100%; box-sizing: border-box;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label for="setting-top-p">Top-P</label>
+                                <input type="number" id="setting-top-p" class="form-input" min="0.0" max="1.0" step="0.01"
+                                    placeholder="0.95" style="padding: 4px 8px; font-size: 10px; width: 100%; box-sizing: border-box;">
+                            </div>
+                        </div>
+
                         <div class="field-group check-group"
                             style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
                             <input type="checkbox" id="setting-include-base64"

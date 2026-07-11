@@ -16,6 +16,8 @@ let claudeThinkingBudget = 2048;
 let agentPermissionMode = "review";
 let webSearchEnabled = true;
 let uiTransitionsEnabled = true;
+let apiTemperature = 0.2;
+let apiTopP = 0.95;
 
 let providerSettings = {
     lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
