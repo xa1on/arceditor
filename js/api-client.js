@@ -624,12 +624,42 @@ Here is the ExtendScript to build it:
                 headers["Authorization"] = `Bearer ${apiKey}`;
             }
 
+            // Consolidate system messages to ensure there is exactly one system message, and it is at the very beginning.
+            // This avoids Jinja chat template exceptions (e.g. "System message must be at the beginning") when using lemonade or other strict local model servers.
+            let finalMessages = [];
+            let systemContents = [];
+
+            if (!skipSystemInstructions) {
+                systemContents.push(getSystemInstructionsWithPlan(false));
+            }
+
+            for (const msg of cleanedMessages) {
+                if (msg.role === "system") {
+                    if (typeof msg.content === "string") {
+                        systemContents.push(msg.content);
+                    } else if (Array.isArray(msg.content)) {
+                        const textParts = msg.content.map(p => {
+                            if (typeof p === "string") return p;
+                            if (p && typeof p === "object") return p.text || "";
+                            return "";
+                        }).filter(t => t.trim() !== "").join("\n");
+                        systemContents.push(textParts);
+                    }
+                } else {
+                    finalMessages.push(msg);
+                }
+            }
+
+            if (systemContents.length > 0) {
+                finalMessages.unshift({
+                    role: "system",
+                    content: systemContents.join("\n\n")
+                });
+            }
+
             payload = {
                 model: modelName,
-                messages: skipSystemInstructions ? cleanedMessages : [
-                    { role: "system", content: getSystemInstructionsWithPlan(false) },
-                    ...cleanedMessages
-                ],
+                messages: finalMessages,
                 stream: !!onChunkReceived
             };
             if (modelSupportsNativeReasoning) {
