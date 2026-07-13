@@ -282,26 +282,25 @@ async function captureCompositionFrame(isAgentCall) {
         addSystemMessage("Capturing current timeline frame...");
     }
 
-    // 1. Prioritize File-based Capture (Using new Asynchronous file-write polling to guarantee saveFrameToPng success)
     const saveDir = (os && typeof os.tmpdir === "function") ? os.tmpdir() : ((typeof process !== "undefined" && process.env) ? (process.env.TEMP || process.env.TMP) : '/tmp');
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const tempPngPath = path.join(saveDir, `arc_preview_${uniqueSuffix}.png`);
     const safePath = tempPngPath.replace(/\\/g, '/');
 
-    const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
-    const result = await evalScriptAsync(jsxCommand);
-
-    if (!result) {
-        throw new Error("Empty response from After Effects frame capture execution.");
-    }
-    if (result.indexOf("Error:") === 0) {
-        throw new Error(result.substring(6).trim());
-    }
-    if (result.indexOf("Success:") !== 0) {
-        throw new Error("Unexpected response from After Effects frame capture: " + result);
-    }
-
     try {
+        const jsxCommand = `$._com_arceditor_.ArcCanvas.saveCurrentFrame("${safePath}")`;
+        const result = await evalScriptAsync(jsxCommand);
+
+        if (!result) {
+            throw new Error("Empty response from After Effects frame capture execution.");
+        }
+        if (result.indexOf("Error:") === 0) {
+            throw new Error(result.substring(6).trim());
+        }
+        if (result.indexOf("Success:") !== 0) {
+            throw new Error("Unexpected response from After Effects frame capture: " + result);
+        }
+
         const returnedPath = result.substring(8).trim();
         let actualPath = returnedPath;
 
@@ -346,10 +345,6 @@ async function captureCompositionFrame(isAgentCall) {
                 addSystemMessage("Canvas frame captured successfully.");
             }
 
-            try {
-                await fs.promises.unlink(actualPath);
-            } catch (e) { }
-
             return base64Data;
         } else {
             console.warn("[ArcEditor] Direct save file did not appear in time.");
@@ -364,6 +359,13 @@ async function captureCompositionFrame(isAgentCall) {
             addSystemMessage("Error capturing frame: " + err.message);
         }
         throw err;
+    } finally {
+        try {
+            const stats = await fs.promises.stat(safePath);
+            if (stats.isFile()) {
+                await fs.promises.unlink(safePath);
+            }
+        } catch (e) {}
     }
 }
 
@@ -559,68 +561,77 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
         "        }\n" +
         "    })()";
 
-    const result = await evalScriptAsync(jsxCommand);
+    try {
+        const result = await evalScriptAsync(jsxCommand);
 
-    if (!result) {
-        throw new Error("Empty response from After Effects composition sequence execution.");
-    }
-    if (result.indexOf("Error:") === 0) {
-        throw new Error(result.substring(6).trim());
-    }
-    if (result.indexOf("Success:") !== 0) {
-        throw new Error("Unexpected response from After Effects composition sequence: " + result);
-    }
-
-    const pathsList = result.substring(8).split(";");
-    for (let i = 0; i < pathsList.length; i++) {
-        const actualPath = pathsList[i].trim();
-        if (!actualPath) continue;
-        try {
-            let fileFound = false;
-            let lastSize = -1;
-            for (let attempt = 0; attempt < 100; attempt++) {
-                try {
-                    const stats = await fs.promises.stat(actualPath);
-                    if (stats.size > 100 && stats.size === lastSize) {
-                        fileFound = true;
-                        break;
-                    }
-                    lastSize = stats.size;
-                } catch (e) {}
-                await new Promise(resolve => setTimeout(resolve, 50));
-            }
-
-            if (fileFound) {
-                const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
-                base64List.push(base64Data);
-                try {
-                    await fs.promises.unlink(actualPath);
-                } catch (e) {}
-            }
-        } catch (err) {
-            console.error("[ArcEditor] Error processing frame file: " + actualPath, err);
+        if (!result) {
+            throw new Error("Empty response from After Effects composition sequence execution.");
         }
-    }
+        if (result.indexOf("Error:") === 0) {
+            throw new Error(result.substring(6).trim());
+        }
+        if (result.indexOf("Success:") !== 0) {
+            throw new Error("Unexpected response from After Effects composition sequence: " + result);
+        }
 
-    if (base64List.length === 0) {
-        throw new Error("Failed to read any captured sequence frames from disk. Please check disk permissions or temp folder access.");
-    }
+        const pathsList = result.substring(8).split(";");
+        for (let i = 0; i < pathsList.length; i++) {
+            const actualPath = pathsList[i].trim();
+            if (!actualPath) continue;
+            try {
+                let fileFound = false;
+                let lastSize = -1;
+                for (let attempt = 0; attempt < 100; attempt++) {
+                    try {
+                        const stats = await fs.promises.stat(actualPath);
+                        if (stats.size > 100 && stats.size === lastSize) {
+                            fileFound = true;
+                            break;
+                        }
+                        lastSize = stats.size;
+                    } catch (e) {}
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
 
-    if (isAgentCall !== true) {
-        base64List.forEach(data => {
-            attachedFrames.push({
-                type: "image",
-                name: `Captured Frame ${attachedFrames.length + 1}`,
-                mimeType: "image/png",
-                data: data
+                if (fileFound) {
+                    const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
+                    base64List.push(base64Data);
+                }
+            } catch (err) {
+                console.error("[ArcEditor] Error processing frame file: " + actualPath, err);
+            }
+        }
+
+        if (base64List.length === 0) {
+            throw new Error("Failed to read any captured sequence frames from disk. Please check disk permissions or temp folder access.");
+        }
+
+        if (isAgentCall !== true) {
+            base64List.forEach(data => {
+                attachedFrames.push({
+                    type: "image",
+                    name: `Captured Frame ${attachedFrames.length + 1}`,
+                    mimeType: "image/png",
+                    data: data
+                });
             });
-        });
-        if (typeof renderAttachmentDock === "function") {
-            renderAttachmentDock();
+            if (typeof renderAttachmentDock === "function") {
+                renderAttachmentDock();
+            }
+            addSystemMessage(`Captured sequence of ${base64List.length} frames successfully.`);
         }
-        addSystemMessage(`Captured sequence of ${base64List.length} frames successfully.`);
-    }
 
-    return base64List;
+        return base64List;
+    } finally {
+        for (let i = 0; i < pathsAndTimes.length; i++) {
+            try {
+                const actualPath = pathsAndTimes[i].path;
+                const stats = await fs.promises.stat(actualPath);
+                if (stats.isFile()) {
+                    await fs.promises.unlink(actualPath);
+                }
+            } catch (e) {}
+        }
+    }
 }
 

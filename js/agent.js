@@ -23,7 +23,8 @@ function getCanonicalToolName(name) {
         "askquestion": "askQuestion",
         "submitplan": "submitPlan",
         "updateplan": "updatePlan",
-        "websearch": "webSearch"
+        "websearch": "webSearch",
+        "getprojectassets": "getProjectAssets"
     };
     return mapping[lower] || name;
 }
@@ -42,7 +43,8 @@ const CANVAS_READONLY_TOOLS = [
     "askQuestion",
     "submitPlan",
     "updatePlan",
-    "webSearch"
+    "webSearch",
+    "getProjectAssets"
 ];
 
 const PERMISSION_READONLY_TOOLS = [
@@ -56,7 +58,8 @@ const PERMISSION_READONLY_TOOLS = [
     "setPlayheadTime",
     "askQuestion",
     "updatePlan",
-    "webSearch"
+    "webSearch",
+    "getProjectAssets"
 ];
 
 function pushToHistory(msg) {
@@ -830,6 +833,10 @@ async function executeToolCalls(jsonStr) {
             if (toolName === "getTimelineContext") {
                 const timelineData = await getTimelineContext();
                 observations.push(`- Tool "getTimelineContext": ${JSON.stringify(timelineData)}`);
+                continue;
+            } else if (toolName === "getProjectAssets") {
+                const assetsResult = await evalScriptAsync("$._com_arceditor_.ArcInspector.getProjectAssets()");
+                observations.push(`- Tool "getProjectAssets": ${assetsResult}`);
                 continue;
             } else if (toolName === "webSearch") {
                 const query = params.query;

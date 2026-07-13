@@ -825,7 +825,29 @@ Here is the ExtendScript to build it:
             headers["anthropic-version"] = "2023-06-01";
 
             // Convert vision base64 input to Anthropic's block format
-            const anthropicMessages = cleanedMessages.map(m => {
+            let anthropicSystemInstruction = "";
+            if (!skipSystemInstructions) {
+                anthropicSystemInstruction = getSystemInstructionsWithPlan(false);
+            }
+
+            const cleanMessagesForAnthropic = [];
+            cleanedMessages.forEach(m => {
+                if (m.role === "system") {
+                    let textContent = "";
+                    if (typeof m.content === "string") {
+                        textContent = m.content;
+                    } else if (Array.isArray(m.content)) {
+                        textContent = m.content.map(c => c.type === "text" ? c.text : "").join(" ");
+                    }
+                    if (textContent) {
+                        anthropicSystemInstruction = (anthropicSystemInstruction ? anthropicSystemInstruction + "\n\n" : "") + textContent;
+                    }
+                } else {
+                    cleanMessagesForAnthropic.push(m);
+                }
+            });
+
+            const anthropicMessages = cleanMessagesForAnthropic.map(m => {
                 let contentArr = [];
                 if (typeof m.content === "string") {
                     contentArr.push({ type: "text", text: m.content });
@@ -875,8 +897,8 @@ Here is the ExtendScript to build it:
                 payload.top_p = typeof apiTopP !== "undefined" ? apiTopP : 0.95;
             }
 
-            if (!skipSystemInstructions) {
-                payload.system = getSystemInstructionsWithPlan(false);
+            if (anthropicSystemInstruction) {
+                payload.system = anthropicSystemInstruction;
             }
 
             if (typeof writeToDebugLog === "function") {

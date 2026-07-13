@@ -106,20 +106,6 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 layers: []
             };
 
-            // Retrieve all available project bin assets
-            data.projectAssets = [];
-            try {
-                for (var p = 1; p <= app.project.numItems; p++) {
-                    var pItem = app.project.item(p);
-                    if ((pItem instanceof FootageItem || pItem instanceof CompItem) && pItem.id !== comp.id) {
-                        data.projectAssets.push({
-                            id: pItem.id,
-                            name: pItem.name,
-                            type: pItem instanceof CompItem ? "Composition" : "Footage"
-                        });
-                    }
-                }
-            } catch (err) { }
 
             // Retrieve composition markers
             data.compMarkers = [];
@@ -306,6 +292,28 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
             }
             return ArcJSON.stringify(list);
+        },
+
+        /**
+         * Serializes all project items (footage, comps, folders) in the project bin.
+         */
+        getProjectAssets: function () {
+            var assets = [];
+            try {
+                for (var p = 1; p <= app.project.numItems; p++) {
+                    var pItem = app.project.item(p);
+                    if (pItem instanceof FootageItem || pItem instanceof CompItem || pItem instanceof FolderItem) {
+                        assets.push({
+                            id: pItem.id,
+                            name: pItem.name,
+                            type: pItem instanceof CompItem ? "Composition" : (pItem instanceof FolderItem ? "Folder" : "Footage")
+                        });
+                    }
+                }
+            } catch (err) {
+                return ArcJSON.stringify({ error: "Failed to query project assets: " + err.toString() });
+            }
+            return ArcJSON.stringify(assets);
         }
     };
 
@@ -384,7 +392,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         /**
          * Resolves a layer reference (ID, Name, Index, or Layer Object) safely.
          */
-        resolveLayer: function (layerRef) {
+         resolveLayer: function (layerRef) {
             if (!layerRef) return null;
             var comp = app.project.activeItem;
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
@@ -396,19 +404,15 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     var testIndex = layerRef.index;
                     return layerRef;
                 } catch (invalidErr) {
-                    // Pointer invalidation has occurred! Let's attempt self-healing.
+                    var suggestions = [];
                     try {
-                        for (var sIdx = 1; sIdx <= comp.numLayers; sIdx++) {
-                            var tempL = comp.layer(sIdx);
-                            if (tempL && tempL.selected) {
-                                return tempL; // Heuristic fallback: return the active selected layer
-                            }
+                        for (var idx = 1; idx <= comp.numLayers; idx++) {
+                            var l = comp.layer(idx);
+                            suggestions.push("'" + l.name + "' (ID: " + l.id + ")");
                         }
-                        if (comp.numLayers > 0) {
-                            return comp.layer(1); // Fallback to first layer
-                        }
-                    } catch (healingErr) { }
-                    throw new Error("Bricked layer reference caught: Pointer invalidated due to After Effects solid/adjustment mutation. Recommendation: ALWAYS use primitive persistent values like layer.id (e.g. 24) or exact name strings instead of raw Layer object pointers.");
+                    } catch (e) { }
+                    var sugText = suggestions.length > 0 ? " Available layers in this composition: " + suggestions.join(", ") : "";
+                    throw new Error("Bricked layer reference caught: Pointer invalidated due to After Effects solid/adjustment mutation." + sugText + " Recommendation: ALWAYS use primitive persistent values like layer.id (e.g. 24) or exact name strings instead of raw Layer object pointers.");
                 }
             }
 
@@ -454,7 +458,15 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
             }
 
-            throw new Error("Could not resolve layer reference: " + layerRef);
+            var suggestions = [];
+            try {
+                for (var idx = 1; idx <= comp.numLayers; idx++) {
+                    var l = comp.layer(idx);
+                    suggestions.push("'" + l.name + "' (ID: " + l.id + ")");
+                }
+            } catch (e) { }
+            var sugText = suggestions.length > 0 ? " Available layers in this composition: " + suggestions.join(", ") : "";
+            throw new Error("Could not resolve layer reference: " + layerRef + "." + sugText);
         },
 
         moveLayerToNativeIndex: function (layer, targetIdx) {

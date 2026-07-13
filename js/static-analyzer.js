@@ -105,6 +105,27 @@ function analyzeExtendScript(code) {
                 };
             }
 
+            if (identifier === "Function") {
+                return {
+                    safe: false,
+                    reason: `Forbidden global "Function" constructor detected (prevents dynamic string evaluation sandbox escapes).`
+                };
+            }
+
+            const MONITORED_GLOBALS = new Set(["$", "global", "window", "this"]);
+            if (MONITORED_GLOBALS.has(normalizedId)) {
+                let peek = index;
+                while (peek < length && /\s/.test(code[peek])) {
+                    peek++;
+                }
+                if (code[peek] === '[') {
+                    return {
+                        safe: false,
+                        reason: `Forbidden dynamic bracket access on global scope object "${identifier}" detected (prevents obfuscated sandbox escapes).`
+                    };
+                }
+            }
+
             // Quality Guardrails
             if (normalizedId === "path" && sawNew) {
                 return {

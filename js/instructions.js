@@ -703,6 +703,17 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
       }
       \`\`\`
 `
+  },
+  getProjectAssets: {
+    name: "getProjectAssets",
+    text: `- Description: Retrieves a list of all available project bin assets, including footage, compositions, and folder items, along with their names and unique IDs.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "getProjectAssets"
+      }
+      \`\`\`
+`
   }
 };
 
@@ -720,5 +731,6 @@ const SYSTEM_TOOLS_ORDER = [
   "askQuestion",
   "submitPlan",
   "updatePlan",
-  "webSearch"
+  "webSearch",
+  "getProjectAssets"
 ];
