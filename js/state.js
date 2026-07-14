@@ -41,6 +41,7 @@ let extensionPath = "./";
 let configPath = "./config.json";
 let chatsConfigPath = "./chats.json";
 let effectsCachePath = "./effects_cache.json";
+let effectPropertiesCachePath = "./effect_properties_cache.json";
 let appConfigDir = "";
 
 try {
@@ -108,10 +109,12 @@ if (os && path && fs) {
     configPath = path.join(appConfigDir, 'config.json');
     chatsConfigPath = path.join(appConfigDir, 'chats.json');
     effectsCachePath = path.join(appConfigDir, 'effects_cache.json');
+    effectPropertiesCachePath = path.join(appConfigDir, 'effect_properties_cache.json');
 } else {
     configPath = "./config.json";
     chatsConfigPath = "./chats.json";
     effectsCachePath = "./effects_cache.json";
+    effectPropertiesCachePath = "./effect_properties_cache.json";
 }
 
 // Project specific chat sessions state

@@ -26,6 +26,20 @@ async function validateConnection() {
     }
 
     try {
+        if (csInterface && fs && path) {
+            try {
+                const jsxFilePath = path.join(extensionPath, 'jsx', 'host.jsx');
+                if (fs.existsSync(jsxFilePath)) {
+                    const jsxContent = fs.readFileSync(jsxFilePath, 'utf8');
+                    csInterface.evalScript(jsxContent, (res) => {
+                        console.log("[ArcEditor] Dynamically evaluated host.jsx via file reading on startup:", res);
+                    });
+                }
+            } catch (jsxErr) {
+                console.error("[ArcEditor] Failed to dynamically load host.jsx on startup:", jsxErr);
+            }
+        }
+
         if (currentProvider === "lemonade") {
             // Check local Lemonade status
             const baseUrl = apiUrl.replace(/\/$/, "");
@@ -258,6 +272,66 @@ function evalScriptAsync(script) {
                     ],
                     "Stylize": [
                         { displayName: "Glow", matchName: "ADBE Glow" }
+                    ]
+                }));
+            } else if (script.indexOf("getEffectProperties") !== -1) {
+                let effectMatchName = "ADBE Glow";
+                if (script.indexOf("ADBE Gaussian Blur 2") !== -1) {
+                    effectMatchName = "ADBE Gaussian Blur 2";
+                }
+                resolve(JSON.stringify({
+                    effectDisplayName: effectMatchName === "ADBE Glow" ? "Glow" : "Gaussian Blur",
+                    effectMatchName: effectMatchName,
+                    properties: [
+                        {
+                            name: "Glow Threshold",
+                            matchName: "ADBE Glow-0001",
+                            propertyIndex: 1,
+                            type: "PROPERTY",
+                            valueType: "OneD",
+                            defaultValue: 60,
+                            hasMin: true,
+                            minValue: 0,
+                            hasMax: true,
+                            maxValue: 100
+                        },
+                        {
+                            name: "Glow Radius",
+                            matchName: "ADBE Glow-0002",
+                            propertyIndex: 2,
+                            type: "PROPERTY",
+                            valueType: "OneD",
+                            defaultValue: 10,
+                            hasMin: true,
+                            minValue: 0,
+                            hasMax: true,
+                            maxValue: 1000
+                        },
+                        {
+                            name: "Glow Intensity",
+                            matchName: "ADBE Glow-0003",
+                            propertyIndex: 3,
+                            type: "PROPERTY",
+                            valueType: "OneD",
+                            defaultValue: 1,
+                            hasMin: true,
+                            minValue: 0,
+                            hasMax: true,
+                            maxValue: 100
+                        },
+                        {
+                            name: "Glow Direction",
+                            matchName: "ADBE Glow-0004",
+                            propertyIndex: 4,
+                            type: "PROPERTY",
+                            valueType: "OneD",
+                            defaultValue: 1,
+                            hasMin: true,
+                            minValue: 1,
+                            hasMax: true,
+                            maxValue: 3,
+                            dropdownItems: ["Horizontal & Vertical", "Horizontal Only", "Vertical Only"]
+                        }
                     ]
                 }));
             } else {
@@ -632,6 +706,75 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
                 }
             } catch (e) {}
         }
+    }
+}
+
+let effectPropertiesCache = null;
+
+async function loadEffectPropertiesCache() {
+    if (effectPropertiesCache) return;
+    effectPropertiesCache = {};
+    if (!fs || !effectPropertiesCachePath) return;
+    
+    try {
+        if (fs.existsSync(effectPropertiesCachePath)) {
+            const content = fs.readFileSync(effectPropertiesCachePath, 'utf8');
+            if (content && content.trim()) {
+                effectPropertiesCache = JSON.parse(content);
+            }
+        }
+    } catch (e) {
+        console.error("[ArcEditor] Failed to load effect properties cache:", e);
+    }
+}
+
+async function saveEffectPropertiesCache() {
+    if (!fs || !effectPropertiesCachePath || !effectPropertiesCache) return;
+    try {
+        fs.writeFileSync(effectPropertiesCachePath, JSON.stringify(effectPropertiesCache, null, 2), 'utf8');
+    } catch (e) {
+        console.error("[ArcEditor] Failed to write effect properties cache:", e);
+    }
+}
+
+async function getEffectProperties(effectMatchName) {
+    if (!effectMatchName) return { error: "Missing effectMatchName parameter" };
+
+    await loadEffectPropertiesCache();
+    if (effectPropertiesCache[effectMatchName]) {
+        console.log(`[ArcEditor] Resolved effect properties from cache: ${effectMatchName}`);
+        return effectPropertiesCache[effectMatchName];
+    }
+
+    if (csInterface && fs && path) {
+        try {
+            const jsxFilePath = path.join(extensionPath, 'jsx', 'host.jsx');
+            if (fs.existsSync(jsxFilePath)) {
+                const jsxContent = fs.readFileSync(jsxFilePath, 'utf8');
+                await evalScriptAsync(jsxContent);
+            }
+        } catch (jsxErr) {
+            console.error("[ArcEditor] Failed to force reload host.jsx before property lookup:", jsxErr);
+        }
+    }
+
+    const serializedMatchName = `"${effectMatchName.replace(/"/g, '\\"')}"`;
+    const jsxCommand = `$._com_arceditor_.ArcInspector.getEffectProperties(${serializedMatchName})`;
+    const jsonResult = await evalScriptAsync(jsxCommand);
+
+    try {
+        const parsed = JSON.parse(jsonResult);
+        if (parsed && parsed.error) {
+            return { error: parsed.error };
+        }
+        if (parsed && parsed.effectMatchName) {
+            effectPropertiesCache[effectMatchName] = parsed;
+            await saveEffectPropertiesCache();
+        }
+        return parsed;
+    } catch (e) {
+        console.error("Failed to parse effect properties:", e);
+        return { error: "Failed to parse effect properties data: " + jsonResult };
     }
 }
 

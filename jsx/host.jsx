@@ -314,6 +314,203 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 return ArcJSON.stringify({ error: "Failed to query project assets: " + err.toString() });
             }
             return ArcJSON.stringify(assets);
+        },
+
+        /**
+         * Temporary applies an effect to a dummy composition and layer to crawl and inspect
+         * its properties and options before it's officially added to the timeline.
+         * 
+         * @param {string} effectMatchName The matchName of the effect (e.g. "ADBE Glo2")
+         */
+        getEffectProperties: function (effectMatchName) {
+            if (!effectMatchName) {
+                return ArcJSON.stringify({ error: "Missing effectMatchName parameter" });
+            }
+
+            var tempComp = null;
+            var tempLayer = null;
+            var tempTextLayer = null;
+            var createdTempComp = false;
+
+            try {
+                // Find or create active composition
+                var comp = app.project.activeItem;
+                if (!comp || !(comp instanceof CompItem)) {
+                    tempComp = app.project.items.addComp("ArcEditorTempEffectInspect", 100, 100, 1, 1, 30);
+                    comp = tempComp;
+                    createdTempComp = true;
+                }
+
+                // Add a temporary null layer to apply the effect to
+                tempLayer = comp.layers.addNull();
+                
+                var effectGroup = tempLayer.property("Effects") || tempLayer.property("ADBE Effect Parade");
+                if (!effectGroup) {
+                    throw new Error("Effects are not supported on this layer.");
+                }
+
+                var fx = null;
+                try {
+                    fx = effectGroup.addProperty(effectMatchName);
+                } catch (addErr) {
+                    throw new Error("Failed to add effect '" + effectMatchName + "'. This usually means the matchName is invalid or not installed on this system. Original error: " + addErr.toString());
+                }
+
+                if (!fx) {
+                    throw new Error("Failed to add effect '" + effectMatchName + "'. Returned null.");
+                }
+
+                var properties = [];
+                
+                // Helper to serialize property value type
+                var getValueTypeStr = function (valType) {
+                    if (typeof PropertyValueType === "undefined") return "Unknown";
+                    if (valType === PropertyValueType.NO_VALUE) return "NO_VALUE";
+                    if (valType === PropertyValueType.ThreeD_SPATIAL) return "ThreeD_SPATIAL";
+                    if (valType === PropertyValueType.ThreeD) return "ThreeD";
+                    if (valType === PropertyValueType.TwoD_SPATIAL) return "TwoD_SPATIAL";
+                    if (valType === PropertyValueType.TwoD) return "TwoD";
+                    if (valType === PropertyValueType.OneD) return "OneD";
+                    if (valType === PropertyValueType.COLOR) return "COLOR";
+                    if (valType === PropertyValueType.CUSTOM_VALUE) return "CUSTOM_VALUE";
+                    if (valType === PropertyValueType.TEXT_DOCUMENT) return "TEXT_DOCUMENT";
+                    if (valType === PropertyValueType.LAYER_INDEX) return "LAYER_INDEX";
+                    if (valType === PropertyValueType.MASK_INDEX) return "MASK_INDEX";
+                    return "Unknown (" + valType + ")";
+                };
+
+                // Crawl effect properties
+                for (var i = 1; i <= fx.numProperties; i++) {
+                    var prop = fx.property(i);
+                    if (!prop) continue;
+
+                    var propInfo = {
+                        name: prop.name,
+                        matchName: prop.matchName,
+                        propertyIndex: prop.propertyIndex
+                    };
+
+                    if (prop.propertyType === PropertyType.PROPERTY) {
+                        propInfo.type = "PROPERTY";
+                        propInfo.valueType = getValueTypeStr(prop.propertyValueType);
+
+                        // Read default value
+                        try {
+                            var val = prop.value;
+                            if (val && typeof val === "object") {
+                                if (val instanceof Array || (val.constructor && val.constructor === Array)) {
+                                    var cleanArr = [];
+                                    for (var aIdx = 0; aIdx < val.length; aIdx++) {
+                                        cleanArr.push(val[aIdx]);
+                                    }
+                                    propInfo.defaultValue = cleanArr;
+                                } else {
+                                    propInfo.defaultValue = "[Object]";
+                                }
+                            } else {
+                                propInfo.defaultValue = val;
+                            }
+                        } catch (valErr) {
+                            propInfo.defaultValue = "(unreadable)";
+                        }
+
+                        // Slider / numeric ranges
+                        try {
+                            if (prop.hasMin) {
+                                propInfo.hasMin = true;
+                                propInfo.minValue = prop.minValue;
+                            } else {
+                                propInfo.hasMin = false;
+                            }
+                        } catch (minErr) {
+                            propInfo.hasMin = false;
+                        }
+
+                        try {
+                            if (prop.hasMax) {
+                                propInfo.hasMax = true;
+                                propInfo.maxValue = prop.maxValue;
+                            } else {
+                                propInfo.hasMax = false;
+                            }
+                        } catch (maxErr) {
+                            propInfo.hasMax = false;
+                        }
+
+                        // Popups / Dropdowns options extraction using text expression evaluation
+                        if (propInfo.valueType === "OneD" && propInfo.hasMin && propInfo.minValue === 1 && propInfo.hasMax && propInfo.maxValue <= 50) {
+                            // Lazy text layer creation
+                            if (!tempTextLayer) {
+                                try {
+                                    tempTextLayer = comp.layers.addText("temp");
+                                } catch (textErr) {}
+                            }
+
+                            if (tempTextLayer) {
+                                var items = [];
+                                var originalValue = prop.value;
+                                try {
+                                    // Set expression to coerce the effect property to string
+                                    tempTextLayer.property("ADBE Source Text").expression = "thisComp.layer(" + tempLayer.index + ").effect(" + fx.propertyIndex + ")(" + prop.propertyIndex + ")";
+                                    for (var valIdx = 1; valIdx <= prop.maxValue; valIdx++) {
+                                        try {
+                                            prop.setValue(valIdx);
+                                            // Query evaluated value using valueAtTime to obtain the expression-coerced string name
+                                            var textDoc = tempTextLayer.property("ADBE Source Text").valueAtTime(comp.time, false);
+                                            if (textDoc && typeof textDoc.text === "string") {
+                                                items.push(textDoc.text);
+                                            }
+                                        } catch (setErr) {
+                                            // Some index might fail, skip or break
+                                        }
+                                    }
+                                } catch (exprErr) {
+                                    // Ignore
+                                } finally {
+                                    // Restore original value
+                                    try {
+                                        prop.setValue(originalValue);
+                                    } catch (e) {}
+                                    // Clear expression so it doesn't try to evaluate on deleted objects
+                                    try {
+                                        tempTextLayer.property("ADBE Source Text").expression = "";
+                                    } catch (e) {}
+                                }
+                                if (items.length > 0) {
+                                    propInfo.dropdownItems = items;
+                                }
+                            }
+                        }
+
+                    } else if (prop.propertyType === PropertyType.NAMED_GROUP || prop.propertyType === PropertyType.INDEXED_GROUP) {
+                        propInfo.type = "GROUP";
+                    }
+
+                    properties.push(propInfo);
+                }
+
+                var result = {
+                    effectDisplayName: fx.name,
+                    effectMatchName: effectMatchName,
+                    properties: properties
+                };
+
+                return ArcJSON.stringify(result);
+
+            } catch (err) {
+                return ArcJSON.stringify({ error: "Failed to inspect effect properties: " + err.toString() });
+            } finally {
+                // Guaranteed cleanup of temp assets
+                try {
+                    if (tempTextLayer) tempTextLayer.remove();
+                } catch (e) {}
+                try {
+                    if (tempLayer) tempLayer.remove();
+                } catch (e) {}
+                try {
+                    if (createdTempComp && tempComp) tempComp.remove();
+                } catch (e) {}
+            }
         }
     };
 

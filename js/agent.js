@@ -24,7 +24,8 @@ function getCanonicalToolName(name) {
         "submitplan": "submitPlan",
         "updateplan": "updatePlan",
         "websearch": "webSearch",
-        "getprojectassets": "getProjectAssets"
+        "getprojectassets": "getProjectAssets",
+        "geteffectproperties": "getEffectProperties"
     };
     return mapping[lower] || name;
 }
@@ -36,6 +37,7 @@ const CANVAS_READONLY_TOOLS = [
     "getTimelineContext",
     "searchInstalledEffects",
     "getLayerProperties",
+    "getEffectProperties",
     "selectLayers",
     "switchComposition",
     "setPlayheadTime",
@@ -53,6 +55,7 @@ const PERMISSION_READONLY_TOOLS = [
     "getTimelineContext",
     "searchInstalledEffects",
     "getLayerProperties",
+    "getEffectProperties",
     "selectLayers",
     "switchComposition",
     "setPlayheadTime",
@@ -929,6 +932,11 @@ async function executeToolCalls(jsonStr) {
                     }
                 }
                 observations.push(`- Tool "searchInstalledEffects": ${JSON.stringify(matched)}`);
+                continue;
+            } else if (toolName === "getEffectProperties") {
+                const effectMatchName = params.effectMatchName;
+                const resultObj = await getEffectProperties(effectMatchName);
+                observations.push(`- Tool "getEffectProperties": ${JSON.stringify(resultObj)}`);
                 continue;
             } else if (toolName === "captureActiveFrame") {
                 try {
