@@ -297,9 +297,29 @@ function stripImagesForDisk(obj) {
 async function saveChats() {
     if (fs) {
         try {
-            const chatsToSave = { ...allProjectChats };
-            delete chatsToSave["Unsaved Project"];
-            delete chatsToSave["settings_Unsaved Project"];
+            const chatsToSave = {};
+            for (const key in allProjectChats) {
+                if (key === "Unsaved Project" || key === "settings_Unsaved Project") {
+                    continue;
+                }
+                
+                if (key.startsWith("settings_")) {
+                    const settings = allProjectChats[key];
+                    const hasAllowed = settings && settings.allowedTools && settings.allowedTools.length > 0;
+                    const hasDenied = settings && settings.deniedTools && settings.deniedTools.length > 0;
+                    if (hasAllowed || hasDenied) {
+                        chatsToSave[key] = settings;
+                    }
+                } else {
+                    const sessions = allProjectChats[key];
+                    if (Array.isArray(sessions)) {
+                        const sessionsWithHistory = sessions.filter(s => s.history && s.history.length > 0);
+                        if (sessionsWithHistory.length > 0) {
+                            chatsToSave[key] = sessionsWithHistory;
+                        }
+                    }
+                }
+            }
             const cleanedChats = stripImagesForDisk(chatsToSave);
             await fs.promises.writeFile(chatsConfigPath, JSON.stringify(cleanedChats, null, 2), 'utf8');
         } catch (err) {
