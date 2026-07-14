@@ -238,7 +238,7 @@ function tryFormatToolCall(code, isStreaming, toolStatuses, activeTurn = "defaul
                             .replace(/>/g, "&gt;");
 
                         let displayHtml = "";
-                        if (key === "script") {
+                        if (key === "script" || key === "content" || key === "targetContent" || key === "replacementContent") {
                             displayHtml = `<pre class="param-value-code"><code>${highlightCode(escapedValStr, "javascript")}</code></pre>`;
                         } else if (valStr.indexOf("\n") !== -1) {
                             const trimmedVal = valStr.trim();

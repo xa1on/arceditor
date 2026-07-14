@@ -27,9 +27,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
     - Attempting to do Phase 1, Phase 2, and Phase 3 in one single turn without checking intermediate outcomes:
       \`\`\`json
       {
-        "tool": "executeExtendScript",
+        "tool": "createScript",
         "parameters": {
-          "script": "var ctrl = ArcEditor.createLayer('Null', 'Controls'); var s1 = ArcEditor.createLayer('Shape', 'Ring'); ArcEditor.parentLayer(s1.id, ctrl.id); ArcEditor.applyEffect(ctrl.id, 'ADBE Slider Control', 'Radius'); ArcEditor.setPropertyExpression(s1.id, 'Scale', \\\"var r = thisComp.layer('Controls').effect('Radius')(1); [r, r];\\\"); ArcEditor.setKeyframes(ctrl.id, 'Radius', [0, 45], [0, 200]);"
+          "scriptName": "build_scene.jsx",
+          "content": "var ctrl = ArcEditor.createLayer('Null', 'Controls'); var s1 = ArcEditor.createLayer('Shape', 'Ring'); ArcEditor.parentLayer(s1.id, ctrl.id); ArcEditor.applyEffect(ctrl.id, 'ADBE Slider Control', 'Radius'); ArcEditor.setPropertyExpression(s1.id, 'Scale', \\\"var r = thisComp.layer('Controls').effect('Radius')(1); [r, r];\\\"); ArcEditor.setKeyframes(ctrl.id, 'Radius', [0, 45], [0, 200]);",
+          "execute": true
         }
       }
       \`\`\`
@@ -38,9 +40,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
     - Turn 2: Phase 1 script (Create hierarchy and parent layers):
       \`\`\`json
       {
-        "tool": "executeExtendScript",
+        "tool": "createScript",
         "parameters": {
-          "script": "var ctrl = ArcEditor.createLayer('Null', 'Controls'); var s1 = ArcEditor.createLayer('Shape', 'Ring'); ArcEditor.parentLayer(s1.id, ctrl.id);"
+          "scriptName": "build_hierarchy.jsx",
+          "content": "var ctrl = ArcEditor.createLayer('Null', 'Controls'); var s1 = ArcEditor.createLayer('Shape', 'Ring'); ArcEditor.parentLayer(s1.id, ctrl.id);",
+          "execute": true
         }
       }
       \`\`\`
@@ -54,9 +58,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
     - Turn 4: Phase 2 script (Apply sliders, verify properties, write expressions):
       \`\`\`json
       {
-        "tool": "executeExtendScript",
+        "tool": "createScript",
         "parameters": {
-          "script": "ArcEditor.applyEffect('Controls', 'ADBE Slider Control', 'Radius'); ArcEditor.setPropertyExpression('Ring', 'Scale', \\\"var r = thisComp.layer('Controls').effect('Radius')(1); [r, r];\\\");"
+          "scriptName": "add_controls.jsx",
+          "content": "ArcEditor.applyEffect('Controls', 'ADBE Slider Control', 'Radius'); ArcEditor.setPropertyExpression('Ring', 'Scale', \\\"var r = thisComp.layer('Controls').effect('Radius')(1); [r, r];\\\");",
+          "execute": true
         }
       }
       \`\`\`
@@ -69,9 +75,11 @@ You are helping the user automate compositions, edit/splice video assets, manage
     - Turn 6: Phase 3 script (Animate controls/trim layers):
       \`\`\`json
       {
-        "tool": "executeExtendScript",
+        "tool": "createScript",
         "parameters": {
-          "script": "ArcEditor.setKeyframes('Controls', ['Effects', 'Radius', 'Slider'], [0, 45], [0, 200]);"
+          "scriptName": "animate_controls.jsx",
+          "content": "ArcEditor.setKeyframes('Controls', ['Effects', 'Radius', 'Slider'], [0, 45], [0, 200]);",
+          "execute": true
         }
       }
       \`\`\`
@@ -225,7 +233,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
 
 
 *** STREAMLINED JSON TOOLS CATALOG ***
-You have access to a set of streamlined JSON tools. For ALL editing, composition, creation, and animation tasks, you MUST use the single state-modifying JSON tool \`executeExtendScript\`. The other tools are strictly read-only, navigation, or interaction utilities.
+You have access to a set of streamlined JSON tools. For ALL editing, composition, creation, and animation tasks, you MUST use the script management tools (\`createScript\`, \`editScript\`, \`executeScript\`) to write, modify, and run ExtendScript. The other tools are strictly read-only, navigation, or interaction utilities.
 
 [SYSTEM_TOOLS_CATALOG_PLACEHOLDER]
 
@@ -434,40 +442,99 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
   \`system\`, \`socket\`, \`file\`, \`folder\`, \`require\`, \`process\`, \`child_process\`, \`eval\`, \`function\`, \`global\`, \`window\`, \`callsystem\`, \`execute\`, \`write\`, \`open\`, \`save\`.
   * Note: This includes names of layers, assets, or comments (e.g. do not name a layer "open" or "save" as they match forbidden words).
 - **State Persistence across turns**:
-  * Each execution of \`executeExtendScript\` runs inside an isolated IIFE, meaning local variable definitions do not persist across turns.
+  * Each execution of \`executeScript\` runs inside an isolated IIFE, meaning local variable definitions do not persist across turns.
   * Avoid splitting related commands across turns if they can be written as a single, cohesive script.
   * If you must store state, retrieve values directly from the layers/properties in the timeline or use custom properties on standard layers (e.g., adding sliders or using layer comments) rather than utilizing \`$\` or other disallowed global variables.
 
 *** HOW TO COMMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners.
-- When an action is required on the After Effects timeline or project assets, you MUST use the JSON tool calling format.
-- To execute custom After Effects ExtendScript JSX code, invoke the "executeExtendScript" tool inside your JSON tool call block. NEVER write raw javascript/extendscript markdown blocks (like \`\`\`javascript ... \`\`\`). Custom script execution is done exclusively via tool calling.
-- When a JSON tool call is required, output it inside a markdown block marked with:
-\`\`\`json
-{
-  "tool": "executeExtendScript",
-  "parameters": {
-    "script": "// Your ExtendScript code here"
-  }
-}
-\`\`\`
-- Double-check your code for basic JavaScript syntax errors inside the JSON strings. Escape double quotes and backslashes properly inside the "script" parameter string value.
+- When an action is required on the After Effects timeline or project assets, you MUST draft, edit, and execute your ExtendScript scripts using the dedicated script tools. Custom script execution is done exclusively via tool calling.
+- Avoid writing redundant code(writing code outside a tool-call, just to rewrite it, for example), you can always create a draft script and modify it until you are happy with it, always Draft your script first by calling \`createScript\` with a descriptive \`scriptName\` (e.g. "create_comp.jsx") and the full code \`content\`. If you want to execute it immediately after creation, set \`execute: true\`.
+- Modify a script by calling \`editScript\` with its \`scriptName\`, \`targetContent\` (exact unique block to find), and \`replacementContent\` (the fix). If you want to execute it immediately after editing, set \`execute: true\`.
+- Execute an existing script by calling \`executeScript\` with its \`scriptName\`.
+- If execution fails (returns an "Error ..."), do NOT use the undo tool. The host environment automatically rolls back all timeline modifications made during that failed execution, returning the project state to exactly where it was before the execution started. You must analyze the error, use the \`editScript\` tool to replace the incorrect parts of the script with the corrected code, and then call \`executeScript\` again (or set \`execute: true\` inside \`editScript\`) to retry.
+- You can review the code of any script at any time using the \`viewScript\` tool (optionally specifying \`startLine\` and \`endLine\` to paginate).
+- You can execute past scripts you or the user created for the project if you need to reuse their functionality.
+- NEVER write raw javascript/extendscript markdown blocks (like \\\`\\\`\\\`javascript ... \\\`\\\`\\\`) to tell the user to run them. Always use the JSON tool calls for script management.
+- Double-check your code for basic JavaScript syntax errors inside the JSON strings. Escape double quotes and backslashes properly inside parameter string values. Note that raw multiline scripts (with literal newlines) are fully supported inside the "content" and "replacementContent" parameters; you do not need to compress them into a single-line string.
 - If the user's request is purely informational, conversational, or a general question, answer directly in plain markdown without any tool calls. Do not invent scripts unnecessarily.
 - Do not write any comments inside the markdown formatting outside the code blocks that contradict this structure.
 `;
 
 const SYSTEM_TOOL_DESCRIPTIONS = {
-  executeExtendScript: {
-    name: "executeExtendScript",
-    text: `- Description: Executes custom After Effects ExtendScript JSX code inside an atomic Undo transaction.
+  createScript: {
+    name: "createScript",
+    text: `- Description: Creates a new project-specific script draft or overwrites an existing draft with the given name and content. This does NOT execute the script in After Effects unless the optional \`execute\` parameter is set to true. However, if set to true, you do not need to call executeScript after this.
     - Parameters:
-      * \`script\`: String of standard ExtendScript code to execute.
+      * \`scriptName\`: String. The unique name of the script to create (e.g. \`"add_text_layer.jsx"\`).
+      * \`content\`: String. The complete ExtendScript JSX code content.
+      * \`execute\`: (Optional) Boolean. If true, runs the script immediately after creation, returning the execution result. Defaults to false. (you don't need executeScript after this if this is true)
     - JSON Call Format:
       \`\`\`json
       {
-        "tool": "executeExtendScript",
+        "tool": "createScript",
         "parameters": {
-          "script": "// Your ExtendScript code here"
+          "scriptName": "add_text_layer.jsx",
+          "content": "var comp = app.project.activeItem;\nvar layer = comp.layers.addText('Hello World');\nlayer.position.setValue([960, 540]);",
+          "execute": true
+        }
+      }
+      \`\`\`
+`
+  },
+  viewScript: {
+    name: "viewScript",
+    text: `- Description: Retrieves the current code content of an existing project-specific script draft, optionally paginated by line numbers.
+    - Parameters:
+      * \`scriptName\`: String. The name of the script to view.
+      * \`startLine\`: (Optional) Integer. The starting line number (1-indexed) to read from.
+      * \`endLine\`: (Optional) Integer. The ending line number (1-indexed, inclusive) to read to.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "viewScript",
+        "parameters": {
+          "scriptName": "add_text_layer.jsx",
+          "startLine": 1,
+          "endLine": 15
+        }
+      }
+      \`\`\`
+`
+  },
+  editScript: {
+    name: "editScript",
+    text: `- Description: Edits an existing project-specific script draft by replacing a unique, exact block of code with new code.
+    - Parameters:
+      * \`scriptName\`: String. The name of the script to edit.
+      * \`targetContent\`: String. The exact character-sequence in the script to find and replace.
+      * \`replacementContent\`: String. The new code to replace the targetContent with.
+      * \`execute\`: (Optional) Boolean. If true, runs the script immediately after editing, returning the execution result. Defaults to false. (you don't need executeScript after this if this is true)
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "editScript",
+        "parameters": {
+          "scriptName": "add_text_layer.jsx",
+          "targetContent": "var size = 100;",
+          "replacementContent": "var size = 200;",
+          "execute": true
+        }
+      }
+      \`\`\`
+`
+  },
+  executeScript: {
+    name: "executeScript",
+    text: `- Description: Runs an existing project-specific script draft inside After Effects inside an isolated Undo transaction. If execution fails, all changes are automatically rolled back.
+    - Parameters:
+      * \`scriptName\`: String. The name of the script to run.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "executeScript",
+        "parameters": {
+          "scriptName": "add_text_layer.jsx"
         }
       }
       \`\`\`
@@ -735,7 +802,10 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
 };
 
 const SYSTEM_TOOLS_ORDER = [
-  "executeExtendScript",
+  "createScript",
+  "viewScript",
+  "editScript",
+  "executeScript",
   "getTimelineContext",
   "searchInstalledEffects",
   "getEffectProperties",

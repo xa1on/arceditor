@@ -25,7 +25,11 @@ function getCanonicalToolName(name) {
         "updateplan": "updatePlan",
         "websearch": "webSearch",
         "getprojectassets": "getProjectAssets",
-        "geteffectproperties": "getEffectProperties"
+        "geteffectproperties": "getEffectProperties",
+        "createscript": "createScript",
+        "viewscript": "viewScript",
+        "editscript": "editScript",
+        "executescript": "executeScript"
     };
     return mapping[lower] || name;
 }
@@ -46,7 +50,10 @@ const CANVAS_READONLY_TOOLS = [
     "submitPlan",
     "updatePlan",
     "webSearch",
-    "getProjectAssets"
+    "getProjectAssets",
+    "createScript",
+    "viewScript",
+    "editScript"
 ];
 
 const PERMISSION_READONLY_TOOLS = [
@@ -62,7 +69,10 @@ const PERMISSION_READONLY_TOOLS = [
     "askQuestion",
     "updatePlan",
     "webSearch",
-    "getProjectAssets"
+    "getProjectAssets",
+    "createScript",
+    "viewScript",
+    "editScript"
 ];
 
 function pushToHistory(msg) {
@@ -254,7 +264,8 @@ async function runAgenticExecutionLoop(userText) {
 
                 if (jsonBlock) {
                     try {
-                        const parsed = JSON.parse(jsonBlock);
+                        const repaired = repairJSONRawNewlines(jsonBlock);
+                        const parsed = JSON.parse(repaired);
                         const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
                         let containsModifying = false;
                         let containsCapture = false;
@@ -262,7 +273,10 @@ async function runAgenticExecutionLoop(userText) {
                             const tc = toolCalls[tIdx];
                             if (tc && tc.tool) {
                                 const toolName = getCanonicalToolName(tc.tool);
-                                const isReadOnly = CANVAS_READONLY_TOOLS.indexOf(toolName) !== -1;
+                                let isReadOnly = CANVAS_READONLY_TOOLS.indexOf(toolName) !== -1;
+                                if ((toolName === "createScript" || toolName === "editScript") && tc.parameters && tc.parameters.execute) {
+                                    isReadOnly = false;
+                                }
                                 if (!isReadOnly) {
                                     containsModifying = true;
                                 }
@@ -414,8 +428,10 @@ async function runAgenticExecutionLoop(userText) {
                     // Package successful turn
                     let turnTitle = "Analyzing composition context";
                     if (jsonBlock) {
-                        if (jsonBlock.indexOf("executeExtendScript") !== -1) {
+                        if (jsonBlock.indexOf("executeScript") !== -1) {
                             turnTitle = "Executing timeline automation script";
+                        } else if (jsonBlock.indexOf("createScript") !== -1 || jsonBlock.indexOf("editScript") !== -1) {
+                            turnTitle = "Drafting/editing automation script";
                         } else {
                             try {
                                 const parsed = JSON.parse(jsonBlock);
@@ -692,10 +708,44 @@ function updatePlanString(planText, updates) {
     return lines.join("\n");
 }
 
+function repairJSONRawNewlines(jsonStr) {
+    if (!jsonStr) return "";
+    let result = "";
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < jsonStr.length; i++) {
+        const char = jsonStr[i];
+        if (escaped) {
+            result += char;
+            escaped = false;
+            continue;
+        }
+        if (char === '\\') {
+            result += char;
+            escaped = true;
+            continue;
+        }
+        if (char === '"') {
+            inString = !inString;
+            result += char;
+            continue;
+        }
+        if (inString && (char === '\n' || char === '\r')) {
+            if (char === '\n') {
+                result += "\\n";
+            }
+            continue;
+        }
+        result += char;
+    }
+    return result;
+}
+
 function getSignificantJsonActionKey(jsonStr) {
     if (!jsonStr) return "";
     try {
-        const parsed = JSON.parse(jsonStr);
+        const repaired = repairJSONRawNewlines(jsonStr);
+        const parsed = JSON.parse(repaired);
         const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
         const stateModifying = toolCalls.filter(tc => {
             const toolName = getCanonicalToolName(tc.tool);
@@ -715,7 +765,8 @@ function getSignificantJsonActionKey(jsonStr) {
 async function executeToolCalls(jsonStr) {
     let toolCalls = [];
     try {
-        const parsed = JSON.parse(jsonStr);
+        const repaired = repairJSONRawNewlines(jsonStr);
+        const parsed = JSON.parse(repaired);
         toolCalls = Array.isArray(parsed) ? parsed : [parsed];
     } catch (e) {
         return `Error parsing JSON tool calls: ${e.message}. Ensure your JSON blocks are strictly valid.`;
@@ -733,7 +784,10 @@ async function executeToolCalls(jsonStr) {
             const toolName = getCanonicalToolName(tc.tool);
 
             // Authorization Intercept for non-readonly tool calls
-            const isReadOnly = PERMISSION_READONLY_TOOLS.indexOf(toolName) !== -1;
+            let isReadOnly = PERMISSION_READONLY_TOOLS.indexOf(toolName) !== -1;
+            if ((toolName === "createScript" || toolName === "editScript") && tc.parameters && tc.parameters.execute) {
+                isReadOnly = false;
+            }
 
             const allowed = getProjectAllowedTools(currentProjectPath);
             const denied = getProjectDeniedTools(currentProjectPath);
@@ -981,12 +1035,16 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "getLayerProperties") {
                 const groupFilterVal = params.groupFilter ? `"${params.groupFilter.replace(/"/g, '\\"')}"` : "null";
                 jsxCommand = `$._com_arceditor_.ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
-            } else if (toolName === "executeExtendScript") {
-                const script = params.script;
-                // Static Analysis Verification
-                const analysis = typeof analyzeExtendScript === "function" ? analyzeExtendScript(script) : { safe: true };
+            } else if (toolName === "createScript") {
+                const sName = params.scriptName;
+                const content = params.content;
+                if (!sName) {
+                    observations.push(`- Tool "createScript": Error - Missing scriptName.`);
+                    continue;
+                }
+                const analysis = typeof analyzeExtendScript === "function" ? analyzeExtendScript(content) : { safe: true };
                 if (!analysis.safe) {
-                    observations.push(`- Tool "executeExtendScript": Blocked by static security analyzer. Reason: ${analysis.reason}`);
+                    observations.push(`- Tool "createScript": Blocked by static security analyzer. Reason: ${analysis.reason}`);
                     if (window._activeToolStatuses && window._activeToolStatuses[i]) {
                         window._activeToolStatuses[i].status = "blocked";
                         window._activeToolStatuses[i].reason = analysis.reason;
@@ -995,6 +1053,180 @@ async function executeToolCalls(jsonStr) {
                         window.updateToolCardStatusUI(i, "blocked", analysis.reason);
                     }
                     continue;
+                }
+                createOrUpdateScript(currentProjectPath, sName, content);
+                activeScriptName = sName;
+                if (typeof renderScriptTabs === "function") {
+                    renderScriptTabs();
+                }
+                const consoleOutput = document.getElementById("console-output");
+                if (consoleOutput) {
+                    consoleOutput.value = content;
+                }
+                
+                if (params.execute) {
+                    jsxCommand = `(function() {
+                        var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+                        var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+                        var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+                        var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+                        var JSON = ArcJSON;
+                        var _arcEditorTempFolder;
+                        try {
+                            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
+                            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
+                        } catch (dummyErr) {}
+                        
+                        app.beginUndoGroup("ArcEditor Agent Script");
+                        try {
+                            ${content}
+                            app.endUndoGroup();
+                            return "Success";
+                        } catch (err) {
+                            app.endUndoGroup();
+                            try {
+                                app.activate();
+                                app.executeCommand(16);
+                            } catch (undoErr) {}
+                            return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+                        }
+                    })()`;
+                } else {
+                    observations.push(`- Tool "createScript": Script "${sName}" created/overwritten successfully.`);
+                    continue;
+                }
+            } else if (toolName === "viewScript") {
+                const sName = params.scriptName;
+                if (!sName) {
+                    observations.push(`- Tool "viewScript": Error - Missing scriptName.`);
+                    continue;
+                }
+                const scriptObj = typeof findScriptByName === "function" ? findScriptByName(currentProjectPath, sName) : null;
+                if (!scriptObj) {
+                    observations.push(`- Tool "viewScript": Error - Script "${sName}" not found.`);
+                } else {
+                    let contentToShow = scriptObj.content;
+                    const startLine = params.startLine;
+                    const endLine = params.endLine;
+                    if (startLine !== undefined || endLine !== undefined) {
+                        const lines = contentToShow.split("\n");
+                        const start = startLine !== undefined ? Math.max(1, startLine) : 1;
+                        const end = endLine !== undefined ? Math.min(lines.length, endLine) : lines.length;
+                        const slicedLines = lines.slice(start - 1, end);
+                        contentToShow = slicedLines.join("\n");
+                        observations.push(`- Tool "viewScript":\nName: ${scriptObj.name}\nLines: ${start} to ${end}\nContent:\n${contentToShow}`);
+                    } else {
+                        observations.push(`- Tool "viewScript":\nName: ${scriptObj.name}\nModified: ${new Date(scriptObj.modified).toISOString()}\nContent:\n${contentToShow}`);
+                    }
+                }
+                continue;
+            } else if (toolName === "editScript") {
+                const sName = params.scriptName;
+                const target = params.targetContent;
+                const replacement = params.replacementContent;
+                if (!sName || target === undefined || replacement === undefined) {
+                    observations.push(`- Tool "editScript": Error - Missing scriptName, targetContent, or replacementContent.`);
+                    continue;
+                }
+                const scriptObj = typeof findScriptByName === "function" ? findScriptByName(currentProjectPath, sName) : null;
+                if (!scriptObj) {
+                    observations.push(`- Tool "editScript": Error - Script "${sName}" not found.`);
+                    continue;
+                }
+                const idx = scriptObj.content.indexOf(target);
+                if (idx === -1) {
+                    observations.push(`- Tool "editScript": Error - targetContent was not found in script "${sName}". Ensure targetContent matches exactly, including indentation and spacing.`);
+                    continue;
+                }
+                if (scriptObj.content.indexOf(target, idx + 1) !== -1) {
+                    observations.push(`- Tool "editScript": Error - targetContent is not unique in script "${sName}". Provide a larger block of code to ensure uniqueness.`);
+                    continue;
+                }
+                const newContent = scriptObj.content.substring(0, idx) + replacement + scriptObj.content.substring(idx + target.length);
+                const analysis = typeof analyzeExtendScript === "function" ? analyzeExtendScript(newContent) : { safe: true };
+                if (!analysis.safe) {
+                    observations.push(`- Tool "editScript": Blocked by static security analyzer. Reason: ${analysis.reason}`);
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "blocked";
+                        window._activeToolStatuses[i].reason = analysis.reason;
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "blocked", analysis.reason);
+                    }
+                    continue;
+                }
+                createOrUpdateScript(currentProjectPath, sName, newContent);
+                activeScriptName = sName;
+                if (typeof renderScriptTabs === "function") {
+                    renderScriptTabs();
+                }
+                const consoleOutput = document.getElementById("console-output");
+                if (consoleOutput) {
+                    consoleOutput.value = newContent;
+                }
+
+                if (params.execute) {
+                    jsxCommand = `(function() {
+                        var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+                        var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+                        var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+                        var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+                        var JSON = ArcJSON;
+                        var _arcEditorTempFolder;
+                        try {
+                            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
+                            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
+                        } catch (dummyErr) {}
+                        
+                        app.beginUndoGroup("ArcEditor Agent Script");
+                        try {
+                            ${newContent}
+                            app.endUndoGroup();
+                            return "Success";
+                        } catch (err) {
+                            app.endUndoGroup();
+                            try {
+                                app.activate();
+                                app.executeCommand(16);
+                            } catch (undoErr) {}
+                            return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+                        }
+                    })()`;
+                } else {
+                    observations.push(`- Tool "editScript": Script "${sName}" edited successfully. New content:\n${newContent}`);
+                    continue;
+                }
+            } else if (toolName === "executeScript") {
+                const sName = params.scriptName;
+                if (!sName) {
+                    observations.push(`- Tool "executeScript": Error - Missing scriptName.`);
+                    continue;
+                }
+                const scriptObj = typeof findScriptByName === "function" ? findScriptByName(currentProjectPath, sName) : null;
+                if (!scriptObj) {
+                    observations.push(`- Tool "executeScript": Error - Script "${sName}" not found.`);
+                    continue;
+                }
+                const script = scriptObj.content;
+                const analysis = typeof analyzeExtendScript === "function" ? analyzeExtendScript(script) : { safe: true };
+                if (!analysis.safe) {
+                    observations.push(`- Tool "executeScript": Blocked by static security analyzer. Reason: ${analysis.reason}`);
+                    if (window._activeToolStatuses && window._activeToolStatuses[i]) {
+                        window._activeToolStatuses[i].status = "blocked";
+                        window._activeToolStatuses[i].reason = analysis.reason;
+                    }
+                    if (typeof window !== "undefined" && typeof window.updateToolCardStatusUI === "function") {
+                        window.updateToolCardStatusUI(i, "blocked", analysis.reason);
+                    }
+                    continue;
+                }
+                activeScriptName = sName;
+                if (typeof renderScriptTabs === "function") {
+                    renderScriptTabs();
+                }
+                const consoleOutput = document.getElementById("console-output");
+                if (consoleOutput) {
+                    consoleOutput.value = script;
                 }
                 jsxCommand = `(function() {
                     var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
@@ -1027,7 +1259,7 @@ async function executeToolCalls(jsonStr) {
             }
 
             let result = await evalScriptAsync(jsxCommand);
-            if (toolName === "executeExtendScript" && (!result || result.trim() === "")) {
+            if ((toolName === "executeScript" || toolName === "createScript" || toolName === "editScript") && (!result || result.trim() === "")) {
                 result = "Error: ExtendScript execution returned an empty response. This usually indicates a global syntax or compilation error in After Effects (e.g., unescaped newlines, unmatched brackets, or quote mismatches) that prevented the script from parsing/compiling.";
             } else if (toolName === "getLayerProperties" && result && result.length > 8000) {
                 result = result.substring(0, 8000) + "\n... [TRUNCATED to prevent context window overflow. If you need a specific property group, please use getLayerProperties with a specific groupFilter parameter, e.g. \"Transform\" or \"Effects\"] ...";

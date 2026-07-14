@@ -328,6 +328,198 @@ async function saveChats() {
     }
 }
 
+// --- PROJECT SPECIFIC SCRIPTS AND PERSISTENT HISTORIES ---
+async function loadScripts() {
+    let loaded = false;
+    if (fs) {
+        try {
+            const dataStr = await fs.promises.readFile(scriptsConfigPath, 'utf8');
+            allProjectScripts = JSON.parse(dataStr);
+            loaded = true;
+        } catch (e) {
+            if (e.code !== 'ENOENT') {
+                console.error("Failed to load scripts database:", e);
+            }
+        }
+    }
+
+    if (!loaded) {
+        allProjectScripts = {};
+    }
+}
+
+async function saveScripts() {
+    if (fs) {
+        try {
+            const scriptsToSave = {};
+            for (const key in allProjectScripts) {
+                if (key === "Unsaved Project" || key === "settings_Unsaved Project") {
+                    continue;
+                }
+                const scripts = allProjectScripts[key];
+                if (Array.isArray(scripts) && scripts.length > 0) {
+                    scriptsToSave[key] = scripts;
+                }
+            }
+            await fs.promises.writeFile(scriptsConfigPath, JSON.stringify(scriptsToSave, null, 2), 'utf8');
+        } catch (err) {
+            console.error("Failed to save scripts database to disk:", err);
+        }
+    }
+}
+
+function getProjectScripts(projectPath) {
+    const proj = projectPath || currentProjectPath;
+    if (!allProjectScripts[proj]) {
+        allProjectScripts[proj] = [];
+    }
+    return allProjectScripts[proj];
+}
+
+function findScriptByName(projectPath, name) {
+    const scripts = getProjectScripts(projectPath);
+    return scripts.find(s => s.name === name);
+}
+
+function createOrUpdateScript(projectPath, name, content) {
+    const scripts = getProjectScripts(projectPath);
+    let script = scripts.find(s => s.name === name);
+    if (script) {
+        script.content = content;
+        script.modified = Date.now();
+    } else {
+        script = {
+            name: name,
+            content: content,
+            created: Date.now(),
+            modified: Date.now()
+        };
+        scripts.push(script);
+    }
+    saveScripts();
+    return script;
+}
+
+function renderScriptTabs() {
+    const listContainer = document.getElementById("script-tabs-list");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = "";
+
+    const scripts = getProjectScripts(currentProjectPath);
+    
+    // Ensure there is at least one default script if empty
+    if (scripts.length === 0) {
+        createOrUpdateScript(currentProjectPath, "scratch.jsx", "// Custom ExtendScript scratchpad\n");
+    }
+
+    if (!activeScriptName || !findScriptByName(currentProjectPath, activeScriptName)) {
+        activeScriptName = scripts[0] ? scripts[0].name : "scratch.jsx";
+    }
+
+    scripts.forEach(s => {
+        const tab = document.createElement("div");
+        tab.className = "chat-tab" + (s.name === activeScriptName ? " active" : "") + (isExecuting ? " disabled" : "");
+        tab.title = s.name;
+        tab.style.cursor = "pointer";
+
+        // Click to load script
+        tab.addEventListener("click", (e) => {
+            if (isExecuting) return;
+            if (e.target.closest(".chat-tab-close")) return;
+            selectScriptTab(s.name);
+        });
+
+        // Double click to rename
+        tab.addEventListener("dblclick", () => {
+            if (isExecuting) return;
+            const newName = prompt("Enter a new name for the script:", s.name);
+            if (newName && newName.trim() && newName.trim() !== s.name) {
+                renameScript(s.name, newName.trim());
+            }
+        });
+
+        // Tab Title
+        const titleSpan = document.createElement("span");
+        titleSpan.className = "chat-tab-title";
+        titleSpan.innerText = s.name;
+        tab.appendChild(titleSpan);
+
+        // Close/Delete Button
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "chat-tab-close";
+        closeBtn.title = "Delete script";
+        closeBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="8" height="8" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        `;
+        closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (isExecuting) return;
+            if (confirm(`Are you sure you want to delete script "${s.name}"?`)) {
+                deleteScript(s.name);
+            }
+        });
+        tab.appendChild(closeBtn);
+
+        listContainer.appendChild(tab);
+    });
+}
+
+function selectScriptTab(name) {
+    activeScriptName = name;
+    renderScriptTabs();
+    
+    const scriptObj = findScriptByName(currentProjectPath, name);
+    const output = document.getElementById("console-output");
+    if (output && scriptObj) {
+        output.value = scriptObj.content;
+    }
+}
+
+function deleteScript(name) {
+    let scripts = getProjectScripts(currentProjectPath);
+    scripts = scripts.filter(s => s.name !== name);
+    allProjectScripts[currentProjectPath] = scripts;
+    saveScripts();
+
+    if (activeScriptName === name) {
+        activeScriptName = scripts[0] ? scripts[0].name : null;
+    }
+    renderScriptTabs();
+    if (activeScriptName) {
+        selectScriptTab(activeScriptName);
+    } else {
+        const output = document.getElementById("console-output");
+        if (output) output.value = "";
+    }
+}
+
+function renameScript(oldName, newName) {
+    const existing = findScriptByName(currentProjectPath, newName);
+    if (existing) {
+        alert(`A script named "${newName}" already exists.`);
+        return;
+    }
+
+    const script = findScriptByName(currentProjectPath, oldName);
+    if (script) {
+        script.name = newName;
+        script.modified = Date.now();
+        saveScripts();
+        if (activeScriptName === oldName) {
+            activeScriptName = newName;
+        }
+        renderScriptTabs();
+        if (activeScriptName === newName) {
+            selectScriptTab(newName);
+        }
+    }
+}
+
+
 async function syncProjectPath() {
     if (isExecuting) {
         // Defer syncing project path and session migration while the agent loop is actively running
@@ -374,10 +566,26 @@ async function syncProjectPath() {
                     console.log("[ArcEditor] Migrated active chat history from Unsaved Project to: " + activePath);
                 }
             }
+
+            // Migrate scripts as well
+            const unsavedScripts = allProjectScripts["Unsaved Project"];
+            if (unsavedScripts && unsavedScripts.length > 0) {
+                if (!allProjectScripts[activePath] || allProjectScripts[activePath].length === 0) {
+                    allProjectScripts[activePath] = unsavedScripts;
+                    delete allProjectScripts["Unsaved Project"];
+                    saveScripts();
+                    console.log("[ArcEditor] Migrated active script history from Unsaved Project to: " + activePath);
+                }
+            }
         }
 
         // Load session list for this project
         initializeProjectSessions();
+        
+        // Render script tabs for new project path
+        if (typeof renderScriptTabs === "function") {
+            renderScriptTabs();
+        }
     }
 }
 
@@ -1031,3 +1239,14 @@ window.closeSession = closeSession;
 window.restoreSession = restoreSession;
 window.deleteSession = deleteSession;
 window.createNewSession = createNewSession;
+
+window.loadScripts = loadScripts;
+window.saveScripts = saveScripts;
+window.getProjectScripts = getProjectScripts;
+window.findScriptByName = findScriptByName;
+window.createOrUpdateScript = createOrUpdateScript;
+window.renderScriptTabs = renderScriptTabs;
+window.selectScriptTab = selectScriptTab;
+window.deleteScript = deleteScript;
+window.renameScript = renameScript;
+

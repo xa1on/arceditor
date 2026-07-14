@@ -24,9 +24,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     try {
         await loadChats();
+        await loadScripts();
         initializeProjectSessions();
+        if (typeof renderScriptTabs === "function") {
+            renderScriptTabs();
+        }
     } catch (e) {
-        console.error("Failed to load chats:", e);
+        console.error("Failed to load chats/scripts:", e);
     }
 
     // 3. Kick off async integrations and background syncs resiliently
@@ -160,10 +164,40 @@ function initUI() {
         const output = document.getElementById("console-output");
         if (output.tagName === "TEXTAREA") {
             output.value = "";
+            if (activeScriptName) {
+                createOrUpdateScript(currentProjectPath, activeScriptName, "");
+            }
         } else if (output.querySelector("code")) {
             output.querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
         }
     });
+
+    const consoleOutput = document.getElementById("console-output");
+    if (consoleOutput) {
+        consoleOutput.addEventListener("input", () => {
+            if (activeScriptName) {
+                createOrUpdateScript(currentProjectPath, activeScriptName, consoleOutput.value);
+            }
+        });
+    }
+
+    const btnNewScriptTab = document.getElementById("btn-new-script-tab");
+    if (btnNewScriptTab) {
+        btnNewScriptTab.addEventListener("click", () => {
+            if (isExecuting) return;
+            const name = prompt("Enter script name:", "untitled.jsx");
+            if (name && name.trim()) {
+                const sName = name.trim();
+                const existing = findScriptByName(currentProjectPath, sName);
+                if (existing) {
+                    alert(`A script named "${sName}" already exists.`);
+                    return;
+                }
+                createOrUpdateScript(currentProjectPath, sName, "// Custom ExtendScript code\n");
+                selectScriptTab(sName);
+            }
+        });
+    }
 
     const btnRunConsole = document.getElementById("btn-run-console");
     if (btnRunConsole) {
@@ -173,6 +207,9 @@ function initUI() {
             if (!code.trim()) {
                 addSystemMessage("Console is empty. Type some ExtendScript to run.");
                 return;
+            }
+            if (activeScriptName) {
+                createOrUpdateScript(currentProjectPath, activeScriptName, code);
             }
             addSystemMessage("Executing custom ExtendScript...");
             const prependedCode = `var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
@@ -1380,8 +1417,13 @@ window.promptUserForToolConfirmation = function(tc) {
 
         const toolName = tc.tool;
         let paramString = "";
-        if (toolName === "executeExtendScript" && tc.parameters && tc.parameters.script) {
-            paramString = tc.parameters.script;
+        if (toolName === "executeScript" && tc.parameters && tc.parameters.scriptName) {
+            const scriptObj = typeof findScriptByName === "function" ? findScriptByName(currentProjectPath, tc.parameters.scriptName) : null;
+            paramString = `Script: ${tc.parameters.scriptName}\n\nContent:\n${scriptObj ? scriptObj.content : "(Not Found)"}`;
+        } else if (toolName === "createScript" && tc.parameters) {
+            paramString = `Script: ${tc.parameters.scriptName}\nExecute: ${tc.parameters.execute ? "Yes" : "No"}\n\nContent:\n${tc.parameters.content}`;
+        } else if (toolName === "editScript" && tc.parameters) {
+            paramString = `Script: ${tc.parameters.scriptName}\nExecute: ${tc.parameters.execute ? "Yes" : "No"}\n\nTarget:\n${tc.parameters.targetContent}\n\nReplacement:\n${tc.parameters.replacementContent}`;
         } else if (toolName === "submitPlan" && tc.parameters && tc.parameters.plan) {
             paramString = tc.parameters.plan;
         } else {

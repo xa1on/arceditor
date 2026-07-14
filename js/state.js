@@ -40,6 +40,7 @@ let csInterface = null;
 let extensionPath = "./";
 let configPath = "./config.json";
 let chatsConfigPath = "./chats.json";
+let scriptsConfigPath = "./scripts.json";
 let effectsCachePath = "./effects_cache.json";
 let effectPropertiesCachePath = "./effect_properties_cache.json";
 let appConfigDir = "";
@@ -108,11 +109,13 @@ if (os && path && fs) {
     }
     configPath = path.join(appConfigDir, 'config.json');
     chatsConfigPath = path.join(appConfigDir, 'chats.json');
+    scriptsConfigPath = path.join(appConfigDir, 'scripts.json');
     effectsCachePath = path.join(appConfigDir, 'effects_cache.json');
     effectPropertiesCachePath = path.join(appConfigDir, 'effect_properties_cache.json');
 } else {
     configPath = "./config.json";
     chatsConfigPath = "./chats.json";
+    scriptsConfigPath = "./scripts.json";
     effectsCachePath = "./effects_cache.json";
     effectPropertiesCachePath = "./effect_properties_cache.json";
 }
@@ -120,6 +123,8 @@ if (os && path && fs) {
 // Project specific chat sessions state
 let allProjectChats = {};
 let activeSessionId = null;
+let allProjectScripts = {};
+let activeScriptName = null;
 let currentProjectPath = "Unsaved Project";
 let isExecuting = false;
 let isStopped = false;
