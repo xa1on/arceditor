@@ -5,6 +5,13 @@
  */
 let capturedFrameDataDuringLoop = null;
 
+const ANNOTATION_COLORS = {
+    "#ff4d4d": "Red",
+    "#00f0ff": "Cyan",
+    "#ffd700": "Yellow",
+    "#39ff14": "Green"
+};
+
 // Helper to canonicalize tool names case-insensitively to standard camelCase
 function getCanonicalToolName(name) {
     if (!name) return "";
@@ -84,6 +91,58 @@ function pushToHistory(msg) {
     }
 }
 
+async function burnAnnotationsIntoImage(item) {
+    if (!item.annotations || item.annotations.length === 0) {
+        return item.data;
+    }
+    const pathAnns = item.annotations.filter(ann => ann.type === "path");
+    if (pathAnns.length === 0) {
+        return item.data;
+    }
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+
+                // Configure drawing styles matching the annotation canvas editor
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.lineWidth = Math.max(2.5, img.width / 300); // Scale line width relative to base image width
+
+                pathAnns.forEach(ann => {
+                    if (ann.points && ann.points.length > 1) {
+                        ctx.strokeStyle = ann.color || "#ff4d4d";
+                        ctx.beginPath();
+                        ctx.moveTo(ann.points[0].x * canvas.width, ann.points[0].y * canvas.height);
+                        for (let i = 1; i < ann.points.length; i++) {
+                            ctx.lineTo(ann.points[i].x * canvas.width, ann.points[i].y * canvas.height);
+                        }
+                        ctx.stroke();
+                    }
+                });
+
+                const dataUrl = canvas.toDataURL("image/png");
+                const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+                resolve(base64);
+            } catch (err) {
+                console.error("Error in canvas drawing operations:", err);
+                resolve(item.data);
+            }
+        };
+        img.onerror = () => {
+            console.error("Failed to load image in burnAnnotationsIntoImage helper");
+            resolve(item.data);
+        };
+        img.src = `data:${item.mimeType || 'image/png'};base64,${item.data}`;
+    });
+}
+
 async function runAgenticExecutionLoop(userText) {
     isStopped = false;
     currentExecutionId++;
@@ -92,6 +151,20 @@ async function runAgenticExecutionLoop(userText) {
 
     try {
         let attachments = [...attachedFrames];
+
+        // Await rendering sketch path overlays on images
+        if (attachments && attachments.length > 0) {
+            for (let i = 0; i < attachments.length; i++) {
+                const item = attachments[i];
+                if (item && typeof item === "object" && (item.type === "image" || (item.mimeType && item.mimeType.startsWith("image/")))) {
+                    try {
+                        item.annotatedData = await burnAnnotationsIntoImage(item);
+                    } catch (e) {
+                        console.error("Error pre-processing image annotations:", e);
+                    }
+                }
+            }
+        }
 
         // Reset attachments
         clearAttachmentDock();
@@ -132,9 +205,68 @@ async function runAgenticExecutionLoop(userText) {
                             embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes) - Note: Model provider does not support native PDF uploads]`;
                         }
                     } else if (item.type === "image" || item.mimeType.startsWith("image/")) {
+                        let label = `Uploaded File: ${item.name}`;
+                        if (item.frameNumber !== undefined && item.frameNumber !== null) {
+                            label = `Captured Frame: ${item.name} at Frame #${item.frameNumber} (${item.timeInSeconds.toFixed(3)}s)`;
+                        }
+                        embeddedText += `\n\n[${label}]`;
+
+                        if (item.annotations && item.annotations.length > 0) {
+                            embeddedText += `\n\n[Visual Annotations on Attachment: ${item.name}]`;
+                            
+                            // 1. Process standard layout shapes (rect, circle, arrow, text)
+                            item.annotations.forEach((ann, aIdx) => {
+                                const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
+                                if (ann.type === "rect") {
+                                    embeddedText += `\n- Bounding Box #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1*100).toFixed(1)}%, Top: ${(ann.y1*100).toFixed(1)}%, Right: ${(ann.x2*100).toFixed(1)}%, Bottom: ${(ann.y2*100).toFixed(1)}%]`;
+                                } else if (ann.type === "circle") {
+                                    const cx = (ann.x1 + ann.x2) / 2;
+                                    const cy = (ann.y1 + ann.y2) / 2;
+                                    const rx = Math.abs(ann.x2 - ann.x1) / 2;
+                                    const ry = Math.abs(ann.y2 - ann.y1) / 2;
+                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Center at [X: ${(cx*100).toFixed(1)}%, Y: ${(cy*100).toFixed(1)}%] with radii [Horizontal: ${(rx*100).toFixed(1)}%, Vertical: ${(ry*100).toFixed(1)}%]`;
+                                } else if (ann.type === "arrow") {
+                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Directing from [X1: ${(ann.x1*100).toFixed(1)}%, Y1: ${(ann.y1*100).toFixed(1)}%] to [X2: ${(ann.x2*100).toFixed(1)}%, Y2: ${(ann.y2*100).toFixed(1)}%]`;
+                                } else if (ann.type === "text") {
+                                    embeddedText += `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1*100).toFixed(1)}%, Y: ${(ann.y1*100).toFixed(1)}%]`;
+                                }
+                            });
+
+                            // 2. Group all sketch path strokes combined to prevent LLM text bloat/confusion
+                            const pathAnns = item.annotations.filter(ann => ann.type === "path");
+                            if (pathAnns.length > 0) {
+                                let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+                                let hasPoints = false;
+                                const colors = new Set();
+                                
+                                pathAnns.forEach(ann => {
+                                    const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
+                                    colors.add(colorName);
+                                    if (ann.points && ann.points.length > 0) {
+                                        ann.points.forEach(p => {
+                                            hasPoints = true;
+                                            if (p.x < minX) minX = p.x;
+                                            if (p.y < minY) minY = p.y;
+                                            if (p.x > maxX) maxX = p.x;
+                                            if (p.y > maxY) maxY = p.y;
+                                        });
+                                    }
+                                });
+                                
+                                if (!hasPoints) {
+                                    minX = 0; minY = 0; maxX = 0; maxY = 0;
+                                }
+                                
+                                const colorStr = Array.from(colors).join(", ");
+                                embeddedText += `\n- Sketch Path (${colorStr}): A sketch path is drawn on this frame within the combined bounding box [Left: ${(minX*100).toFixed(1)}%, Top: ${(minY*100).toFixed(1)}%, Right: ${(maxX*100).toFixed(1)}%, Bottom: ${(maxY*100).toFixed(1)}%]. Please analyze the shape of this sketch visually on the image.`;
+                            }
+                            
+                            embeddedText += `\n*Note: Use these percentage values relative to the composition width/height (obtainable from getTimelineContext) to calculate precise coordinates.*`;
+                        }
+
                         contentParts.push({
                             type: "image_url",
-                            image_url: { url: `data:${item.mimeType};base64,${item.data}` }
+                            image_url: { url: `data:${item.mimeType};base64,${item.annotatedData || item.data}` }
                         });
                     } else {
                         if (currentProvider === "gemini") {
@@ -142,7 +274,7 @@ async function runAgenticExecutionLoop(userText) {
                                 type: "inline_data",
                                 inline_data: {
                                     mimeType: item.mimeType,
-                                    data: item.data
+                                    data: item.annotatedData || item.data
                                 }
                             });
                         } else {

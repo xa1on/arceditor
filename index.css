@@ -45,7 +45,7 @@
     padding: 0;
 }
 
-body {
+html, body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-sans);
@@ -461,6 +461,19 @@ textarea.code-viewport {
     object-fit: cover;
 }
 
+.dock-img-wrap.annotated::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 6px;
+    height: 6px;
+    background-color: var(--text-success, #39ff14);
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--text-success, #39ff14);
+    z-index: 8;
+}
+
 .dock-file-icon {
     display: flex;
     flex-direction: column;
@@ -533,6 +546,7 @@ textarea.code-viewport {
     line-height: 12px;
     text-align: center;
     cursor: pointer;
+    z-index: 10;
 }
 
 .dock-label {
@@ -1207,13 +1221,16 @@ select.form-input {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius-sm);
     overflow: hidden;
-    display: flex;
+    display: inline-block;
+    position: relative;
 }
 
 .bubble-image-wrap img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    max-width: 220px;
+    max-height: 140px;
+    width: auto;
+    height: auto;
+    display: block;
     background-color: #242424;
     background-image:
         linear-gradient(45deg, #1e1e1e 25%, transparent 25%, transparent 75%, #1e1e1e 75%, #1e1e1e),
@@ -2092,4 +2109,81 @@ body.no-transitions *::after {
 
 .command-autocomplete-popup.hidden {
     display: none !important;
+}
+
+/* VISUAL CANVAS ANNOTATIONS OVERLAYS */
+.dock-img-edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    cursor: pointer;
+    z-index: 5;
+}
+
+.dock-img-wrap:hover .dock-img-edit-overlay {
+    opacity: 1;
+}
+
+.dock-img-edit-overlay svg {
+    color: var(--text-primary);
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.dock-img-edit-overlay:hover svg {
+    transform: scale(1.15) rotate(15deg);
+    color: var(--text-accent);
+}
+
+.bubble-image-annotations-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.message-content details.annotation-details-summary {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    margin-top: 4px;
+    padding: 4px 6px;
+    font-size: 9.5px;
+    color: var(--text-secondary);
+    max-width: 220px;
+}
+
+.message-content details.annotation-details-summary summary {
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    color: var(--text-accent);
+    user-select: none;
+}
+
+.message-content details.annotation-details-summary summary:hover {
+    color: var(--text-primary);
+}
+
+.message-content details.annotation-details-summary ul {
+    margin-top: 4px;
+    padding-left: 12px;
+    list-style-type: disc;
+}
+
+.message-content details.annotation-details-summary li {
+    margin: 2px 0;
+    word-break: break-all;
 }

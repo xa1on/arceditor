@@ -398,11 +398,28 @@ async function captureCompositionFrame(isAgentCall) {
             const base64Data = await fs.promises.readFile(actualPath, { encoding: 'base64' });
 
             if (isAgentCall !== true) {
+                let frameNum = null;
+                let timeInSeconds = null;
+                try {
+                    const compData = await getTimelineContext();
+                    if (compData && !compData.error) {
+                        const frameRate = compData.frameRate || 30;
+                        timeInSeconds = compData.currentTime !== undefined ? compData.currentTime : 0;
+                        frameNum = Math.round(timeInSeconds * frameRate);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch timeline context for frame capture:", e);
+                }
+
+                const nameWithFrame = frameNum !== null ? `Captured Frame ${attachedFrames.length + 1} (Frame ${frameNum})` : `Captured Frame ${attachedFrames.length + 1}`;
                 attachedFrames.push({
                     type: "image",
-                    name: `Captured Frame ${attachedFrames.length + 1}`,
+                    name: nameWithFrame,
                     mimeType: "image/png",
-                    data: base64Data
+                    data: base64Data,
+                    frameNumber: frameNum,
+                    timeInSeconds: timeInSeconds,
+                    annotations: []
                 });
 
                 if (typeof renderAttachmentDock === "function") {
@@ -681,12 +698,17 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
         }
 
         if (isAgentCall !== true) {
-            base64List.forEach(data => {
+            base64List.forEach((data, i) => {
+                const t = (pathsAndTimes[i] && pathsAndTimes[i].time !== undefined) ? pathsAndTimes[i].time : 0;
+                const frameNum = Math.round(t * frameRate);
                 attachedFrames.push({
                     type: "image",
-                    name: `Captured Frame ${attachedFrames.length + 1}`,
+                    name: `Captured Frame ${attachedFrames.length + 1} (Frame ${frameNum})`,
                     mimeType: "image/png",
-                    data: data
+                    data: data,
+                    frameNumber: frameNum,
+                    timeInSeconds: t,
+                    annotations: []
                 });
             });
             if (typeof renderAttachmentDock === "function") {

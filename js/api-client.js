@@ -704,7 +704,11 @@ Here is the ExtendScript to build it:
                                     } else {
                                         accumulatedText += reasoning;
                                     }
-                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                    const norm = normalizeResponse(accumulatedText);
+                                    if (norm.indexOf("</thinking>") !== -1) {
+                                        isThinkingClosed = true;
+                                    }
+                                    onChunkReceived(norm);
                                 } else if (content) {
                                     if (isThinkingOpen && !isThinkingClosed) {
                                         accumulatedText += "\n</thinking>\n\n" + content;
@@ -712,7 +716,11 @@ Here is the ExtendScript to build it:
                                     } else {
                                         accumulatedText += content;
                                     }
-                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                    const norm = normalizeResponse(accumulatedText);
+                                    if (norm.indexOf("</thinking>") !== -1) {
+                                        isThinkingClosed = true;
+                                    }
+                                    onChunkReceived(norm);
                                 }
                             }
                             if (parsed.usage) {
@@ -959,7 +967,11 @@ Here is the ExtendScript to build it:
                                     } else {
                                         accumulatedText += delta.thinking;
                                     }
-                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                    const norm = normalizeResponse(accumulatedText);
+                                    if (norm.indexOf("</thinking>") !== -1) {
+                                        isThinkingClosed = true;
+                                    }
+                                    onChunkReceived(norm);
                                 } else if (delta.type === "text_delta" && delta.text) {
                                     if (isThinkingOpen && !isThinkingClosed) {
                                         accumulatedText += "\n</thinking>\n\n" + delta.text;
@@ -967,10 +979,18 @@ Here is the ExtendScript to build it:
                                     } else {
                                         accumulatedText += delta.text;
                                     }
-                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                    const norm = normalizeResponse(accumulatedText);
+                                    if (norm.indexOf("</thinking>") !== -1) {
+                                        isThinkingClosed = true;
+                                    }
+                                    onChunkReceived(norm);
                                 } else if (delta.text) {
                                     accumulatedText += delta.text;
-                                    onChunkReceived(normalizeResponse(accumulatedText));
+                                    const norm = normalizeResponse(accumulatedText);
+                                    if (norm.indexOf("</thinking>") !== -1) {
+                                        isThinkingClosed = true;
+                                    }
+                                    onChunkReceived(norm);
                                 }
                             } else if (parsed.type === "content_block_delta" && parsed.delta && parsed.delta.text) {
                                 accumulatedText += parsed.delta.text;
@@ -1139,6 +1159,22 @@ function normalizeResponse(text) {
     let normalized = text
         .replace(/<antThinking>/g, "<thinking>")
         .replace(/<\/antThinking>/g, "</thinking>");
+        
+    // Auto-close thinking blocks if they contain JSON code blocks or tool calls
+    if (normalized.indexOf("<thinking>") !== -1) {
+        const thinkStart = normalized.indexOf("<thinking>");
+        const thinkEnd = normalized.indexOf("</thinking>", thinkStart);
+        const jsonStart = normalized.indexOf("```json", thinkStart);
+        
+        if (jsonStart !== -1 && (thinkEnd === -1 || jsonStart < thinkEnd)) {
+            normalized = normalized.substring(0, jsonStart) + "</thinking>\n\n" + normalized.substring(jsonStart);
+        } else {
+            const toolStart = normalized.indexOf('{\n  "tool":', thinkStart);
+            if (toolStart !== -1 && (thinkEnd === -1 || toolStart < thinkEnd)) {
+                normalized = normalized.substring(0, toolStart) + "</thinking>\n\n" + normalized.substring(toolStart);
+            }
+        }
+    }
         
     // 2. Normalize XML function calls to JSON code blocks
     if (normalized.indexOf("<function_calls>") !== -1) {

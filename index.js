@@ -136,6 +136,33 @@ function initUI() {
         tabDebug.addEventListener("click", () => switchTab("debug"));
     }
 
+    // Close button for visual annotations modal
+    const btnCloseAnnotationModal = document.getElementById("btn-close-annotation-modal");
+    if (btnCloseAnnotationModal) {
+        btnCloseAnnotationModal.addEventListener("click", () => {
+            if (typeof closeAnnotationPopup === "function") {
+                closeAnnotationPopup();
+            }
+        });
+    }
+
+    // Lock scroll to prevent Chromium window scroll shifts when modals/iframes focus
+    window.addEventListener("scroll", () => {
+        if (document.documentElement.scrollTop !== 0 || document.documentElement.scrollLeft !== 0) {
+            document.documentElement.scrollTop = 0;
+            document.documentElement.scrollLeft = 0;
+        }
+        if (document.body.scrollTop !== 0 || document.body.scrollLeft !== 0) {
+            document.body.scrollTop = 0;
+            document.body.scrollLeft = 0;
+        }
+        const arcRoot = document.getElementById("arc-root");
+        if (arcRoot && (arcRoot.scrollTop !== 0 || arcRoot.scrollLeft !== 0)) {
+            arcRoot.scrollTop = 0;
+            arcRoot.scrollLeft = 0;
+        }
+    });
+
     const btnClearDebug = document.getElementById("btn-clear-debug");
     if (btnClearDebug) {
         btnClearDebug.addEventListener("click", () => {
@@ -727,6 +754,171 @@ function scrollToBottom(force = false, smooth = false) {
     }
 }
 
+function escapeXml(unsafe) {
+    if (!unsafe) return "";
+    return unsafe.replace(/[<>&'"]/g, (c) => {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case '\'': return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+        }
+    });
+}
+
+function createAnnotationsSvg(annotations, uniquePrefix) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "bubble-image-annotations-svg");
+    
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    svg.appendChild(defs);
+
+    const arrowColors = new Set();
+    annotations.forEach(ann => {
+        if (ann.type === "arrow") {
+            arrowColors.add(ann.color || "#ff4d4d");
+        }
+    });
+
+    arrowColors.forEach(c => {
+        const cleanColor = typeof c === "string" ? c.trim() : "#ff4d4d";
+        const isValidHex = /^#[0-9A-Fa-f]{3,8}$/.test(cleanColor);
+        const hexId = isValidHex ? cleanColor.replace("#", "") : "default";
+        
+        const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+        marker.setAttribute("id", `arrow-${hexId}-${uniquePrefix}`);
+        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("refX", "6");
+        marker.setAttribute("refY", "5");
+        marker.setAttribute("markerWidth", "6");
+        marker.setAttribute("markerHeight", "6");
+        marker.setAttribute("orient", "auto-start-reverse");
+        
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M 0 1.5 L 10 5 L 0 8.5 z");
+        path.setAttribute("fill", isValidHex ? cleanColor : "#ff4d4d");
+        
+        marker.appendChild(path);
+        defs.appendChild(marker);
+    });
+
+    annotations.forEach(ann => {
+        const color = typeof ann.color === "string" && /^#[0-9A-Fa-f]{3,8}$/.test(ann.color.trim()) ? ann.color.trim() : "#ff4d4d";
+        const hexId = color.replace("#", "");
+        const x1 = (ann.x1 * 100).toFixed(2) + "%";
+        const y1 = (ann.y1 * 100).toFixed(2) + "%";
+        const x2 = (ann.x2 * 100).toFixed(2) + "%";
+        const y2 = (ann.y2 * 100).toFixed(2) + "%";
+        const wVal = ((ann.x2 - ann.x1) * 100).toFixed(2) + "%";
+        const hVal = ((ann.y2 - ann.y1) * 100).toFixed(2) + "%";
+
+        if (ann.type === "rect") {
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", x1);
+            rect.setAttribute("y", y1);
+            rect.setAttribute("width", wVal);
+            rect.setAttribute("height", hVal);
+            rect.setAttribute("stroke", color);
+            rect.setAttribute("stroke-width", "2");
+            rect.setAttribute("fill", "none");
+            svg.appendChild(rect);
+            
+            if (ann.label) {
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x1);
+                text.setAttribute("y", y1);
+                text.setAttribute("dy", "-3");
+                text.setAttribute("fill", color);
+                text.setAttribute("font-size", "8px");
+                text.setAttribute("font-family", "monospace");
+                text.setAttribute("font-weight", "bold");
+                text.textContent = ann.label;
+                svg.appendChild(text);
+            }
+        } else if (ann.type === "circle") {
+            const cx = ((ann.x1 + ann.x2) / 2 * 100).toFixed(2) + "%";
+            const cy = ((ann.y1 + ann.y2) / 2 * 100).toFixed(2) + "%";
+            const rx = (Math.abs(ann.x2 - ann.x1) / 2 * 100).toFixed(2) + "%";
+            const ry = (Math.abs(ann.y2 - ann.y1) / 2 * 100).toFixed(2) + "%";
+            
+            const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+            ellipse.setAttribute("cx", cx);
+            ellipse.setAttribute("cy", cy);
+            ellipse.setAttribute("rx", rx);
+            ellipse.setAttribute("ry", ry);
+            ellipse.setAttribute("stroke", color);
+            ellipse.setAttribute("stroke-width", "2");
+            ellipse.setAttribute("fill", "none");
+            svg.appendChild(ellipse);
+        } else if (ann.type === "arrow") {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", x1);
+            line.setAttribute("y1", y1);
+            line.setAttribute("x2", x2);
+            line.setAttribute("y2", y2);
+            line.setAttribute("stroke", color);
+            line.setAttribute("stroke-width", "2");
+            line.setAttribute("marker-end", `url(#arrow-${hexId}-${uniquePrefix})`);
+            svg.appendChild(line);
+        } else if (ann.type === "path") {
+            if (ann.points && ann.points.length > 1) {
+                const pathD = "M " + ann.points.map(p => `${(p.x * 100).toFixed(2)} ${(p.y * 100).toFixed(2)}`).join(" L ");
+                
+                const nestedSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                nestedSvg.setAttribute("viewBox", "0 0 100 100");
+                nestedSvg.setAttribute("preserveAspectRatio", "none");
+                nestedSvg.setAttribute("width", "100%");
+                nestedSvg.setAttribute("height", "100%");
+                nestedSvg.setAttribute("x", "0");
+                nestedSvg.setAttribute("y", "0");
+                
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", pathD);
+                path.setAttribute("stroke", color);
+                path.setAttribute("stroke-width", "2.5");
+                path.setAttribute("fill", "none");
+                path.setAttribute("vector-effect", "non-scaling-stroke");
+                path.setAttribute("stroke-linejoin", "round");
+                path.setAttribute("stroke-linecap", "round");
+                
+                nestedSvg.appendChild(path);
+                svg.appendChild(nestedSvg);
+            }
+        } else if (ann.type === "text") {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            
+            const markerRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            markerRect.setAttribute("x", x1);
+            markerRect.setAttribute("y", y1);
+            markerRect.setAttribute("rx", "2");
+            markerRect.setAttribute("ry", "2");
+            markerRect.setAttribute("width", "4");
+            markerRect.setAttribute("height", "4");
+            markerRect.setAttribute("fill", color);
+            markerRect.setAttribute("transform", "translate(-2,-2)");
+            g.appendChild(markerRect);
+            
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", x1);
+            text.setAttribute("y", y1);
+            text.setAttribute("dx", "4");
+            text.setAttribute("dy", "3");
+            text.setAttribute("fill", color);
+            text.setAttribute("font-size", "9px");
+            text.setAttribute("font-family", "monospace");
+            text.setAttribute("font-weight", "bold");
+            text.textContent = ann.text || "";
+            g.appendChild(text);
+            
+            svg.appendChild(g);
+        }
+    });
+
+    return svg;
+}
+
 function addBubble(sender, text, base64Images = null, intermediateTurns = null, reasoning = null) {
     const scroller = document.getElementById("chat-messages");
     const id = "bubble-" + Date.now();
@@ -764,7 +956,30 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
     }
 
     if (base64Images) {
-        const imagesArray = Array.isArray(base64Images) ? base64Images : [base64Images];
+        const rawImagesArray = Array.isArray(base64Images) ? base64Images : [base64Images];
+        const imagesArray = rawImagesArray.map((item, index) => {
+            const isObj = typeof item === "object" && item !== null;
+            if (isObj) {
+                return {
+                    type: item.type || "image",
+                    name: item.name || `Attachment ${index + 1}`,
+                    mimeType: item.mimeType || "image/png",
+                    size: item.size || null,
+                    data: item.data || "",
+                    annotations: item.annotations || []
+                };
+            } else {
+                return {
+                    type: "image",
+                    name: `User attachment ${index + 1}`,
+                    mimeType: "image/png",
+                    size: null,
+                    data: item,
+                    annotations: []
+                };
+            }
+        });
+
         if (imagesArray.length > 0) {
             const containerWrap = document.createElement("div");
             containerWrap.className = "bubble-images-container";
@@ -773,25 +988,100 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
             containerWrap.style.gap = "6px";
             containerWrap.style.marginTop = "6px";
 
-            imagesArray.forEach((item, index) => {
-                const isObject = typeof item === "object" && item !== null;
-                const mimeType = isObject ? (item.mimeType || "image/png") : "image/png";
-                const data = isObject ? item.data : item;
-                const name = isObject ? item.name : `User attachment ${index + 1}`;
-                const isImage = isObject ? (item.type === "image" || mimeType.startsWith("image/")) : true;
+            imagesArray.forEach((item, imgIdx) => {
+                const isImage = item.type === "image" || item.mimeType.startsWith("image/");
 
                 if (isImage) {
                     const imgWrap = document.createElement("div");
                     imgWrap.className = "bubble-image-wrap";
                     imgWrap.style.marginTop = "0"; // Reset margin since container has gap
-                    imgWrap.innerHTML = `<img src="data:${mimeType};base64,${data}" alt="${name}" title="${name}" />`;
+                    
+                    const imgElement = document.createElement("img");
+                    imgElement.src = `data:${item.mimeType};base64,${item.data}`;
+                    imgElement.alt = item.name;
+                    imgElement.title = item.name;
+                    imgWrap.appendChild(imgElement);
+
+                    if (item.annotations && item.annotations.length > 0) {
+                        const uniqueMarkerId = `${id}-${imgIdx}`;
+                        const annotationsSvg = createAnnotationsSvg(item.annotations, uniqueMarkerId);
+                        imgWrap.appendChild(annotationsSvg);
+                    }
                     containerWrap.appendChild(imgWrap);
+
+                    // Add collapsible details listing annotations if present
+                    if (item.annotations && item.annotations.length > 0) {
+                        const details = document.createElement("details");
+                        details.className = "annotation-details-summary";
+                        
+                        const colorLabels = {
+                            "#ff4d4d": "Red",
+                            "#00f0ff": "Cyan",
+                            "#ffd700": "Yellow",
+                            "#39ff14": "Green"
+                        };
+
+                        const pathAnns = item.annotations.filter(ann => ann.type === "path");
+                        const otherAnns = item.annotations.filter(ann => ann.type !== "path");
+                        const totalCount = otherAnns.length + (pathAnns.length > 0 ? 1 : 0);
+
+                        let listHtml = "<ul>";
+                        item.annotations.forEach((ann, aIdx) => {
+                            const colorName = colorLabels[ann.color] || ann.color;
+                            if (ann.type === "rect") {
+                                listHtml += `<li><strong>Box #${aIdx+1} (${colorName})</strong>: "${escapeXml(ann.label || 'unlabeled')}" (Bounds: [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%] to [${(ann.x2*100).toFixed(0)}%, ${(ann.y2*100).toFixed(0)}%])</li>`;
+                            } else if (ann.type === "circle") {
+                                listHtml += `<li><strong>Circle #${aIdx+1} (${colorName})</strong>: (Center: [${((ann.x1+ann.x2)/2*100).toFixed(0)}%, ${((ann.y1+ann.y2)/2*100).toFixed(0)}%], Radius: [H: ${(Math.abs(ann.x2-ann.x1)/2*100).toFixed(0)}%, V: ${(Math.abs(ann.y2-ann.y1)/2*100).toFixed(0)}%])</li>`;
+                            } else if (ann.type === "arrow") {
+                                listHtml += `<li><strong>Arrow #${aIdx+1} (${colorName})</strong>: direction [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%] &rarr; [${(ann.x2*100).toFixed(0)}%, ${(ann.y2*100).toFixed(0)}%]</li>`;
+                            } else if (ann.type === "text") {
+                                listHtml += `<li><strong>Note #${aIdx+1} (${colorName})</strong>: "${escapeXml(ann.text || '')}" at [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%]</li>`;
+                            }
+                        });
+
+                        // Append consolidated sketch path details if present
+                        if (pathAnns.length > 0) {
+                            let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+                            let hasPoints = false;
+                            const colors = new Set();
+                            
+                            pathAnns.forEach(ann => {
+                                const colorName = colorLabels[ann.color] || ann.color;
+                                colors.add(colorName);
+                                if (ann.points && ann.points.length > 0) {
+                                    ann.points.forEach(p => {
+                                        hasPoints = true;
+                                        if (p.x < minX) minX = p.x;
+                                        if (p.y < minY) minY = p.y;
+                                        if (p.x > maxX) maxX = p.x;
+                                        if (p.y > maxY) maxY = p.y;
+                                    });
+                                }
+                            });
+                            
+                            if (!hasPoints) {
+                                minX = 0; minY = 0; maxX = 0; maxY = 0;
+                            }
+                            
+                            const colorStr = Array.from(colors).join(", ");
+                            const strokeSuffix = pathAnns.length === 1 ? "stroke" : "strokes";
+                            listHtml += `<li><strong>Sketch Path (${colorStr})</strong>: A sketch of ${pathAnns.length} ${strokeSuffix} inside bounds [Left: ${(minX*100).toFixed(0)}%, Top: ${(minY*100).toFixed(0)}%, Right: ${(maxX*100).toFixed(0)}%, Bottom: ${(maxY*100).toFixed(0)}%]</li>`;
+                        }
+
+                        listHtml += "</ul>";
+                        
+                        details.innerHTML = `
+                            <summary>Annotations (${totalCount})</summary>
+                            ${listHtml}
+                        `;
+                        containerWrap.appendChild(details);
+                    }
                 } else {
                     const fileWrap = document.createElement("div");
                     fileWrap.className = "bubble-file-attachment";
                     
                     let sizeStr = "";
-                    if (isObject && typeof item.size === "number") {
+                    if (typeof item.size === "number") {
                         if (item.size < 1024) {
                             sizeStr = `${item.size} B`;
                         } else if (item.size < 1024 * 1024) {
@@ -801,7 +1091,7 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
                         }
                     }
 
-                    const isVideo = isObject && item.type === "video";
+                    const isVideo = item.type === "video";
                     const iconSvg = isVideo ? `
                         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
                             <polygon points="23 7 16 12 23 17 23 7"></polygon>
@@ -815,7 +1105,7 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
                     `;
                     fileWrap.innerHTML = `
                         ${iconSvg}
-                        <span class="bubble-file-name" title="${name}">${name}</span>
+                        <span class="bubble-file-name" title="${item.name}">${item.name}</span>
                         ${sizeStr ? `<span class="bubble-file-size">${sizeStr}</span>` : ""}
                     `;
                     containerWrap.appendChild(fileWrap);
@@ -1060,6 +1350,27 @@ function renderAttachmentDock() {
             img.src = `data:${mimeType};base64,${data}`;
             img.alt = name;
             wrap.appendChild(img);
+
+            const hasAnnotations = isObject && item.annotations && item.annotations.length > 0;
+            if (hasAnnotations) {
+                wrap.classList.add("annotated");
+            }
+
+            // Add pencil edit overlay
+            const editOverlay = document.createElement("div");
+            editOverlay.className = "dock-img-edit-overlay";
+            editOverlay.title = hasAnnotations ? "Edit visual annotations" : "Annotate image";
+            editOverlay.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+            `;
+            editOverlay.addEventListener("click", (e) => {
+                e.stopPropagation();
+                openAnnotationPopup(idx);
+            });
+            wrap.appendChild(editOverlay);
         } else {
             const fileIcon = document.createElement("div");
             fileIcon.className = "dock-file-icon";
@@ -1115,6 +1426,85 @@ function clearAttachmentDock() {
     updateContextSizeInfo();
     updateSendButtonState();
 }
+
+window.currentAnnotationData = null;
+
+function openAnnotationPopup(idx) {
+    const item = attachedFrames[idx];
+    if (!item) return;
+
+    const isObject = typeof item === "object" && item !== null;
+    const mimeType = isObject ? (item.mimeType || "image/png") : "image/png";
+    const data = isObject ? item.data : item;
+    const name = isObject ? item.name : `Frame ${idx + 1}`;
+
+    window.currentAnnotationData = {
+        index: idx,
+        base64Data: data,
+        mimeType: mimeType,
+        name: name,
+        frameNumber: isObject ? item.frameNumber : null,
+        timeInSeconds: isObject ? item.timeInSeconds : null,
+        annotations: isObject ? (item.annotations || []) : []
+    };
+
+    // If running inside Adobe CEP/CEF panel, use iframe modal overlay since CEF blocks window.open popups
+    if (window.cep || !window.open) {
+        const iframe = document.getElementById("annotation-iframe");
+        const container = document.getElementById("annotation-modal-container");
+        if (iframe && container) {
+            iframe.src = 'annotation.html';
+            container.style.display = "block";
+            // Prevent Chromium window scroll shifts when modals/iframes open
+            document.documentElement.scrollTop = 0;
+            document.documentElement.scrollLeft = 0;
+            document.body.scrollTop = 0;
+            document.body.scrollLeft = 0;
+            const arcRoot = document.getElementById("arc-root");
+            if (arcRoot) {
+                arcRoot.scrollTop = 0;
+                arcRoot.scrollLeft = 0;
+            }
+            return;
+        }
+    }
+
+    // Fallback: Open native Chromium popup window (mockup mode / browser testing)
+    const w = 820;
+    const h = 640;
+    const left = (window.screen.width - w) / 2;
+    const top = (window.screen.height - h) / 2;
+    window.open('annotation.html', 'ArcEditorAnnotation', `width=${w},height=${h},left=${left},top=${top},scrollbars=no,resizable=yes`);
+}
+
+window.closeAnnotationPopup = function() {
+    const container = document.getElementById("annotation-modal-container");
+    if (container) {
+        container.style.display = "none";
+    }
+    const iframe = document.getElementById("annotation-iframe");
+    if (iframe) {
+        iframe.src = "";
+    }
+    // Prevent and fix CEF/Chrome scroll-shifting bug on iframe/modal blur/focus
+    document.documentElement.scrollTop = 0;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollTop = 0;
+    document.body.scrollLeft = 0;
+    const arcRoot = document.getElementById("arc-root");
+    if (arcRoot) {
+        arcRoot.scrollTop = 0;
+        arcRoot.scrollLeft = 0;
+    }
+};
+
+window.saveAnnotationsFromPopup = function(idx, shapes) {
+    if (idx === null || idx === undefined || !attachedFrames[idx]) return;
+    const item = attachedFrames[idx];
+    item.annotations = shapes;
+    renderAttachmentDock();
+    addSystemMessage(`Visual annotations applied to attachment "${item.name || 'image'}".`);
+};
 
 function updateConsolePane(code) {
     const output = document.getElementById("console-output");
