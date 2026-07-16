@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Annotate Frame - ArcEditor</title>
+    <!-- JetBrains Mono Font -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #1c1c1c;
+            --bg-surface: #232323;
+            --bg-input: #141414;
+            --border-color: #2b2b2b;
+            --border-focus: #4f4f4f;
+            --bg-tab-hover: #353535;
+            --bg-tab-active: #3e3e3e;
+            --text-primary: #d5d5d5;
+            --text-secondary: #8e8e8e;
+            --text-accent: #1473e6;
+            --text-error: #ff4444;
+            --text-success: #00c851;
+            --font-sans: "Adobe Clean", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: 'JetBrains Mono', Consolas, monospace;
+            --border-radius: 3px;
+            --border-radius-sm: 3px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 11px;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        /* HEADER & TOOLBAR */
+        header {
+            background-color: var(--bg-surface);
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        header h1 {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .toolbar {
+            background-color: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .tool-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-family: var(--font-sans);
+            font-size: 10px;
+            font-weight: 400;
+            padding: 4px 8px;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tool-btn:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-tab-hover);
+        }
+
+        .tool-btn.active {
+            background-color: var(--bg-tab-active);
+            color: var(--text-primary);
+            border-color: var(--border-focus);
+        }
+
+        .tool-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .tool-divider {
+            width: 1px;
+            height: 14px;
+            background-color: var(--border-color);
+            margin: 0 4px;
+        }
+
+        .color-palette {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .color-btn {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+
+        .color-btn:hover {
+            transform: scale(1.15);
+        }
+
+        .color-btn.active {
+            border-color: var(--text-primary);
+            transform: scale(1.15);
+        }
+
+        .action-btn {
+            padding: 5px 12px;
+            font-size: 10px;
+            font-weight: 400;
+            border-radius: var(--border-radius-sm);
+            cursor: pointer;
+            font-family: var(--font-sans);
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background-color: var(--text-accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #2e8dff;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            color: var(--text-primary);
+            background-color: var(--bg-tab-hover);
+            border-color: var(--border-focus);
+        }
+
+        .tool-spacer {
+            margin-left: auto;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        /* WORKSPACE CANVAS */
+        .workspace {
+            flex: 1;
+            overflow: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            background: #141414;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            background-color: black;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+        }
+
+        #preview-image {
+            display: block;
+            max-width: 100%;
+            max-height: calc(100vh - 120px);
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: crosshair;
+        }
+
+        #drawing-canvas.tool-select {
+            cursor: default;
+        }
+
+        /* INLINE LABEL POPOVER */
+        .label-popover {
+            position: absolute;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-focus);
+            border-radius: var(--border-radius-sm);
+            padding: 4px;
+            display: flex;
+            gap: 4px;
+            z-index: 1000;
+        }
+
+        .label-popover input {
+            background: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 10px;
+            padding: 4px 6px;
+            outline: none;
+            border-radius: 2px;
+            width: 150px;
+        }
+
+        .label-popover input:focus {
+            border-color: var(--text-accent);
+        }
+
+        .label-popover button {
+            background: var(--text-accent);
+            border: none;
+            color: white;
+            font-family: var(--font-sans);
+            font-size: 9px;
+            padding: 4px 8px;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* FOOTER ACTIONS */
+        footer {
+            background-color: var(--bg-surface);
+            padding: 10px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER TITLE -->
+    <header>
+        <h1 id="window-title">Annotate Frame</h1>
+        <div id="file-info" style="font-size: 10px; color: var(--text-secondary);">Loading item...</div>
+    </header>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+        <button id="tool-select" class="tool-btn active" title="Select and delete shapes">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <polygon points="3 3 3 16 8 12 13 21 16 19 11 11 18 11 3 3"></polygon>
+            </svg>
+            <span>Select</span>
+        </button>
+        <button id="tool-rect" class="tool-btn" title="Draw bounding box">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            </svg>
+            <span>Box</span>
+        </button>
+        <button id="tool-circle" class="tool-btn" title="Draw circle/ellipse">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <circle cx="12" cy="12" r="9"></circle>
+            </svg>
+            <span>Circle</span>
+        </button>
+        <button id="tool-arrow" class="tool-btn" title="Draw motion path vector">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <line x1="5" y1="19" x2="19" y2="5"></line>
+                <polyline points="12 5 19 5 19 12"></polyline>
+            </svg>
+            <span>Arrow</span>
+        </button>
+        <button id="tool-brush" class="tool-btn" title="Draw sketch path">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <path d="M18 2L22 6L9 19H5v-4L18 2z"></path>
+            </svg>
+            <span>Sketch</span>
+        </button>
+        <button id="tool-text" class="tool-btn" title="Place text note">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                <line x1="9" y1="20" x2="15" y2="20"></line>
+                <line x1="12" y1="4" x2="12" y2="20"></line>
+            </svg>
+            <span>Text</span>
+        </button>
+
+        <div class="tool-divider"></div>
+
+        <!-- COLORS -->
+        <div class="color-palette">
+            <button class="color-btn active" style="background-color: #ff4d4d;" data-color="#ff4d4d"></button>
+            <button class="color-btn" style="background-color: #00f0ff;" data-color="#00f0ff"></button>
+            <button class="color-btn" style="background-color: #ffd700;" data-color="#ffd700"></button>
+            <button class="color-btn" style="background-color: #39ff14;" data-color="#39ff14"></button>
+            
+            <div class="tool-divider" style="height: 14px; margin: 0 2px;"></div>
+            
+            <!-- Custom Color Picker -->
+            <div id="custom-color-wrap" style="position: relative; width: 18px; height: 18px; border-radius: 50%; overflow: hidden; border: 2px solid var(--border-color); cursor: pointer; background: linear-gradient(45deg, red, orange, yellow, green, blue, purple); transition: transform 0.15s ease;">
+                <input type="color" id="custom-color-picker" value="#9d00ff" style="position: absolute; top: -6px; left: -6px; width: 30px; height: 30px; border: none; cursor: pointer; background: none; padding: 0; opacity: 0;" />
+            </div>
+        </div>
+
+        <div class="tool-divider"></div>
+
+        <!-- SELECTION EDITING -->
+        <button id="btn-delete-shape" class="tool-btn" style="color: var(--text-error); border-color: rgba(255, 77, 77, 0.2);" title="Delete selected shape" disabled>
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete Selected</span>
+        </button>
+
+        <div class="tool-divider"></div>
+
+        <!-- UNDO / REDO -->
+        <button id="btn-undo" class="tool-btn" title="Undo (Ctrl+Z)" disabled>
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <path d="M3 7v6h6"></path>
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+            </svg>
+            <span>Undo</span>
+        </button>
+        <button id="btn-redo" class="tool-btn" title="Redo (Ctrl+Y)" disabled>
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <path d="M21 7v6h-6"></path>
+                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path>
+            </svg>
+            <span>Redo</span>
+        </button>
+
+        <div class="tool-spacer"></div>
+
+        <button id="btn-clear-all" class="tool-btn" style="color: var(--text-secondary);" title="Clear all annotations">
+            <span>Clear All</span>
+        </button>
+    </div>
+
+    <!-- WORKSPACE DRAWING BOARD -->
+    <div class="workspace">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+            <img id="preview-image" src="" alt="Frame Source" />
+            <canvas id="drawing-canvas"></canvas>
+            
+            <!-- FLOATING INPUT POPOVER -->
+            <div id="label-popover" class="label-popover hidden">
+                <input type="text" id="label-input" placeholder="Enter shape label..." spellcheck="false" />
+                <button id="btn-submit-label">OK</button>
+                <button id="btn-cancel-label" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); margin-left: 4px; border-radius: 2px; padding: 4px 8px; cursor: pointer; font-family: var(--font-mono); font-size: 10px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER ACTIONS -->
+    <footer>
+        <button id="btn-cancel" class="action-btn btn-secondary">Discard</button>
+        <button id="btn-apply" class="action-btn btn-primary">Apply Annotations</button>
+    </footer>
+
+    <script>
+        (function() {
+            let index = null;
+            let originalAnnotations = [];
+            let shapes = [];
+            let activeTool = 'select'; // 'select', 'rect', 'circle', 'arrow', 'brush', 'text'
+            let activeColor = '#ff4d4d'; // Red default
+            let selectedShapeIdx = -1;
+            let isDrawing = false;
+            let startX = 0, startY = 0;
+            let currentX = 0, currentY = 0;
+            let isDirty = false;
+            let isSaved = false;
+
+            // Floating Input States
+            let pendingShape = null;
+
+            // Undo & Redo History Stacks
+            let undoStack = [];
+            let redoStack = [];
+            
+            let dpr = window.devicePixelRatio || 1;
+
+            const img = document.getElementById("preview-image");
+            const canvas = document.getElementById("drawing-canvas");
+            const ctx = canvas.getContext("2d");
+            const wrapper = document.getElementById("canvas-wrapper");
+            const popover = document.getElementById("label-popover");
+            const popoverInput = document.getElementById("label-input");
+            const btnDelete = document.getElementById("btn-delete-shape");
+            const btnUndo = document.getElementById("btn-undo");
+            const btnRedo = document.getElementById("btn-redo");
+
+            function cloneShapes(shapesArray) {
+                return shapesArray.map(s => {
+                    const clone = { ...s };
+                    if (s.points) {
+                        clone.points = s.points.map(p => ({ ...p }));
+                    }
+                    return clone;
+                });
+            }
+
+            function saveState() {
+                undoStack.push(cloneShapes(shapes));
+                redoStack = [];
+                updateUndoRedoButtons();
+            }
+
+            function undo() {
+                if (undoStack.length === 0) return;
+                redoStack.push(cloneShapes(shapes));
+                shapes = undoStack.pop();
+                isDirty = true;
+                selectedShapeIdx = -1;
+                btnDelete.disabled = true;
+                updateUndoRedoButtons();
+                redraw();
+            }
+
+            function redo() {
+                if (redoStack.length === 0) return;
+                undoStack.push(cloneShapes(shapes));
+                shapes = redoStack.pop();
+                isDirty = true;
+                selectedShapeIdx = -1;
+                btnDelete.disabled = true;
+                updateUndoRedoButtons();
+                redraw();
+            }
+
+            function updateUndoRedoButtons() {
+                if (btnUndo) btnUndo.disabled = (undoStack.length === 0);
+                if (btnRedo) btnRedo.disabled = (redoStack.length === 0);
+            }
+
+            // Initialization
+            window.addEventListener("DOMContentLoaded", () => {
+                const parentWin = window.opener || window.parent;
+                if (parentWin && parentWin.currentAnnotationData) {
+                    const data = parentWin.currentAnnotationData;
+                    index = data.index;
+                    originalAnnotations = data.annotations || [];
+                    shapes = cloneShapes(originalAnnotations);
+
+                    const titleEl = document.getElementById("window-title");
+                    const fileInfo = document.getElementById("file-info");
+
+                    if (data.frameNumber !== undefined && data.frameNumber !== null) {
+                        titleEl.innerText = `Annotate Frame - Frame ${data.frameNumber} (${data.timeInSeconds.toFixed(3)}s)`;
+                    } else {
+                        titleEl.innerText = `Annotate Image`;
+                    }
+                    fileInfo.innerText = data.name || "composition_frame.png";
+
+                    img.src = `data:${data.mimeType || 'image/png'};base64,${data.base64Data}`;
+                    img.onload = () => {
+                        resizeCanvas();
+                    };
+                } else {
+                    document.getElementById("file-info").innerText = "No image context loaded (stand-alone mockup mode).";
+                    img.style.display = "none";
+                    canvas.width = 600;
+                    canvas.height = 400;
+                    canvas.style.position = "static";
+                    canvas.style.backgroundColor = "#000";
+                    resizeCanvas();
+                }
+            });
+
+            window.addEventListener("resize", resizeCanvas);
+
+            function resizeCanvas() {
+                if (img.style.display !== "none") {
+                    const w = img.clientWidth;
+                    const h = img.clientHeight;
+                    dpr = window.devicePixelRatio || 1;
+                    
+                    canvas.width = w * dpr;
+                    canvas.height = h * dpr;
+                    canvas.style.width = w + "px";
+                    canvas.style.height = h + "px";
+                    canvas.style.top = img.offsetTop + "px";
+                    canvas.style.left = img.offsetLeft + "px";
+                    
+                    ctx.restore();
+                    ctx.save();
+                    ctx.scale(dpr, dpr);
+                    
+                    wrapper.style.width = w + "px";
+                    wrapper.style.height = h + "px";
+                }
+                redraw();
+            }
+
+            // TOOL SWITCHING
+            const toolButtons = {
+                'select': document.getElementById("tool-select"),
+                'rect': document.getElementById("tool-rect"),
+                'circle': document.getElementById("tool-circle"),
+                'arrow': document.getElementById("tool-arrow"),
+                'brush': document.getElementById("tool-brush"),
+                'text': document.getElementById("tool-text")
+            };
+
+            Object.keys(toolButtons).forEach(tool => {
+                toolButtons[tool].addEventListener("click", () => {
+                    setActiveTool(tool);
+                });
+            });
+
+            function setActiveTool(tool) {
+                activeTool = tool;
+                Object.keys(toolButtons).forEach(t => {
+                    toolButtons[t].classList.toggle("active", t === tool);
+                });
+
+                canvas.className = `tool-${tool}`;
+                hidePopover();
+
+                if (tool !== 'select') {
+                    selectedShapeIdx = -1;
+                    btnDelete.disabled = true;
+                }
+                redraw();
+            }
+
+            // COLORS SELECTOR
+            const colorBtns = document.querySelectorAll(".color-btn");
+            const customColorPicker = document.getElementById("custom-color-picker");
+            const customColorWrap = document.getElementById("custom-color-wrap");
+
+            colorBtns.forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    colorBtns.forEach(b => b.classList.remove("active"));
+                    if (customColorWrap) {
+                        customColorWrap.classList.remove("active");
+                        customColorWrap.style.borderColor = "var(--border-color)";
+                        customColorWrap.style.background = "linear-gradient(45deg, red, orange, yellow, green, blue, purple)";
+                    }
+                    btn.classList.add("active");
+                    activeColor = btn.getAttribute("data-color");
+                    
+                    if (activeTool === 'select' && selectedShapeIdx !== -1) {
+                        saveState();
+                        shapes[selectedShapeIdx].color = activeColor;
+                        isDirty = true;
+                        redraw();
+                    }
+                });
+            });
+
+            if (customColorPicker && customColorWrap) {
+                customColorPicker.addEventListener("input", (e) => {
+                    colorBtns.forEach(b => b.classList.remove("active"));
+                    customColorWrap.classList.add("active");
+                    customColorWrap.style.borderColor = "var(--text-primary)";
+                    activeColor = e.target.value;
+                    customColorWrap.style.background = activeColor;
+                    
+                    if (activeTool === 'select' && selectedShapeIdx !== -1) {
+                        saveState();
+                        shapes[selectedShapeIdx].color = activeColor;
+                        isDirty = true;
+                        redraw();
+                    }
+                });
+            }
+
+            // SHAPE REDRAW LOGIC
+            function redraw() {
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+                ctx.clearRect(0, 0, w, h);
+
+                shapes.forEach((shape, idx) => {
+                    ctx.strokeStyle = shape.color || '#ff4d4d';
+                    ctx.fillStyle = shape.color || '#ff4d4d';
+                    ctx.lineWidth = 2.5;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    const isSelected = (idx === selectedShapeIdx);
+
+                    if (isSelected) {
+                        ctx.setLineDash([4, 4]);
+                    } else {
+                        ctx.setLineDash([]);
+                    }
+
+                    if (shape.type === 'rect') {
+                        const sx = shape.x1 * w;
+                        const sy = shape.y1 * h;
+                        const sw = (shape.x2 - shape.x1) * w;
+                        const sh = (shape.y2 - shape.y1) * h;
+                        
+                        ctx.strokeRect(sx, sy, sw, sh);
+
+                        if (shape.label) {
+                            ctx.font = "bold 10px 'JetBrains Mono', monospace";
+                            const textW = ctx.measureText(shape.label).width;
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(sx, sy - 16, textW + 10, 16);
+                            
+                            ctx.fillStyle = shape.color;
+                            ctx.fillText(shape.label, sx + 5, sy - 4);
+                        }
+                    } else if (shape.type === 'circle') {
+                        const cx = (shape.x1 + shape.x2) / 2 * w;
+                        const cy = (shape.y1 + shape.y2) / 2 * h;
+                        const rx = Math.abs(shape.x2 - shape.x1) / 2 * w;
+                        const ry = Math.abs(shape.y2 - shape.y1) / 2 * h;
+                        
+                        ctx.beginPath();
+                        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    } else if (shape.type === 'arrow') {
+                        const x1 = shape.x1 * w;
+                        const y1 = shape.y1 * h;
+                        const x2 = shape.x2 * w;
+                        const y2 = shape.y2 * h;
+
+                        drawArrowLine(x1, y1, x2, y2);
+                    } else if (shape.type === 'path') {
+                        const p = shape.points;
+                        if (p.length > 1) {
+                            ctx.beginPath();
+                            ctx.moveTo(p[0].x * w, p[0].y * h);
+                            for (let j = 1; j < p.length; j++) {
+                                ctx.lineTo(p[j].x * w, p[j].y * h);
+                            }
+                            ctx.stroke();
+                        }
+                    } else if (shape.type === 'text') {
+                        const x = shape.x1 * w;
+                        const y = shape.y1 * h;
+
+                        ctx.font = "bold 11px 'JetBrains Mono', monospace";
+                        const textW = ctx.measureText(shape.text || "").width;
+                        ctx.fillStyle = "rgba(0,0,0,0.85)";
+                        ctx.fillRect(x - 4, y - 13, textW + 8, 17);
+                        
+                        ctx.fillStyle = shape.color;
+                        ctx.fillText(shape.text || "", x, y);
+                    }
+                });
+
+                ctx.setLineDash([]);
+
+                if (isDrawing && (activeTool === 'rect' || activeTool === 'circle' || activeTool === 'arrow' || activeTool === 'brush')) {
+                    ctx.strokeStyle = activeColor;
+                    ctx.lineWidth = 2.0;
+                    ctx.setLineDash([5, 3]);
+
+                    if (activeTool === 'rect') {
+                        ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+                    } else if (activeTool === 'circle') {
+                        const cx = (startX + currentX) / 2;
+                        const cy = (startY + currentY) / 2;
+                        const rx = Math.abs(currentX - startX) / 2;
+                        const ry = Math.abs(currentY - startY) / 2;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    } else if (activeTool === 'arrow') {
+                        drawArrowLine(startX, startY, currentX, currentY);
+                    } else if (activeTool === 'brush' && pendingShape) {
+                        ctx.setLineDash([]);
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.lineWidth = 2.5;
+                        const p = pendingShape.points;
+                        if (p.length > 1) {
+                            ctx.beginPath();
+                            ctx.moveTo(p[0].x * w, p[0].y * h);
+                            for (let j = 1; j < p.length; j++) {
+                                ctx.lineTo(p[j].x * w, p[j].y * h);
+                            }
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.setLineDash([]);
+                }
+            }
+
+            function drawArrowLine(x1, y1, x2, y2) {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const headLength = 12;
+
+                ctx.beginPath();
+                ctx.moveTo(x2, y2);
+                ctx.lineTo(x2 - headLength * Math.cos(angle - Math.PI / 6), y2 - headLength * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(x2 - headLength * Math.cos(angle + Math.PI / 6), y2 - headLength * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // CANVAS POINTER EVENTS
+            canvas.addEventListener("pointerdown", (e) => {
+                canvas.setPointerCapture(e.pointerId);
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
+                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+
+                if (!popover.classList.contains("hidden")) {
+                    hidePopover();
+                    redraw();
+                    return;
+                }
+
+                if (activeTool === 'select') {
+                    selectShapeAt(mouseX, mouseY);
+                    return;
+                }
+
+                isDrawing = true;
+                startX = mouseX;
+                startY = mouseY;
+                currentX = mouseX;
+                currentY = mouseY;
+
+                if (activeTool === 'brush') {
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
+                    pendingShape = {
+                        type: 'path',
+                        points: [{x: mouseX / w, y: mouseY / h}],
+                        color: activeColor
+                    };
+                }
+            });
+
+            canvas.addEventListener("pointermove", (e) => {
+                if (!isDrawing) return;
+                const rect = canvas.getBoundingClientRect();
+                currentX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
+                currentY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+
+                if (activeTool === 'brush' && pendingShape) {
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
+                    pendingShape.points.push({x: currentX / w, y: currentY / h});
+                }
+
+                redraw();
+            });
+
+            window.addEventListener("pointerup", (e) => {
+                if (!isDrawing) return;
+                isDrawing = false;
+                canvas.releasePointerCapture(e.pointerId);
+
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
+                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                currentX = mouseX;
+                currentY = mouseY;
+
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+
+                const normX1 = Math.max(0, Math.min(1, Math.min(startX, currentX) / w));
+                const normY1 = Math.max(0, Math.min(1, Math.min(startY, currentY) / h));
+                const normX2 = Math.max(0, Math.min(1, Math.max(startX, currentX) / w));
+                const normY2 = Math.max(0, Math.min(1, Math.max(startY, currentY) / h));
+
+                if (activeTool === 'rect') {
+                    const pxWidth = Math.abs(currentX - startX);
+                    const pxHeight = Math.abs(currentY - startY);
+                    if (pxWidth > 6 && pxHeight > 6) {
+                        pendingShape = {
+                            type: 'rect',
+                            x1: normX1,
+                            y1: normY1,
+                            x2: normX2,
+                            y2: normY2,
+                            color: activeColor,
+                            label: ''
+                        };
+                        showPopover(currentX, currentY, "Label this box:");
+                    }
+                } else if (activeTool === 'circle') {
+                    const pxWidth = Math.abs(currentX - startX);
+                    const pxHeight = Math.abs(currentY - startY);
+                    if (pxWidth > 6 && pxHeight > 6) {
+                        saveState();
+                        shapes.push({
+                            type: 'circle',
+                            x1: normX1,
+                            y1: normY1,
+                            x2: normX2,
+                            y2: normY2,
+                            color: activeColor
+                        });
+                        isDirty = true;
+                    }
+                } else if (activeTool === 'arrow') {
+                    const length = Math.hypot(currentX - startX, currentY - startY);
+                    if (length > 8) {
+                        saveState();
+                        shapes.push({
+                            type: 'arrow',
+                            x1: Math.max(0, Math.min(1, startX / w)),
+                            y1: Math.max(0, Math.min(1, startY / h)),
+                            x2: Math.max(0, Math.min(1, currentX / w)),
+                            y2: Math.max(0, Math.min(1, currentY / h)),
+                            color: activeColor
+                        });
+                        isDirty = true;
+                    }
+                } else if (activeTool === 'brush') {
+                    if (pendingShape && pendingShape.points.length > 1) {
+                        saveState();
+                        shapes.push(pendingShape);
+                        isDirty = true;
+                    }
+                    pendingShape = null;
+                } else if (activeTool === 'text') {
+                    pendingShape = {
+                        type: 'text',
+                        x1: Math.max(0, Math.min(1, mouseX / w)),
+                        y1: Math.max(0, Math.min(1, mouseY / h)),
+                        x2: Math.max(0, Math.min(1, mouseX / w)),
+                        y2: Math.max(0, Math.min(1, mouseY / h)),
+                        color: activeColor,
+                        text: ''
+                    };
+                    showPopover(mouseX, mouseY, "Type label text:");
+                }
+
+                redraw();
+            });
+
+            // SHAPE SELECTION DETECTOR
+            function selectShapeAt(x, y) {
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+                let foundIdx = -1;
+
+                for (let i = shapes.length - 1; i >= 0; i--) {
+                    const shape = shapes[i];
+                    if (shape.type === 'rect') {
+                        const x1 = shape.x1 * w;
+                        const y1 = shape.y1 * h;
+                        const x2 = shape.x2 * w;
+                        const y2 = shape.y2 * h;
+
+                        const tol = 8;
+                        const insideX = x >= x1 - tol && x <= x2 + tol;
+                        const insideY = y >= y1 - tol && y <= y2 + tol;
+                        
+                        if (insideX && insideY) {
+                            foundIdx = i;
+                            break;
+                        }
+                    } else if (shape.type === 'circle') {
+                        const cx = (shape.x1 + shape.x2) / 2 * w;
+                        const cy = (shape.y1 + shape.y2) / 2 * h;
+                        const rx = Math.abs(shape.x2 - shape.x1) / 2 * w;
+                        const ry = Math.abs(shape.y2 - shape.y1) / 2 * h;
+
+                        if (rx > 0 && ry > 0) {
+                            const normClickDist = Math.pow((x - cx) / (rx + 8), 2) + Math.pow((y - cy) / (ry + 8), 2);
+                            if (normClickDist <= 1) {
+                                foundIdx = i;
+                                break;
+                            }
+                        }
+                    } else if (shape.type === 'arrow') {
+                        const x1 = shape.x1 * w;
+                        const y1 = shape.y1 * h;
+                        const x2 = shape.x2 * w;
+                        const y2 = shape.y2 * h;
+                        
+                        const dist = distToSegment(x, y, x1, y1, x2, y2);
+                        if (dist < 10) {
+                            foundIdx = i;
+                            break;
+                        }
+                    } else if (shape.type === 'path') {
+                        const p = shape.points;
+                        for (let j = 0; j < p.length - 1; j++) {
+                            const dist = distToSegment(x, y, p[j].x * w, p[j].y * h, p[j+1].x * w, p[j+1].y * h);
+                            if (dist < 10) {
+                                foundIdx = i;
+                                break;
+                            }
+                        }
+                        if (foundIdx === i) break;
+                    } else if (shape.type === 'text') {
+                        const tx = shape.x1 * w;
+                        const ty = shape.y1 * h;
+                        
+                        ctx.font = "bold 11px 'JetBrains Mono', monospace";
+                        const textW = ctx.measureText(shape.text || "").width;
+                        
+                        const inX = x >= tx - 4 && x <= tx + textW + 8;
+                        const inY = y >= ty - 13 && y <= ty + 6;
+                        
+                        if (inX && inY) {
+                            foundIdx = i;
+                            break;
+                        }
+                    }
+                }
+
+                selectedShapeIdx = foundIdx;
+                btnDelete.disabled = (foundIdx === -1);
+                
+                if (foundIdx !== -1) {
+                    activeColor = shapes[foundIdx].color || '#ff4d4d';
+                    colorBtns.forEach(btn => {
+                        const c = btn.getAttribute("data-color");
+                        btn.classList.toggle("active", c === activeColor);
+                    });
+                }
+                redraw();
+            }
+
+            function distToSegment(x, y, x1, y1, x2, y2) {
+                const A = x - x1;
+                const B = y - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                let param = -1;
+                if (lenSq !== 0) param = dot / lenSq;
+
+                let xx, yy;
+                if (param < 0) {
+                    xx = x1;
+                    yy = y1;
+                } else if (param > 1) {
+                    xx = x2;
+                    yy = y2;
+                } else {
+                    xx = x1 + param * C;
+                    yy = y1 + param * D;
+                }
+
+                return Math.hypot(x - xx, y - yy);
+            }
+
+            // FLOATING POPOVER LABEL CAPTURE
+            function showPopover(clientX, clientY, placeholder) {
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+                const top = Math.max(10, Math.min(h - 50, clientY));
+                const left = Math.max(10, Math.min(w - 180, clientX));
+
+                popover.style.top = top + "px";
+                popover.style.left = left + "px";
+                popoverInput.value = "";
+                popoverInput.placeholder = placeholder;
+                popover.classList.remove("hidden");
+                popoverInput.focus();
+            }
+
+            function hidePopover() {
+                popover.classList.add("hidden");
+                pendingShape = null;
+            }
+
+            function submitLabel() {
+                const val = popoverInput.value.trim();
+                if (val && pendingShape) {
+                    saveState();
+                    if (pendingShape.type === 'rect') {
+                        pendingShape.label = val;
+                    } else if (pendingShape.type === 'text') {
+                        pendingShape.text = val;
+                    }
+                    shapes.push(pendingShape);
+                    isDirty = true;
+                }
+                hidePopover();
+                redraw();
+            }
+
+            popoverInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    submitLabel();
+                } else if (e.key === "Escape") {
+                    hidePopover();
+                    redraw();
+                }
+            });
+
+            document.getElementById("btn-submit-label").addEventListener("click", submitLabel);
+
+            // SHAPE DELETION
+            function deleteSelectedShape() {
+                if (selectedShapeIdx !== -1) {
+                    saveState();
+                    shapes.splice(selectedShapeIdx, 1);
+                    selectedShapeIdx = -1;
+                    btnDelete.disabled = true;
+                    isDirty = true;
+                    redraw();
+                }
+            }
+
+            btnDelete.addEventListener("click", deleteSelectedShape);
+
+            window.addEventListener("keydown", (e) => {
+                if (e.key === "Delete" || e.key === "Backspace") {
+                    if (document.activeElement !== popoverInput) {
+                        deleteSelectedShape();
+                    }
+                } else if (e.ctrlKey && e.key.toLowerCase() === "z") {
+                    e.preventDefault();
+                    undo();
+                } else if (e.ctrlKey && e.key.toLowerCase() === "y") {
+                    e.preventDefault();
+                    redo();
+                }
+            });
+
+            // CLEAR ALL
+            document.getElementById("btn-clear-all").addEventListener("click", () => {
+                if (shapes.length > 0) {
+                    if (confirm("Are you sure you want to clear all drawings?")) {
+                        saveState();
+                        shapes = [];
+                        selectedShapeIdx = -1;
+                        btnDelete.disabled = true;
+                        isDirty = true;
+                        redraw();
+                    }
+                }
+            });
+
+            function closeWindow() {
+                const parentWin = window.opener || window.parent;
+                if (parentWin && typeof parentWin.closeAnnotationPopup === "function") {
+                    parentWin.closeAnnotationPopup();
+                } else {
+                    window.close();
+                }
+            }
+
+            document.getElementById("btn-cancel").addEventListener("click", () => {
+                isDirty = false;
+                closeWindow();
+            });
+
+            document.getElementById("btn-apply").addEventListener("click", () => {
+                isSaved = true;
+                const parentWin = window.opener || window.parent;
+                if (parentWin && typeof parentWin.saveAnnotationsFromPopup === "function") {
+                    parentWin.saveAnnotationsFromPopup(index, shapes);
+                }
+                closeWindow();
+            });
+
+            if (btnUndo) btnUndo.addEventListener("click", undo);
+            if (btnRedo) btnRedo.addEventListener("click", redo);
+
+            document.getElementById("btn-cancel-label").addEventListener("click", () => {
+                hidePopover();
+                redraw();
+            });
+
+            window.addEventListener("beforeunload", (e) => {
+                if (isDirty && !isSaved) {
+                    const msg = "You have unsaved annotation drawings. Are you sure you want to discard them?";
+                    e.returnValue = msg;
+                    return msg;
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
