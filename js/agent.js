@@ -213,22 +213,22 @@ async function runAgenticExecutionLoop(userText) {
 
                         if (item.annotations && item.annotations.length > 0) {
                             embeddedText += `\n\n[Visual Annotations on Attachment: ${item.name}]`;
-                            
+
                             // 1. Process standard layout shapes (rect, circle, arrow, text)
                             item.annotations.forEach((ann, aIdx) => {
                                 const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
                                 if (ann.type === "rect") {
-                                    embeddedText += `\n- Bounding Box #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1*100).toFixed(1)}%, Top: ${(ann.y1*100).toFixed(1)}%, Right: ${(ann.x2*100).toFixed(1)}%, Bottom: ${(ann.y2*100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Bounding Box #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1 * 100).toFixed(1)}%, Top: ${(ann.y1 * 100).toFixed(1)}%, Right: ${(ann.x2 * 100).toFixed(1)}%, Bottom: ${(ann.y2 * 100).toFixed(1)}%]`;
                                 } else if (ann.type === "circle") {
                                     const cx = (ann.x1 + ann.x2) / 2;
                                     const cy = (ann.y1 + ann.y2) / 2;
                                     const rx = Math.abs(ann.x2 - ann.x1) / 2;
                                     const ry = Math.abs(ann.y2 - ann.y1) / 2;
-                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Center at [X: ${(cx*100).toFixed(1)}%, Y: ${(cy*100).toFixed(1)}%] with radii [Horizontal: ${(rx*100).toFixed(1)}%, Vertical: ${(ry*100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
                                 } else if (ann.type === "arrow") {
-                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Directing from [X1: ${(ann.x1*100).toFixed(1)}%, Y1: ${(ann.y1*100).toFixed(1)}%] to [X2: ${(ann.x2*100).toFixed(1)}%, Y2: ${(ann.y2*100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
                                 } else if (ann.type === "text") {
-                                    embeddedText += `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1*100).toFixed(1)}%, Y: ${(ann.y1*100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1 * 100).toFixed(1)}%, Y: ${(ann.y1 * 100).toFixed(1)}%]`;
                                 }
                             });
 
@@ -238,7 +238,7 @@ async function runAgenticExecutionLoop(userText) {
                                 let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
                                 let hasPoints = false;
                                 const colors = new Set();
-                                
+
                                 pathAnns.forEach(ann => {
                                     const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
                                     colors.add(colorName);
@@ -252,15 +252,15 @@ async function runAgenticExecutionLoop(userText) {
                                         });
                                     }
                                 });
-                                
+
                                 if (!hasPoints) {
                                     minX = 0; minY = 0; maxX = 0; maxY = 0;
                                 }
-                                
+
                                 const colorStr = Array.from(colors).join(", ");
-                                embeddedText += `\n- Sketch Path (${colorStr}): A sketch path is drawn on this frame within the combined bounding box [Left: ${(minX*100).toFixed(1)}%, Top: ${(minY*100).toFixed(1)}%, Right: ${(maxX*100).toFixed(1)}%, Bottom: ${(maxY*100).toFixed(1)}%]. Please analyze the shape of this sketch visually on the image.`;
+                                embeddedText += `\n- Sketch Path (${colorStr}): A sketch path is drawn on this frame within the combined bounding box [Left: ${(minX * 100).toFixed(1)}%, Top: ${(minY * 100).toFixed(1)}%, Right: ${(maxX * 100).toFixed(1)}%, Bottom: ${(maxY * 100).toFixed(1)}%]. Please analyze the shape of this sketch visually on the image.`;
                             }
-                            
+
                             embeddedText += `\n*Note: Use these percentage values relative to the composition width/height (obtainable from getTimelineContext) to calculate precise coordinates.*`;
                         }
 
@@ -354,32 +354,43 @@ async function runAgenticExecutionLoop(userText) {
                     isCompleted = true;
                     break;
                 }
-                if (!llmResponse || !llmResponse.trim()) {
+
+                // Extract tool calls and parsed response early to validate content presence
+                const parsedResponse = llmResponse ? parseStreamingReasoning(llmResponse) : { reasoning: "", content: "" };
+                const jsonBlock = llmResponse ? extractJSONToolCalls(llmResponse) : null;
+                const isOnlyReasoning = llmResponse && llmResponse.trim() && parsedResponse.reasoning && !parsedResponse.content.trim() && !jsonBlock;
+
+                if (!llmResponse || !llmResponse.trim() || isOnlyReasoning) {
                     loopRetries++;
-                    writeToDebugLog("LLM Response Empty Error", "LLM returned an empty or whitespace-only response. The local model context might be overloaded, or it encountered a generation failure.");
+                    const errorMsg = isOnlyReasoning ?
+                        "LLM returned only reasoning content without any action or conversational text." :
+                        "LLM returned an empty or whitespace-only response.";
+                    writeToDebugLog("LLM Response Empty Error", `${errorMsg} The local model context might be overloaded, or it encountered a generation failure.`);
 
                     completedTurns.push({
                         type: "failed",
                         turnNum: completedTurns.length + 1,
                         turnTitle: "Empty response from agent (Retrying...)",
-                        llmResponse: "",
-                        observations: "Error: The model returned an empty response. This usually indicates a generation failure or context window overflow."
+                        llmResponse: llmResponse || "",
+                        observations: `Error: ${errorMsg} This usually indicates a generation failure, model formatting issue, or context window overflow.`
                     });
 
                     updateAiBubbleTurns(aiBubble, completedTurns, "",
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Empty response detected. Retrying generation... (Attempt ${loopRetries}/${maxRetries})</div>`);
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-error); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Empty/incomplete response detected. Retrying generation... (Attempt ${loopRetries}/${maxRetries})</div>`);
                     if (typeof scrollToBottom === "function") scrollToBottom();
 
                     const retryMsg = {
                         role: "user",
-                        content: "[System Observation - Error]: You returned an empty or whitespace-only response. If your context window is overloaded, please resolve the task immediately or output a concise, corrected JSON tool call without conversational preamble.",
+                        content: isOnlyReasoning ?
+                            "[System Observation - Error]: You only outputted a <thinking> block but did not call any tools or provide any conversational content. Please output a valid JSON tool call wrapped in a ```json code block to proceed with your next steps." :
+                            "[System Observation - Error]: You returned an empty or whitespace-only response. If your context window is overloaded, please resolve the task immediately or output a concise, corrected JSON tool call without conversational preamble.",
                         isIntermediate: true
                     };
                     activeContext.push(retryMsg);
                     pushToHistory(retryMsg);
                     continue;
                 }
-                const parsedResponse = parseStreamingReasoning(llmResponse);
+
                 aiBubble.setAttribute("data-raw-text", parsedResponse.content);
                 const assistantMsg = {
                     role: "assistant",
@@ -390,9 +401,6 @@ async function runAgenticExecutionLoop(userText) {
                 finalLlmResponse = llmResponse;
 
                 writeToDebugLog("LLM Raw Response", llmResponse);
-
-                // Check for JSON tool calls only (ExtendScript is executed via the executeExtendScript tool)
-                const jsonBlock = extractJSONToolCalls(llmResponse);
 
                 if (jsonBlock) {
                     try {
@@ -434,12 +442,10 @@ async function runAgenticExecutionLoop(userText) {
                 pushToHistory(assistantMsg);
 
                 var observations = "";
-                var executedAnything = false;
-                var scriptFailed = false;
 
                 if (jsonBlock) {
                     try {
-                        const parsed = JSON.parse(jsonBlock);
+                        const parsed = JSON.parse(repairJSONRawNewlines(jsonBlock));
                         const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
                         window._activeToolStatuses = toolCalls.map(tc => ({
                             tool: tc.tool,
@@ -454,11 +460,9 @@ async function runAgenticExecutionLoop(userText) {
                     } catch (e) {
                         window._activeToolStatuses = null;
                     }
-                    executedAnything = true;
                     const activeTurnNum = completedTurns.length + 1;
-                    const parsed = parseStreamingReasoning(llmResponse);
-                    const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
-                    const contentHtml = formatMarkdown(parsed.content, activeTurnNum) +
+                    const reasoningHtml = parsedResponse.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsedResponse.reasoning, activeTurnNum)}</div></details>` : "";
+                    const contentHtml = formatMarkdown(parsedResponse.content, activeTurnNum) +
                         `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Executing Agent Tool Calls...</div>`;
                     updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
                     if (typeof scrollToBottom === "function") scrollToBottom();
@@ -484,19 +488,17 @@ async function runAgenticExecutionLoop(userText) {
                         toolObservations.toLowerCase().indexOf("evalscript error") !== -1 ||
                         toolObservations.toLowerCase().indexOf("exception:") !== -1 ||
                         toolObservations.indexOf("Unsupported tool name:") !== -1) {
-                        scriptFailed = true;
                         loopRetries++;
 
                         writeToDebugLog("Tool Execution Error", toolObservations);
 
                         // Package failed turn
-                        const parsedTurn = parseStreamingReasoning(llmResponse);
                         completedTurns.push({
                             type: "failed",
                             turnNum: completedTurns.length + 1,
                             turnTitle: "Tool execution failed (Retrying...)",
-                            content: parsedTurn.content,
-                            reasoning: parsedTurn.reasoning,
+                            content: parsedResponse.content,
+                            reasoning: parsedResponse.reasoning,
                             llmResponse: llmResponse,
                             observations: toolObservations
                         });
@@ -516,15 +518,14 @@ async function runAgenticExecutionLoop(userText) {
 
                         // Don't send the base64 image again to save bandwidth
                         visualFrameInputs = null;
+                        
+                        continue; // Self-correction retry
                     } else {
                         observations += (observations ? "\n" : "") + `Tool execution observation:\n${toolObservations}`;
                     }
-                }
 
-                if (executedAnything) {
-                    if (scriptFailed) {
-                        continue; // Skip rest of execution and let loop retry self-correction
-                    }
+                    // Reset retry count on successful execution turn
+                    loopRetries = 0;
 
                     // Append observations to local context history and master history (handling multi-modal visual observations!)
                     let turnImages = null;
@@ -559,29 +560,26 @@ async function runAgenticExecutionLoop(userText) {
 
                     // Package successful turn
                     let turnTitle = "Analyzing composition context";
-                    if (jsonBlock) {
-                        if (jsonBlock.indexOf("executeScript") !== -1) {
-                            turnTitle = "Executing timeline automation script";
-                        } else if (jsonBlock.indexOf("createScript") !== -1 || jsonBlock.indexOf("editScript") !== -1) {
-                            turnTitle = "Drafting/editing automation script";
-                        } else {
-                            try {
-                                const parsed = JSON.parse(jsonBlock);
-                                const tools = (Array.isArray(parsed) ? parsed : [parsed]).map(t => t.tool).join(", ");
-                                turnTitle = `Running tool: ${tools}`;
-                            } catch (e) {
-                                turnTitle = "Running agent tool calls";
-                            }
+                    if (jsonBlock.indexOf("executeScript") !== -1) {
+                        turnTitle = "Executing timeline automation script";
+                    } else if (jsonBlock.indexOf("createScript") !== -1 || jsonBlock.indexOf("editScript") !== -1) {
+                        turnTitle = "Drafting/editing automation script";
+                    } else {
+                        try {
+                            const parsed = JSON.parse(jsonBlock);
+                            const tools = (Array.isArray(parsed) ? parsed : [parsed]).map(t => t.tool).join(", ");
+                            turnTitle = `Running tool: ${tools}`;
+                        } catch (e) {
+                            turnTitle = "Running agent tool calls";
                         }
                     }
 
-                    const parsedTurn = parseStreamingReasoning(llmResponse);
                     completedTurns.push({
                         type: "success",
                         turnNum: completedTurns.length + 1,
                         turnTitle: turnTitle,
-                        content: parsedTurn.content,
-                        reasoning: parsedTurn.reasoning,
+                        content: parsedResponse.content,
+                        reasoning: parsedResponse.reasoning,
                         llmResponse: llmResponse,
                         observations: observations,
                         images: turnImages
@@ -638,13 +636,12 @@ async function runAgenticExecutionLoop(userText) {
                             pushToHistory(obsMsg);
 
                             // Add a successful verification turn to completedTurns
-                            const parsedTurn = parseStreamingReasoning(llmResponse);
                             completedTurns.push({
                                 type: "success",
                                 turnNum: completedTurns.length + 1,
                                 turnTitle: "Visual verification frame captured",
-                                content: parsedTurn.content,
-                                reasoning: parsedTurn.reasoning,
+                                content: parsedResponse.content,
+                                reasoning: parsedResponse.reasoning,
                                 llmResponse: llmResponse,
                                 observations: "Success: Canvas frame automatically captured and attached for visual inspection.",
                                 images: base64Data
@@ -660,10 +657,37 @@ async function runAgenticExecutionLoop(userText) {
                         }
                     }
 
+                    // Check if the agent explicitly concluded
+                    if (!parsedResponse.concluded) {
+                        loopRetries++;
+                        const errorMsg = "LLM replied with text but did not output the '__CONCLUDE__' token to finish the task.";
+                        writeToDebugLog("LLM Incomplete Exit Warning", errorMsg);
+
+                        completedTurns.push({
+                            type: "failed",
+                            turnNum: completedTurns.length + 1,
+                            turnTitle: "Awaiting final conclusion (Retrying...)",
+                            llmResponse: llmResponse,
+                            observations: "Error: You did not output '__CONCLUDE__' to finish the task. If you are done, write your final response and append '__CONCLUDE__' to the very end. Otherwise, run your next tool call."
+                        });
+
+                        updateAiBubbleTurns(aiBubble, completedTurns, "",
+                            `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Awaiting completion token... Resuming...</div>`);
+                        if (typeof scrollToBottom === "function") scrollToBottom();
+
+                        const retryMsg = {
+                            role: "user",
+                            content: "[System Observation - Error]: You outputted text but did not append the '__CONCLUDE__' token at the very end of your final response content. If you are finished, you MUST append the token '__CONCLUDE__' to signal that the task is complete. If you are not finished and intended to call a tool, please output the tool call wrapped in a ```json code block.",
+                            isIntermediate: true
+                        };
+                        activeContext.push(retryMsg);
+                        pushToHistory(retryMsg);
+                        continue;
+                    }
+
                     isCompleted = true;
-                    const parsedFinal = parseStreamingReasoning(llmResponse);
-                    const reasoningHtml = parsedFinal.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedFinal.reasoning, completedTurns.length + 1)}</div></details>` : "";
-                    const contentHtml = formatMarkdown(parsedFinal.content, completedTurns.length + 1);
+                    const reasoningHtml = parsedResponse.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${completedTurns.length + 1}" open><summary>Reasoning / Assembly Plan</summary><div class="reasoning-content">${formatMarkdown(parsedResponse.reasoning, completedTurns.length + 1)}</div></details>` : "";
+                    const contentHtml = formatMarkdown(parsedResponse.content, completedTurns.length + 1);
                     updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml, true);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                     writeToDebugLog("Informational Response Completed", llmResponse);
@@ -789,7 +813,8 @@ async function runAgenticExecutionLoop(userText) {
 function extractJSONToolCalls(text) {
     if (!text) return null;
     const parts = text.split("```");
-    // If the last block is unclosed (even number of parts), ignore it to prevent parsing truncated JSON
+    
+    // Check standard closed blocks first
     const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
     for (let i = 1; i < limit; i += 2) {
         let block = parts[i];
@@ -800,6 +825,31 @@ function extractJSONToolCalls(text) {
                 const code = lines.slice(1).join("\n").trim();
                 if (code) {
                     return code;
+                }
+            }
+        }
+    }
+
+    // Fallback: If the last block is unclosed (even number of parts), attempt to parse it anyway
+    if (parts.length > 1 && parts.length % 2 === 0) {
+        const lastPart = parts[parts.length - 1];
+        const lines = lastPart.split("\n");
+        if (lines.length > 0 && lines[0].trim().toLowerCase() === "json") {
+            const code = lines.slice(1).join("\n").trim();
+            if (code) {
+                try {
+                    JSON.parse(repairJSONRawNewlines(code));
+                    return code;
+                } catch (e) {
+                    try {
+                        JSON.parse(repairJSONRawNewlines(code + "}"));
+                        return code + "}";
+                    } catch (e2) {
+                        try {
+                            JSON.parse(repairJSONRawNewlines(code + "]"));
+                            return code + "]";
+                        } catch (e3) {}
+                    }
                 }
             }
         }
@@ -1195,7 +1245,7 @@ async function executeToolCalls(jsonStr) {
                 if (consoleOutput) {
                     consoleOutput.value = content;
                 }
-                
+
                 if (params.execute) {
                     jsxCommand = `(function() {
                         var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
@@ -1606,7 +1656,7 @@ function estimateMessagesTokenCount(messagesArray) {
         estTokens = Math.round(count);
     }
 
-    estTokens += imageBlocksCount * 258;
+    estTokens += imageBlocksCount * 1600;
     return estTokens;
 }
 

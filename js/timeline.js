@@ -12,7 +12,7 @@ async function validateConnection() {
         statusDot.className = "status-dot offline";
         statusDot.title = "Validating connection...";
     }
-    sendBtn.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
 
     if (!httpsClient && !httpClient) {
         // Standalone browser fallback mock state
@@ -20,7 +20,7 @@ async function validateConnection() {
             statusDot.className = "status-dot online";
             statusDot.title = "Mock Connection (Browser Mode)";
         }
-        sendBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
         isConnected = true;
         return;
     }
@@ -57,14 +57,14 @@ async function validateConnection() {
                 statusDot.title = `Cloud model '${modelName}' active. Connection is verified upon sending message.`;
             }
         }
-        sendBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
         isConnected = true;
     } catch (err) {
         if (statusDot) {
             statusDot.className = "status-dot error";
             statusDot.title = `Failed to connect to local Lemonade server: ${err.message}`;
         }
-        sendBtn.disabled = false; // Let the user send anyway to troubleshoot
+        if (sendBtn) sendBtn.disabled = false; // Let the user send anyway to troubleshoot
         isConnected = false;
     }
 }
@@ -739,8 +739,14 @@ async function loadEffectPropertiesCache() {
     if (!fs || !effectPropertiesCachePath) return;
     
     try {
-        if (fs.existsSync(effectPropertiesCachePath)) {
-            const content = fs.readFileSync(effectPropertiesCachePath, 'utf8');
+        let stats = null;
+        try {
+            stats = await fs.promises.stat(effectPropertiesCachePath);
+        } catch (err) {
+            // Normal on first run if cache file doesn't exist
+        }
+        if (stats && stats.isFile()) {
+            const content = await fs.promises.readFile(effectPropertiesCachePath, 'utf8');
             if (content && content.trim()) {
                 effectPropertiesCache = JSON.parse(content);
             }
@@ -753,7 +759,7 @@ async function loadEffectPropertiesCache() {
 async function saveEffectPropertiesCache() {
     if (!fs || !effectPropertiesCachePath || !effectPropertiesCache) return;
     try {
-        fs.writeFileSync(effectPropertiesCachePath, JSON.stringify(effectPropertiesCache, null, 2), 'utf8');
+        await fs.promises.writeFile(effectPropertiesCachePath, JSON.stringify(effectPropertiesCache, null, 2), 'utf8');
     } catch (e) {
         console.error("[ArcEditor] Failed to write effect properties cache:", e);
     }

@@ -103,23 +103,29 @@ function initUI() {
     // Quick Chips
     const chipCapture = document.getElementById("chip-capture");
 
-    btnSettings.addEventListener("click", () => {
-        toggleSettingsDrawer(true);
-        if (typeof populateAndQueryModels === "function") {
-            populateAndQueryModels();
-        }
-        if (typeof renderAllowedToolsList === "function") {
-            renderAllowedToolsList();
-        }
-        if (typeof renderDeniedToolsList === "function") {
-            renderDeniedToolsList();
-        }
-        if (typeof renderSkillsSettingsUI === "function") {
-            renderSkillsSettingsUI();
-        }
-    });
-    btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
-    formSettings.addEventListener("submit", saveSettings);
+    if (btnSettings) {
+        btnSettings.addEventListener("click", () => {
+            toggleSettingsDrawer(true);
+            if (typeof populateAndQueryModels === "function") {
+                populateAndQueryModels();
+            }
+            if (typeof renderAllowedToolsList === "function") {
+                renderAllowedToolsList();
+            }
+            if (typeof renderDeniedToolsList === "function") {
+                renderDeniedToolsList();
+            }
+            if (typeof renderSkillsSettingsUI === "function") {
+                renderSkillsSettingsUI();
+            }
+        });
+    }
+    if (btnCloseSettings) {
+        btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
+    }
+    if (formSettings) {
+        formSettings.addEventListener("submit", saveSettings);
+    }
 
     const btnOpenSkillsFolder = document.getElementById("btn-open-skills-folder");
     if (btnOpenSkillsFolder) {
@@ -130,8 +136,12 @@ function initUI() {
         });
     }
 
-    tabChat.addEventListener("click", () => switchTab("chat"));
-    tabConsole.addEventListener("click", () => switchTab("console"));
+    if (tabChat) {
+        tabChat.addEventListener("click", () => switchTab("chat"));
+    }
+    if (tabConsole) {
+        tabConsole.addEventListener("click", () => switchTab("console"));
+    }
     if (tabDebug) {
         tabDebug.addEventListener("click", () => switchTab("debug"));
     }
@@ -146,22 +156,7 @@ function initUI() {
         });
     }
 
-    // Lock scroll to prevent Chromium window scroll shifts when modals/iframes focus
-    window.addEventListener("scroll", () => {
-        if (document.documentElement.scrollTop !== 0 || document.documentElement.scrollLeft !== 0) {
-            document.documentElement.scrollTop = 0;
-            document.documentElement.scrollLeft = 0;
-        }
-        if (document.body.scrollTop !== 0 || document.body.scrollLeft !== 0) {
-            document.body.scrollTop = 0;
-            document.body.scrollLeft = 0;
-        }
-        const arcRoot = document.getElementById("arc-root");
-        if (arcRoot && (arcRoot.scrollTop !== 0 || arcRoot.scrollLeft !== 0)) {
-            arcRoot.scrollTop = 0;
-            arcRoot.scrollLeft = 0;
-        }
-    });
+    // Scroll lock event listener removed to prevent recursive event storm crashes on element focus.
 
     const btnClearDebug = document.getElementById("btn-clear-debug");
     if (btnClearDebug) {
@@ -187,17 +182,21 @@ function initUI() {
         });
     }
 
-    btnClearConsole.addEventListener("click", () => {
-        const output = document.getElementById("console-output");
-        if (output.tagName === "TEXTAREA") {
-            output.value = "";
-            if (activeScriptName) {
-                createOrUpdateScript(currentProjectPath, activeScriptName, "");
+    if (btnClearConsole) {
+        btnClearConsole.addEventListener("click", () => {
+            const output = document.getElementById("console-output");
+            if (output) {
+                if (output.tagName === "TEXTAREA") {
+                    output.value = "";
+                    if (activeScriptName) {
+                        createOrUpdateScript(currentProjectPath, activeScriptName, "");
+                    }
+                } else if (output.querySelector("code")) {
+                    output.querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
+                }
             }
-        } else if (output.querySelector("code")) {
-            output.querySelector("code").innerText = "// Code cleared. Run a command in Chat.";
-        }
-    });
+        });
+    }
 
     const consoleOutput = document.getElementById("console-output");
     if (consoleOutput) {
@@ -250,9 +249,13 @@ ${code}`;
         });
     }
 
-    btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
+    if (btnRemoveAttachment) {
+        btnRemoveAttachment.addEventListener("click", clearAttachmentDock);
+    }
 
-    chipCapture.addEventListener("click", () => captureCompositionFrame(false));
+    if (chipCapture) {
+        chipCapture.addEventListener("click", () => captureCompositionFrame(false));
+    }
 
     const fileUploadInput = document.getElementById("file-upload-input");
     if (fileUploadInput) {
@@ -277,7 +280,7 @@ ${code}`;
         e.stopPropagation();
         if (dragOverlay) dragOverlay.classList.add("hidden");
 
-        const files = e.dataTransfer.files;
+        const files = e.dataTransfer ? e.dataTransfer.files : null;
         if (files && files.length > 0) {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -336,21 +339,32 @@ ${code}`;
     }
 
     // Auto-resize chat input textarea and update context count
-    chatInput.addEventListener("input", function () {
-        this.style.height = "auto";
-        const scrollHeight = this.scrollHeight;
-        if (scrollHeight > 52) {
-            this.style.height = "52px";
-            this.style.overflowY = "auto";
-        } else {
-            this.style.height = scrollHeight + "px";
-            this.style.overflowY = "hidden";
-        }
-        updateSendButtonState();
-        updateContextSizeInfo();
-    });
+    if (chatInput) {
+        chatInput.addEventListener("input", function () {
+            this.style.height = "auto";
+            const scrollHeight = this.scrollHeight;
+            if (scrollHeight > 52) {
+                this.style.height = "52px";
+                this.style.overflowY = "auto";
+            } else {
+                this.style.height = scrollHeight + "px";
+                this.style.overflowY = "hidden";
+            }
+            updateSendButtonState();
+            updateContextSizeInfo();
+        });
 
-    btnSend.addEventListener("click", triggerUserMessage);
+        chatInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                triggerUserMessage();
+            }
+        });
+    }
+
+    if (btnSend) {
+        btnSend.addEventListener("click", triggerUserMessage);
+    }
     const btnStop = document.getElementById("btn-stop");
     if (btnStop) {
         btnStop.addEventListener("click", () => {
@@ -359,12 +373,6 @@ ${code}`;
             }
         });
     }
-    chatInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            triggerUserMessage();
-        }
-    });
 
     // Welcome Chat Input Auto-resize, Enter key, and Send button bindings
     const welcomeChatInput = document.getElementById("welcome-chat-input");
@@ -2335,7 +2343,9 @@ function isTextFile(file) {
         ".xml", ".yaml", ".yml", ".py", ".sh", ".bat", ".ps1", ".svg", 
         ".c", ".cpp", ".h", ".java", ".cs", ".go", ".rs", ".php", ".rb", ".ini", ".conf", ".cfg", ".csv"
     ];
-    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    const dotIdx = file.name.lastIndexOf(".");
+    if (dotIdx === -1) return false;
+    const ext = file.name.substring(dotIdx).toLowerCase();
     return textExtensions.includes(ext);
 }
 
@@ -2520,12 +2530,20 @@ function processUploadedFile(file) {
                     console.error("PDF text extraction failed:", err);
                 }
 
-                const bytes = new Uint8Array(arrayBuffer);
-                let binary = "";
-                for (let i = 0; i < bytes.byteLength; i++) {
-                    binary += String.fromCharCode(bytes[i]);
+                // Fast chunked / native base64 conversion
+                let base64Data = "";
+                if (typeof Buffer !== "undefined") {
+                    base64Data = Buffer.from(arrayBuffer).toString('base64');
+                } else {
+                    let binary = "";
+                    const bytes = new Uint8Array(arrayBuffer);
+                    const len = bytes.byteLength;
+                    const chunk_size = 0x8000; // 32KB chunks
+                    for (let i = 0; i < len; i += chunk_size) {
+                        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk_size));
+                    }
+                    base64Data = btoa(binary);
                 }
-                const base64Data = btoa(binary);
 
                 attachedFrames.push({
                     type: "pdf",

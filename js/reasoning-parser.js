@@ -6,10 +6,15 @@
 function parseStreamingReasoning(text) {
     let reasoning = "";
     let content = "";
+    let concluded = false;
     const openTag = "<thinking>";
     const closeTag = "</thinking>";
     
-    if (!text) return { reasoning, content };
+    if (!text) return { reasoning, content, concluded };
+
+    if (text.indexOf("__CONCLUDE__") !== -1) {
+        concluded = true;
+    }
 
     const openIndex = text.indexOf(openTag);
     if (openIndex !== -1) {
@@ -34,9 +39,11 @@ function parseStreamingReasoning(text) {
             const index = content.indexOf(closeTag);
             content = content.substring(0, index).trimEnd() + "\n\n" + content.substring(index + closeTag.length).trimStart();
         }
+        // Strip the conclude token silently
+        content = content.replace(/__CONCLUDE__/g, "");
     }
 
-    return { reasoning, content };
+    return { reasoning, content, concluded };
 }
 
 // Export for Node/CommonJS environments if active, otherwise keep global
