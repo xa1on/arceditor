@@ -400,12 +400,14 @@ async function captureCompositionFrame(isAgentCall) {
             if (isAgentCall !== true) {
                 let frameNum = null;
                 let timeInSeconds = null;
+                let capturedCompData = null;
                 try {
                     const compData = await getTimelineContext();
                     if (compData && !compData.error) {
                         const frameRate = compData.frameRate || 30;
                         timeInSeconds = compData.currentTime !== undefined ? compData.currentTime : 0;
                         frameNum = Math.round(timeInSeconds * frameRate);
+                        capturedCompData = compData;
                     }
                 } catch (e) {
                     console.error("Failed to fetch timeline context for frame capture:", e);
@@ -419,7 +421,8 @@ async function captureCompositionFrame(isAgentCall) {
                     data: base64Data,
                     frameNumber: frameNum,
                     timeInSeconds: timeInSeconds,
-                    annotations: []
+                    annotations: [],
+                    compData: capturedCompData
                 });
 
                 if (typeof renderAttachmentDock === "function") {
@@ -461,6 +464,18 @@ async function captureCompositionFrame(isAgentCall) {
 }
 
 async function getTimelineContext() {
+    if (csInterface && fs && path) {
+        try {
+            const jsxFilePath = path.join(extensionPath, 'jsx', 'host.jsx');
+            if (fs.existsSync(jsxFilePath)) {
+                const jsxContent = fs.readFileSync(jsxFilePath, 'utf8');
+                await evalScriptAsync(jsxContent);
+            }
+        } catch (jsxErr) {
+            console.error("[ArcEditor] Failed to force reload host.jsx on getTimelineContext:", jsxErr);
+        }
+    }
+
     const jsxCommand = `$._com_arceditor_.ArcInspector.getActiveCompositionData()`;
     const jsonResult = await evalScriptAsync(jsxCommand);
 
@@ -708,7 +723,8 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
                     data: data,
                     frameNumber: frameNum,
                     timeInSeconds: t,
-                    annotations: []
+                    annotations: [],
+                    compData: compData
                 });
             });
             if (typeof renderAttachmentDock === "function") {

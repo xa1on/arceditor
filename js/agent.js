@@ -292,39 +292,39 @@ async function runAgenticExecutionLoop(userText) {
                         embeddedText += `\n\n[${label}]`;
 
                         if (item.annotations && item.annotations.length > 0) {
+                            const dbgTextarea = document.getElementById("debug-output");
+                            if (dbgTextarea) {
+                                dbgTextarea.value += `\n\n============================================================\n[${new Date().toISOString()}] [ANNOTATION DEBUG]\n` + 
+                                    JSON.stringify({
+                                        name: item.name,
+                                        hasCompData: !!item.compData,
+                                        compDataKeys: item.compData ? Object.keys(item.compData) : [],
+                                        layersCount: item.compData && item.compData.layers ? item.compData.layers.length : 0,
+                                        firstLayer: item.compData && item.compData.layers && item.compData.layers[0] ? {
+                                            name: item.compData.layers[0].name,
+                                            bounds: item.compData.layers[0].bounds,
+                                            boundsError: item.compData.layers[0].boundsError
+                                        } : null,
+                                        annotations: item.annotations
+                                    }, null, 2) + "\n";
+                                dbgTextarea.scrollTop = dbgTextarea.scrollHeight;
+                            }
                             embeddedText += `\n\n[Visual Annotations on Attachment: ${item.name}]`;
 
-                            // 1. Process standard layout shapes (rect, circle, arrow, text)
-                            item.annotations.forEach((ann, aIdx) => {
-                                const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
-                                if (ann.type === "rect") {
-                                    embeddedText += `\n- Bounding Box #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1 * 100).toFixed(1)}%, Top: ${(ann.y1 * 100).toFixed(1)}%, Right: ${(ann.x2 * 100).toFixed(1)}%, Bottom: ${(ann.y2 * 100).toFixed(1)}%]`;
-                                } else if (ann.type === "circle") {
-                                    const cx = (ann.x1 + ann.x2) / 2;
-                                    const cy = (ann.y1 + ann.y2) / 2;
-                                    const rx = Math.abs(ann.x2 - ann.x1) / 2;
-                                    const ry = Math.abs(ann.y2 - ann.y1) / 2;
-                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
-                                } else if (ann.type === "arrow") {
-                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
-                                } else if (ann.type === "text") {
-                                    embeddedText += `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1 * 100).toFixed(1)}%, Y: ${(ann.y1 * 100).toFixed(1)}%]`;
-                                }
-                            });
-
-                            // 2. Group all sketch path strokes combined to prevent LLM text bloat/confusion
+                            // 1. Calculate sketch path combined bounding box first (if any paths are drawn)
                             const pathAnns = item.annotations.filter(ann => ann.type === "path");
-                            if (pathAnns.length > 0) {
-                                let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
-                                let hasPoints = false;
-                                const colors = new Set();
+                            let sketchBox = null;
+                            let hasSketchPoints = false;
+                            let minX = 1.0, minY = 1.0, maxX = 0.0, maxY = 0.0;
+                            const pathColors = new Set();
 
+                            if (pathAnns.length > 0) {
                                 pathAnns.forEach(ann => {
                                     const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
-                                    colors.add(colorName);
+                                    pathColors.add(colorName);
                                     if (ann.points && ann.points.length > 0) {
                                         ann.points.forEach(p => {
-                                            hasPoints = true;
+                                            hasSketchPoints = true;
                                             if (p.x < minX) minX = p.x;
                                             if (p.y < minY) minY = p.y;
                                             if (p.x > maxX) maxX = p.x;
@@ -332,12 +332,131 @@ async function runAgenticExecutionLoop(userText) {
                                         });
                                     }
                                 });
+                                if (hasSketchPoints) {
+                                    sketchBox = {
+                                        left: minX,
+                                        top: minY,
+                                        right: maxX,
+                                        bottom: maxY
+                                    };
+                                }
+                            }
 
-                                if (!hasPoints) {
-                                    minX = 0; minY = 0; maxX = 0; maxY = 0;
+                            // 2. Prepare intersection target bounds
+                            const targets = [];
+                            if (sketchBox) {
+                                targets.push({
+                                    name: "Sketch Annotation",
+                                    bounds: sketchBox
+                                });
+                            }
+
+                            if (item.compData && Array.isArray(item.compData.layers)) {
+                                const compWidth = item.compData.width || 1920;
+                                const compHeight = item.compData.height || 1080;
+                                item.compData.layers.forEach(layer => {
+                                    if (layer.enabled !== false && layer.bounds && typeof layer.bounds.left === "number") {
+                                        targets.push({
+                                            name: `"${layer.name}" (layer ref: ${layer.id})`,
+                                            bounds: {
+                                                left: layer.bounds.left / compWidth,
+                                                right: layer.bounds.right / compWidth,
+                                                top: layer.bounds.top / compHeight,
+                                                bottom: layer.bounds.bottom / compHeight
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+
+                            // Intersection math helpers
+                            const checkRectIntersection = (boxA, boxB) => {
+                                return (boxA.left <= boxB.right && boxA.right >= boxB.left &&
+                                        boxA.top <= boxB.bottom && boxA.bottom >= boxB.top);
+                            };
+
+                            const checkEllipseIntersection = (cx, cy, rx, ry, box) => {
+                                if (rx === 0 || ry === 0) return false;
+                                
+                                const cxPrime = cx / rx;
+                                const cyPrime = cy / ry;
+                                const leftPrime = box.left / rx;
+                                const rightPrime = box.right / rx;
+                                const topPrime = box.top / ry;
+                                const bottomPrime = box.bottom / ry;
+
+                                const closestX = Math.max(leftPrime, Math.min(cxPrime, rightPrime));
+                                const closestY = Math.max(topPrime, Math.min(cyPrime, bottomPrime));
+
+                                const dx = cxPrime - closestX;
+                                const dy = cyPrime - closestY;
+                                return (dx * dx + dy * dy) <= 1.0;
+                            };
+
+                            // 3. Process standard layout shapes (rect, circle/ellipse, arrow, text)
+                            item.annotations.forEach((ann, aIdx) => {
+                                const colorName = ANNOTATION_COLORS[ann.color] || ann.color;
+                                let shapeText = "";
+                                const matchedLayers = [];
+
+                                if (ann.type === "rect") {
+                                    shapeText = `\n- Bounding Box #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1 * 100).toFixed(1)}%, Top: ${(ann.y1 * 100).toFixed(1)}%, Right: ${(ann.x2 * 100).toFixed(1)}%, Bottom: ${(ann.y2 * 100).toFixed(1)}%]`;
+                                    
+                                    const annBox = {
+                                        left: Math.min(ann.x1, ann.x2),
+                                        right: Math.max(ann.x1, ann.x2),
+                                        top: Math.min(ann.y1, ann.y2),
+                                        bottom: Math.max(ann.y1, ann.y2)
+                                    };
+                                    
+                                    targets.forEach(target => {
+                                        if (checkRectIntersection(annBox, target.bounds)) {
+                                            matchedLayers.push(target.name);
+                                        }
+                                    });
+                                } else if (ann.type === "circle") {
+                                    const cx = (ann.x1 + ann.x2) / 2;
+                                    const cy = (ann.y1 + ann.y2) / 2;
+                                    const rx = Math.abs(ann.x2 - ann.x1) / 2;
+                                    const ry = Math.abs(ann.y2 - ann.y1) / 2;
+                                    shapeText = `\n- Ellipse #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
+                                    
+                                    targets.forEach(target => {
+                                        if (checkEllipseIntersection(cx, cy, rx, ry, target.bounds)) {
+                                            matchedLayers.push(target.name);
+                                        }
+                                    });
+                                } else if (ann.type === "arrow") {
+                                    shapeText = `\n- Arrow Vector #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
+                                    
+                                    const arrowBox = {
+                                        left: ann.x2 - 0.05,
+                                        right: ann.x2 + 0.05,
+                                        top: ann.y2 - 0.05,
+                                        bottom: ann.y2 + 0.05
+                                    };
+                                    
+                                    targets.forEach(target => {
+                                        if (checkRectIntersection(arrowBox, target.bounds)) {
+                                            matchedLayers.push(target.name);
+                                        }
+                                    });
+                                } else if (ann.type === "text") {
+                                    shapeText = `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1 * 100).toFixed(1)}%, Y: ${(ann.y1 * 100).toFixed(1)}%]`;
                                 }
 
-                                const colorStr = Array.from(colors).join(", ");
+                                embeddedText += shapeText;
+                                if (matchedLayers.length > 0) {
+                                    embeddedText += `\n    * Possible highlighted layers: ${JSON.stringify(matchedLayers)}`;
+                                }
+                            });
+
+                            // 4. Print combined sketch path strokes description
+                            if (pathAnns.length > 0) {
+                                if (!hasSketchPoints) {
+                                    minX = 0; minY = 0; maxX = 0; maxY = 0;
+                                }
+                                const colorStr = Array.from(pathColors).join(", ");
                                 embeddedText += `\n- Sketch Path (${colorStr}): A sketch path is drawn on this frame within the combined bounding box [Left: ${(minX * 100).toFixed(1)}%, Top: ${(minY * 100).toFixed(1)}%, Right: ${(maxX * 100).toFixed(1)}%, Bottom: ${(maxY * 100).toFixed(1)}%]. Please analyze the shape of this sketch visually on the image.`;
                             }
 

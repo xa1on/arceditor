@@ -171,6 +171,94 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     }
                 } catch (e) { }
 
+                var bounds = null;
+                var boundsError = null;
+                try {
+                    var rect = null;
+                    if (layer.sourceRectAtTime) {
+                        rect = layer.sourceRectAtTime(comp.time, false);
+                    } else if (typeof layer.width !== "undefined" && typeof layer.height !== "undefined") {
+                        rect = { left: 0, top: 0, width: layer.width, height: layer.height };
+                    }
+                    
+                    if (rect) {
+                        var localToComp = function(lyr, pt, t) {
+                            var p = [pt[0], pt[1]];
+                            var curr = lyr;
+                            while (curr !== null) {
+                                var apProp = curr.property("Anchor Point") || curr.property("ADBE Anchor Point");
+                                var ap = apProp ? apProp.valueAtTime(t, false) : [0,0,0];
+                                
+                                var posProp = curr.property("Position") || curr.property("ADBE Position");
+                                var pos = [0,0,0];
+                                if (posProp) {
+                                    if (posProp.dimensionsSeparated) {
+                                        var pxProp = curr.property("X Position") || curr.property("ADBE X Position");
+                                        var pyProp = curr.property("Y Position") || curr.property("ADBE Y Position");
+                                        pos[0] = pxProp ? pxProp.valueAtTime(t, false) : 0;
+                                        pos[1] = pyProp ? pyProp.valueAtTime(t, false) : 0;
+                                    } else {
+                                        var posVal = posProp.valueAtTime(t, false);
+                                        if (posVal) {
+                                            pos[0] = posVal[0];
+                                            pos[1] = posVal[1];
+                                        }
+                                    }
+                                }
+                                
+                                var sclProp = curr.property("Scale") || curr.property("ADBE Scale");
+                                var scl = sclProp ? sclProp.valueAtTime(t, false) : [100,100,100];
+                                
+                                var rot = 0;
+                                var rotProp = curr.property("Rotation") || curr.property("ADBE Rotate Z") || curr.property("Z Rotation");
+                                if (rotProp) {
+                                    rot = rotProp.valueAtTime(t, false);
+                                }
+                                
+                                var x = p[0] - ap[0];
+                                var y = p[1] - ap[1];
+                                x *= (scl[0] / 100);
+                                y *= (scl[1] / 100);
+                                
+                                if (rot !== 0) {
+                                    var rad = rot * Math.PI / 180;
+                                    var cos = Math.cos(rad);
+                                    var sin = Math.sin(rad);
+                                    var rx = x * cos - y * sin;
+                                    var ry = x * sin + y * cos;
+                                    x = rx;
+                                    y = ry;
+                                }
+                                
+                                p[0] = x + pos[0];
+                                p[1] = y + pos[1];
+                                curr = curr.parent;
+                            }
+                            return p;
+                        };
+
+                        var corners = [
+                            localToComp(layer, [rect.left, rect.top], comp.time),
+                            localToComp(layer, [rect.left + rect.width, rect.top], comp.time),
+                            localToComp(layer, [rect.left, rect.top + rect.height], comp.time),
+                            localToComp(layer, [rect.left + rect.width, rect.top + rect.height], comp.time)
+                        ];
+                        var minX = Math.min(corners[0][0], corners[1][0], corners[2][0], corners[3][0]);
+                        var maxX = Math.max(corners[0][0], corners[1][0], corners[2][0], corners[3][0]);
+                        var minY = Math.min(corners[0][1], corners[1][1], corners[2][1], corners[3][1]);
+                        var maxY = Math.max(corners[0][1], corners[1][1], corners[2][1], corners[3][1]);
+                        
+                        bounds = {
+                            left: Math.round(minX * 10) / 10,
+                            top: Math.round(minY * 10) / 10,
+                            right: Math.round(maxX * 10) / 10,
+                            bottom: Math.round(maxY * 10) / 10
+                        };
+                    }
+                } catch (e) {
+                    boundsError = e.toString();
+                }
+
                 var layerData = {
                     index: comp.numLayers - layer.index + 1,
                     id: layer.id,
@@ -183,8 +271,12 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                     inPoint: layer.inPoint,
                     outPoint: layer.outPoint,
                     hasParent: layer.parent !== null,
-                    blendMode: bmName
+                    blendMode: bmName,
+                    bounds: bounds
                 };
+                if (boundsError) {
+                    layerData.boundsError = boundsError;
+                }
 
                 // Retrieve layer markers
                 layerData.markers = [];

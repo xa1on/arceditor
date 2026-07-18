@@ -4,6 +4,27 @@
  * event delegator listeners, settings drawers, and tab navigation.
  */
 
+// Global console.error redirection to the built-in debug log pane
+(function() {
+    const originalConsoleError = console.error;
+    console.error = function() {
+        originalConsoleError.apply(console, arguments);
+        try {
+            const debugTextarea = document.getElementById("debug-output");
+            if (debugTextarea) {
+                const args = Array.prototype.slice.call(arguments).map(arg => {
+                    if (arg instanceof Error) return arg.stack || arg.message;
+                    if (typeof arg === "object") return JSON.stringify(arg);
+                    return String(arg);
+                });
+                const timestamp = new Date().toISOString();
+                debugTextarea.value += `\n[${timestamp}] [CONSOLE.ERROR] ${args.join(" ")}\n`;
+                debugTextarea.scrollTop = debugTextarea.scrollHeight;
+            }
+        } catch (e) {}
+    };
+})();
+
 document.addEventListener("DOMContentLoaded", async () => {
     // 1. Initialize UI elements and event listeners first to ensure input/buttons are interactive immediately
     try {

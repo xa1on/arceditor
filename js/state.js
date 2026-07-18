@@ -63,6 +63,21 @@ try {
     if (typeof CSInterface !== "undefined") {
         csInterface = new CSInterface();
         extensionPath = csInterface.getSystemPath('extension');
+        if (extensionPath && extensionPath.indexOf("file://") === 0) {
+            if (url && typeof url.fileURLToPath === "function") {
+                extensionPath = url.fileURLToPath(extensionPath);
+            } else {
+                if (/^file:\/\/\/[a-zA-Z]:/.test(extensionPath)) {
+                    extensionPath = extensionPath.replace(/^file:\/\/\//, "");
+                } else {
+                    extensionPath = extensionPath.replace(/^file:\/\//, "");
+                }
+                extensionPath = decodeURIComponent(extensionPath);
+                if (path && os && os.platform() === "win32") {
+                    extensionPath = extensionPath.replace(/\//g, "\\");
+                }
+            }
+        }
     }
 } catch (e) {
     console.error("CSInterface initialization failed:", e);
