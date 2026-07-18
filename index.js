@@ -860,6 +860,21 @@ function createAnnotationsSvg(annotations, uniquePrefix) {
             ellipse.setAttribute("stroke-width", "2");
             ellipse.setAttribute("fill", "none");
             svg.appendChild(ellipse);
+
+            if (ann.label) {
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                const sx = (Math.min(ann.x1, ann.x2) * 100).toFixed(2) + "%";
+                const sy = (Math.min(ann.y1, ann.y2) * 100).toFixed(2) + "%";
+                text.setAttribute("x", sx);
+                text.setAttribute("y", sy);
+                text.setAttribute("dy", "-3");
+                text.setAttribute("fill", color);
+                text.setAttribute("font-size", "8px");
+                text.setAttribute("font-family", "monospace");
+                text.setAttribute("font-weight", "bold");
+                text.textContent = ann.label;
+                svg.appendChild(text);
+            }
         } else if (ann.type === "arrow") {
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
             line.setAttribute("x1", x1);
@@ -870,6 +885,19 @@ function createAnnotationsSvg(annotations, uniquePrefix) {
             line.setAttribute("stroke-width", "2");
             line.setAttribute("marker-end", `url(#arrow-${hexId}-${uniquePrefix})`);
             svg.appendChild(line);
+
+            if (ann.label) {
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", x1);
+                text.setAttribute("y", y1);
+                text.setAttribute("dy", "-4");
+                text.setAttribute("fill", color);
+                text.setAttribute("font-size", "8px");
+                text.setAttribute("font-family", "monospace");
+                text.setAttribute("font-weight", "bold");
+                text.textContent = ann.label;
+                svg.appendChild(text);
+            }
         } else if (ann.type === "path") {
             if (ann.points && ann.points.length > 1) {
                 const pathD = "M " + ann.points.map(p => `${(p.x * 100).toFixed(2)} ${(p.y * 100).toFixed(2)}`).join(" L ");
@@ -897,6 +925,21 @@ function createAnnotationsSvg(annotations, uniquePrefix) {
         } else if (ann.type === "text") {
             const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
             
+            // Add a background rect for readability, matching annotation.html
+            const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            bgRect.setAttribute("x", x1);
+            bgRect.setAttribute("y", y1);
+            const textStr = ann.text || "";
+            const charWidth = 5.2; // approx width of monospace char at font-size 9px
+            const estWidth = textStr.length * charWidth + 8;
+            bgRect.setAttribute("width", estWidth.toString());
+            bgRect.setAttribute("height", "13");
+            bgRect.setAttribute("rx", "1.5");
+            bgRect.setAttribute("ry", "1.5");
+            bgRect.setAttribute("fill", "rgba(0, 0, 0, 0.85)");
+            bgRect.setAttribute("transform", "translate(0, -9)");
+            g.appendChild(bgRect);
+            
             const markerRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             markerRect.setAttribute("x", x1);
             markerRect.setAttribute("y", y1);
@@ -917,7 +960,7 @@ function createAnnotationsSvg(annotations, uniquePrefix) {
             text.setAttribute("font-size", "9px");
             text.setAttribute("font-family", "monospace");
             text.setAttribute("font-weight", "bold");
-            text.textContent = ann.text || "";
+            text.textContent = textStr;
             g.appendChild(text);
             
             svg.appendChild(g);
@@ -1039,9 +1082,11 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
                             if (ann.type === "rect") {
                                 listHtml += `<li><strong>Box #${aIdx+1} (${colorName})</strong>: "${escapeXml(ann.label || 'unlabeled')}" (Bounds: [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%] to [${(ann.x2*100).toFixed(0)}%, ${(ann.y2*100).toFixed(0)}%])</li>`;
                             } else if (ann.type === "circle") {
-                                listHtml += `<li><strong>Circle #${aIdx+1} (${colorName})</strong>: (Center: [${((ann.x1+ann.x2)/2*100).toFixed(0)}%, ${((ann.y1+ann.y2)/2*100).toFixed(0)}%], Radius: [H: ${(Math.abs(ann.x2-ann.x1)/2*100).toFixed(0)}%, V: ${(Math.abs(ann.y2-ann.y1)/2*100).toFixed(0)}%])</li>`;
+                                const desc = ann.label ? `"${escapeXml(ann.label)}"` : '(unlabeled)';
+                                listHtml += `<li><strong>Circle #${aIdx+1} (${colorName})</strong>: ${desc} (Center: [${((ann.x1+ann.x2)/2*100).toFixed(0)}%, ${((ann.y1+ann.y2)/2*100).toFixed(0)}%], Radius: [H: ${(Math.abs(ann.x2-ann.x1)/2*100).toFixed(0)}%, V: ${(Math.abs(ann.y2-ann.y1)/2*100).toFixed(0)}%])</li>`;
                             } else if (ann.type === "arrow") {
-                                listHtml += `<li><strong>Arrow #${aIdx+1} (${colorName})</strong>: direction [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%] &rarr; [${(ann.x2*100).toFixed(0)}%, ${(ann.y2*100).toFixed(0)}%]</li>`;
+                                const desc = ann.label ? `"${escapeXml(ann.label)}"` : '(unlabeled)';
+                                listHtml += `<li><strong>Arrow #${aIdx+1} (${colorName})</strong>: ${desc} direction [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%] &rarr; [${(ann.x2*100).toFixed(0)}%, ${(ann.y2*100).toFixed(0)}%]</li>`;
                             } else if (ann.type === "text") {
                                 listHtml += `<li><strong>Note #${aIdx+1} (${colorName})</strong>: "${escapeXml(ann.text || '')}" at [${(ann.x1*100).toFixed(0)}%, ${(ann.y1*100).toFixed(0)}%]</li>`;
                             }

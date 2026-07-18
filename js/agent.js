@@ -95,10 +95,6 @@ async function burnAnnotationsIntoImage(item) {
     if (!item.annotations || item.annotations.length === 0) {
         return item.data;
     }
-    const pathAnns = item.annotations.filter(ann => ann.type === "path");
-    if (pathAnns.length === 0) {
-        return item.data;
-    }
 
     return new Promise((resolve) => {
         const img = new Image();
@@ -115,15 +111,99 @@ async function burnAnnotationsIntoImage(item) {
                 ctx.lineJoin = "round";
                 ctx.lineWidth = Math.max(2.5, img.width / 300); // Scale line width relative to base image width
 
-                pathAnns.forEach(ann => {
-                    if (ann.points && ann.points.length > 1) {
+                item.annotations.forEach(ann => {
+                    if (ann.type === "rect") {
+                        const sx = ann.x1 * canvas.width;
+                        const sy = ann.y1 * canvas.height;
+                        const sw = (ann.x2 - ann.x1) * canvas.width;
+                        const sh = (ann.y2 - ann.y1) * canvas.height;
+                        ctx.strokeStyle = ann.color || "#ff4d4d";
+                        ctx.strokeRect(sx, sy, sw, sh);
+
+                        if (ann.label) {
+                            ctx.font = `bold ${Math.max(10, canvas.width / 80)}px monospace`;
+                            const textW = ctx.measureText(ann.label).width;
+                            const fontSize = Math.max(10, canvas.width / 80);
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(sx, sy - fontSize - 6, textW + 10, fontSize + 6);
+                            ctx.fillStyle = ann.color || "#ff4d4d";
+                            ctx.fillText(ann.label, sx + 5, sy - 5);
+                        }
+                    } else if (ann.type === "circle") {
+                        const cx = (ann.x1 + ann.x2) / 2 * canvas.width;
+                        const cy = (ann.y1 + ann.y2) / 2 * canvas.height;
+                        const rx = Math.abs(ann.x2 - ann.x1) / 2 * canvas.width;
+                        const ry = Math.abs(ann.y2 - ann.y1) / 2 * canvas.height;
                         ctx.strokeStyle = ann.color || "#ff4d4d";
                         ctx.beginPath();
-                        ctx.moveTo(ann.points[0].x * canvas.width, ann.points[0].y * canvas.height);
-                        for (let i = 1; i < ann.points.length; i++) {
-                            ctx.lineTo(ann.points[i].x * canvas.width, ann.points[i].y * canvas.height);
-                        }
+                        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
                         ctx.stroke();
+
+                        if (ann.label) {
+                            const sx = Math.min(ann.x1, ann.x2) * canvas.width;
+                            const sy = Math.min(ann.y1, ann.y2) * canvas.height;
+                            ctx.font = `bold ${Math.max(10, canvas.width / 80)}px monospace`;
+                            const textW = ctx.measureText(ann.label).width;
+                            const fontSize = Math.max(10, canvas.width / 80);
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(sx, sy - fontSize - 6, textW + 10, fontSize + 6);
+                            ctx.fillStyle = ann.color || "#ff4d4d";
+                            ctx.fillText(ann.label, sx + 5, sy - 5);
+                        }
+                    } else if (ann.type === "arrow") {
+                        const x1 = ann.x1 * canvas.width;
+                        const y1 = ann.y1 * canvas.height;
+                        const x2 = ann.x2 * canvas.width;
+                        const y2 = ann.y2 * canvas.height;
+                        
+                        ctx.strokeStyle = ann.color || "#ff4d4d";
+                        ctx.fillStyle = ann.color || "#ff4d4d";
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+
+                        const angle = Math.atan2(y2 - y1, x2 - x1);
+                        const headLength = Math.max(12, canvas.width / 60);
+                        ctx.beginPath();
+                        ctx.moveTo(x2, y2);
+                        ctx.lineTo(x2 - headLength * Math.cos(angle - Math.PI / 6), y2 - headLength * Math.sin(angle - Math.PI / 6));
+                        ctx.lineTo(x2 - headLength * Math.cos(angle + Math.PI / 6), y2 - headLength * Math.sin(angle + Math.PI / 6));
+                        ctx.closePath();
+                        ctx.fill();
+
+                        if (ann.label) {
+                            ctx.font = `bold ${Math.max(10, canvas.width / 80)}px monospace`;
+                            const textW = ctx.measureText(ann.label).width;
+                            const fontSize = Math.max(10, canvas.width / 80);
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(x1, y1 - fontSize - 6, textW + 10, fontSize + 6);
+                            ctx.fillStyle = ann.color || "#ff4d4d";
+                            ctx.fillText(ann.label, x1 + 5, y1 - 5);
+                        }
+                    } else if (ann.type === "text") {
+                        const x = ann.x1 * canvas.width;
+                        const y = ann.y1 * canvas.height;
+                        ctx.font = `bold ${Math.max(11, canvas.width / 75)}px monospace`;
+                        const textW = ctx.measureText(ann.text || "").width;
+                        const fontSize = Math.max(11, canvas.width / 75);
+                        
+                        ctx.fillStyle = "rgba(0,0,0,0.85)";
+                        ctx.fillRect(x - 4, y - fontSize - 2, textW + 8, fontSize + 6);
+                        
+                        ctx.fillStyle = ann.color || "#ff4d4d";
+                        ctx.fillText(ann.text || "", x, y);
+                    } else if (ann.type === "path") {
+                        if (ann.points && ann.points.length > 1) {
+                            ctx.strokeStyle = ann.color || "#ff4d4d";
+                            ctx.beginPath();
+                            ctx.moveTo(ann.points[0].x * canvas.width, ann.points[0].y * canvas.height);
+                            for (let i = 1; i < ann.points.length; i++) {
+                                ctx.lineTo(ann.points[i].x * canvas.width, ann.points[i].y * canvas.height);
+                            }
+                            ctx.stroke();
+                        }
                     }
                 });
 
@@ -224,9 +304,9 @@ async function runAgenticExecutionLoop(userText) {
                                     const cy = (ann.y1 + ann.y2) / 2;
                                     const rx = Math.abs(ann.x2 - ann.x1) / 2;
                                     const ry = Math.abs(ann.y2 - ann.y1) / 2;
-                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Circle #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
                                 } else if (ann.type === "arrow") {
-                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
+                                    embeddedText += `\n- Arrow Vector #${aIdx + 1} (${colorName}): Label "${ann.label || "unlabeled"}" Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
                                 } else if (ann.type === "text") {
                                     embeddedText += `\n- Text Label #${aIdx + 1} (${colorName}): "${ann.text || ""}" at position [X: ${(ann.x1 * 100).toFixed(1)}%, Y: ${(ann.y1 * 100).toFixed(1)}%]`;
                                 }

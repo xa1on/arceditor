@@ -396,7 +396,13 @@
             let activeTool = 'select'; // 'select', 'rect', 'circle', 'arrow', 'brush', 'text'
             let activeColor = '#ff4d4d'; // Red default
             let selectedShapeIdx = -1;
+            let hoveredShapeIdx = -1;
             let isDrawing = false;
+            let isDragging = false;
+            let dragMode = null; // 'move', 'resize-tl', etc.
+            let dragStartMouseX = 0;
+            let dragStartMouseY = 0;
+            let dragStartShape = null; // clone of selected shape
             let startX = 0, startY = 0;
             let currentX = 0, currentY = 0;
             let isDirty = false;
@@ -442,8 +448,7 @@
                 redoStack.push(cloneShapes(shapes));
                 shapes = undoStack.pop();
                 isDirty = true;
-                selectedShapeIdx = -1;
-                btnDelete.disabled = true;
+                selectShapeIdx(-1);
                 updateUndoRedoButtons();
                 redraw();
             }
@@ -453,8 +458,7 @@
                 undoStack.push(cloneShapes(shapes));
                 shapes = redoStack.pop();
                 isDirty = true;
-                selectedShapeIdx = -1;
-                btnDelete.disabled = true;
+                selectShapeIdx(-1);
                 updateUndoRedoButtons();
                 redraw();
             }
@@ -549,8 +553,7 @@
                 hidePopover();
 
                 if (tool !== 'select') {
-                    selectedShapeIdx = -1;
-                    btnDelete.disabled = true;
+                    selectShapeIdx(-1);
                 }
                 redraw();
             }
@@ -597,6 +600,162 @@
                 });
             }
 
+            // HIT-TESTING & HELPER FUNCTIONS
+            function getShapeBounds(shape, w, h) {
+                if (shape.type === 'rect' || shape.type === 'circle' || shape.type === 'arrow') {
+                    const xMin = Math.min(shape.x1, shape.x2) * w;
+                    const yMin = Math.min(shape.y1, shape.y2) * h;
+                    const xMax = Math.max(shape.x1, shape.x2) * w;
+                    const yMax = Math.max(shape.y1, shape.y2) * h;
+                    return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
+                } else if (shape.type === 'path') {
+                    let xMin = 1.0, yMin = 1.0, xMax = 0.0, yMax = 0.0;
+                    shape.points.forEach(p => {
+                        if (p.x < xMin) xMin = p.x;
+                        if (p.y < yMin) yMin = p.y;
+                        if (p.x > xMax) xMax = p.x;
+                        if (p.y > yMax) yMax = p.y;
+                    });
+                    return { x: xMin * w, y: yMin * h, w: (xMax - xMin) * w, h: (yMax - yMin) * h };
+                } else if (shape.type === 'text') {
+                    const tx = shape.x1 * w;
+                    const ty = shape.y1 * h;
+                    ctx.font = "bold 11px 'JetBrains Mono', monospace";
+                    const textW = ctx.measureText(shape.text || "").width;
+                    return { x: tx - 4, y: ty - 13, w: textW + 8, h: 17 };
+                }
+                return { x: 0, y: 0, w: 0, h: 0 };
+            }
+
+            function getHandles(shape, w, h) {
+                if (shape.type === 'rect' || shape.type === 'circle') {
+                    const px1 = shape.x1 * w;
+                    const py1 = shape.y1 * h;
+                    const px2 = shape.x2 * w;
+                    const py2 = shape.y2 * h;
+                    const pmx = (px1 + px2) / 2;
+                    const pmy = (py1 + py2) / 2;
+                    return [
+                        { name: 'tl', x: px1, y: py1, cursor: 'nwse-resize' },
+                        { name: 'tr', x: px2, y: py1, cursor: 'nesw-resize' },
+                        { name: 'bl', x: px1, y: py2, cursor: 'nesw-resize' },
+                        { name: 'br', x: px2, y: py2, cursor: 'nwse-resize' },
+                        { name: 't', x: pmx, y: py1, cursor: 'ns-resize' },
+                        { name: 'b', x: pmx, y: py2, cursor: 'ns-resize' },
+                        { name: 'l', x: px1, y: pmy, cursor: 'ew-resize' },
+                        { name: 'r', x: px2, y: pmy, cursor: 'ew-resize' }
+                    ];
+                } else if (shape.type === 'arrow') {
+                    return [
+                        { name: 'start', x: shape.x1 * w, y: shape.y1 * h, cursor: 'move' },
+                        { name: 'end', x: shape.x2 * w, y: shape.y2 * h, cursor: 'move' }
+                    ];
+                }
+                return [];
+            }
+
+            function getHandleAt(x, y, shape, w, h) {
+                const handles = getHandles(shape, w, h);
+                const tolerance = 6;
+                for (const hd of handles) {
+                    if (Math.hypot(x - hd.x, y - hd.y) <= tolerance) {
+                        return hd;
+                    }
+                }
+                return null;
+            }
+
+            function getShapeAt(x, y) {
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+                for (let i = shapes.length - 1; i >= 0; i--) {
+                    const shape = shapes[i];
+                    const bounds = getShapeBounds(shape, w, h);
+                    if (shape.type === 'rect') {
+                        const tol = 8;
+                        if (x >= bounds.x - tol && x <= bounds.x + bounds.w + tol &&
+                            y >= bounds.y - tol && y <= bounds.y + bounds.h + tol) {
+                            return i;
+                        }
+                    } else if (shape.type === 'circle') {
+                        const cx = bounds.x + bounds.w / 2;
+                        const cy = bounds.y + bounds.h / 2;
+                        const rx = bounds.w / 2;
+                        const ry = bounds.h / 2;
+                        if (rx > 0 && ry > 0) {
+                            const dist = Math.pow((x - cx) / (rx + 8), 2) + Math.pow((y - cy) / (ry + 8), 2);
+                            if (dist <= 1) return i;
+                        }
+                    } else if (shape.type === 'arrow') {
+                        const dist = distToSegment(x, y, shape.x1 * w, shape.y1 * h, shape.x2 * w, shape.y2 * h);
+                        if (dist < 10) return i;
+                    } else if (shape.type === 'path') {
+                        const p = shape.points;
+                        for (let j = 0; j < p.length - 1; j++) {
+                            const dist = distToSegment(x, y, p[j].x * w, p[j].y * h, p[j+1].x * w, p[j+1].y * h);
+                            if (dist < 10) return i;
+                        }
+                    } else if (shape.type === 'text') {
+                        if (x >= bounds.x && x <= bounds.x + bounds.w &&
+                            y >= bounds.y && y <= bounds.y + bounds.h) {
+                            return i;
+                        }
+                    }
+                }
+                return -1;
+            }
+
+            function distToSegment(x, y, x1, y1, x2, y2) {
+                const A = x - x1;
+                const B = y - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                let param = -1;
+                if (lenSq !== 0) param = dot / lenSq;
+
+                let xx, yy;
+                if (param < 0) {
+                    xx = x1;
+                    yy = y1;
+                } else if (param > 1) {
+                    xx = x2;
+                    yy = y2;
+                } else {
+                    xx = x1 + param * C;
+                    yy = y1 + param * D;
+                }
+
+                return Math.hypot(x - xx, y - yy);
+            }
+
+            function normalizeShape(shape) {
+                if (shape.type === 'rect' || shape.type === 'circle') {
+                    const xMin = Math.min(shape.x1, shape.x2);
+                    const yMin = Math.min(shape.y1, shape.y2);
+                    const xMax = Math.max(shape.x1, shape.x2);
+                    const yMax = Math.max(shape.y1, shape.y2);
+                    shape.x1 = xMin;
+                    shape.y1 = yMin;
+                    shape.x2 = xMax;
+                    shape.y2 = yMax;
+                }
+            }
+
+            function selectShapeIdx(idx) {
+                selectedShapeIdx = idx;
+                btnDelete.disabled = (idx === -1);
+                if (idx !== -1) {
+                    activeColor = shapes[idx].color || '#ff4d4d';
+                    colorBtns.forEach(btn => {
+                        const c = btn.getAttribute("data-color");
+                        btn.classList.toggle("active", c === activeColor);
+                    });
+                }
+            }
+
             // SHAPE REDRAW LOGIC
             function redraw() {
                 const w = canvas.width / dpr;
@@ -609,14 +768,7 @@
                     ctx.lineWidth = 2.5;
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
-
-                    const isSelected = (idx === selectedShapeIdx);
-
-                    if (isSelected) {
-                        ctx.setLineDash([4, 4]);
-                    } else {
-                        ctx.setLineDash([]);
-                    }
+                    ctx.setLineDash([]); // All shapes drawn solid
 
                     if (shape.type === 'rect') {
                         const sx = shape.x1 * w;
@@ -644,6 +796,18 @@
                         ctx.beginPath();
                         ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
                         ctx.stroke();
+
+                        if (shape.label) {
+                            const sx = Math.min(shape.x1, shape.x2) * w;
+                            const sy = Math.min(shape.y1, shape.y2) * h;
+                            ctx.font = "bold 10px 'JetBrains Mono', monospace";
+                            const textW = ctx.measureText(shape.label).width;
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(sx, sy - 16, textW + 10, 16);
+                            
+                            ctx.fillStyle = shape.color;
+                            ctx.fillText(shape.label, sx + 5, sy - 4);
+                        }
                     } else if (shape.type === 'arrow') {
                         const x1 = shape.x1 * w;
                         const y1 = shape.y1 * h;
@@ -651,6 +815,16 @@
                         const y2 = shape.y2 * h;
 
                         drawArrowLine(x1, y1, x2, y2);
+
+                        if (shape.label) {
+                            ctx.font = "bold 10px 'JetBrains Mono', monospace";
+                            const textW = ctx.measureText(shape.label).width;
+                            ctx.fillStyle = "rgba(0,0,0,0.75)";
+                            ctx.fillRect(x1, y1 - 16, textW + 10, 16);
+                            
+                            ctx.fillStyle = shape.color;
+                            ctx.fillText(shape.label, x1 + 5, y1 - 4);
+                        }
                     } else if (shape.type === 'path') {
                         const p = shape.points;
                         if (p.length > 1) {
@@ -675,8 +849,42 @@
                     }
                 });
 
-                ctx.setLineDash([]);
+                // Draw pending shape (while inputting label)
+                if (pendingShape && !isDrawing) {
+                    ctx.strokeStyle = pendingShape.color || activeColor;
+                    ctx.fillStyle = pendingShape.color || activeColor;
+                    ctx.lineWidth = 2.5;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.setLineDash([4, 4]);
 
+                    if (pendingShape.type === 'rect') {
+                        const sx = pendingShape.x1 * w;
+                        const sy = pendingShape.y1 * h;
+                        const sw = (pendingShape.x2 - pendingShape.x1) * w;
+                        const sh = (pendingShape.y2 - pendingShape.y1) * h;
+                        ctx.strokeRect(sx, sy, sw, sh);
+                    } else if (pendingShape.type === 'circle') {
+                        const cx = (pendingShape.x1 + pendingShape.x2) / 2 * w;
+                        const cy = (pendingShape.y1 + pendingShape.y2) / 2 * h;
+                        const rx = Math.abs(pendingShape.x2 - pendingShape.x1) / 2 * w;
+                        const ry = Math.abs(pendingShape.y2 - pendingShape.y1) / 2 * h;
+                        ctx.beginPath();
+                        ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    } else if (pendingShape.type === 'arrow') {
+                        drawArrowLine(pendingShape.x1 * w, pendingShape.y1 * h, pendingShape.x2 * w, pendingShape.y2 * h);
+                    } else if (pendingShape.type === 'text') {
+                        const x = pendingShape.x1 * w;
+                        const y = pendingShape.y1 * h;
+                        ctx.font = "bold 11px 'JetBrains Mono', monospace";
+                        ctx.fillStyle = "rgba(0,0,0,0.85)";
+                        ctx.fillRect(x - 4, y - 13, 30, 17); // Placeholder box while typing
+                    }
+                    ctx.setLineDash([]);
+                }
+
+                // Draw temporary preview when drawing active tool
                 if (isDrawing && (activeTool === 'rect' || activeTool === 'circle' || activeTool === 'arrow' || activeTool === 'brush')) {
                     ctx.strokeStyle = activeColor;
                     ctx.lineWidth = 2.0;
@@ -711,6 +919,41 @@
                     }
                     ctx.setLineDash([]);
                 }
+
+                // Draw selection highlight bounding box & control handles (on top)
+                if (activeTool === 'select') {
+                    if (hoveredShapeIdx !== -1 && hoveredShapeIdx !== selectedShapeIdx) {
+                        const shape = shapes[hoveredShapeIdx];
+                        const bounds = getShapeBounds(shape, w, h);
+                        ctx.strokeStyle = shape.color || '#ff4d4d';
+                        ctx.lineWidth = 1.0;
+                        ctx.setLineDash([3, 3]);
+                        ctx.strokeRect(bounds.x - 2, bounds.y - 2, bounds.w + 4, bounds.h + 4);
+                        ctx.setLineDash([]);
+                    }
+
+                    if (selectedShapeIdx !== -1) {
+                        const shape = shapes[selectedShapeIdx];
+                        const bounds = getShapeBounds(shape, w, h);
+                        ctx.strokeStyle = shape.color || '#ff4d4d';
+                        ctx.lineWidth = 1.25;
+                        ctx.setLineDash([4, 4]);
+                        ctx.strokeRect(bounds.x - 2, bounds.y - 2, bounds.w + 4, bounds.h + 4);
+                        ctx.setLineDash([]);
+
+                        // Draw handle nodes
+                        const handles = getHandles(shape, w, h);
+                        handles.forEach(handle => {
+                            ctx.fillStyle = '#ffffff';
+                            ctx.strokeStyle = shape.color || '#ff4d4d';
+                            ctx.lineWidth = 1.5;
+                            ctx.beginPath();
+                            ctx.arc(handle.x, handle.y, 4.5, 0, 2 * Math.PI);
+                            ctx.fill();
+                            ctx.stroke();
+                        });
+                    }
+                }
             }
 
             function drawArrowLine(x1, y1, x2, y2) {
@@ -744,7 +987,38 @@
                 }
 
                 if (activeTool === 'select') {
-                    selectShapeAt(mouseX, mouseY);
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
+
+                    // 1. Check handles first
+                    if (selectedShapeIdx !== -1) {
+                        const shape = shapes[selectedShapeIdx];
+                        const handle = getHandleAt(mouseX, mouseY, shape, w, h);
+                        if (handle) {
+                            dragMode = 'resize-' + handle.name;
+                            dragStartMouseX = mouseX;
+                            dragStartMouseY = mouseY;
+                            dragStartShape = JSON.parse(JSON.stringify(shape));
+                            isDragging = true;
+                            saveState();
+                            return;
+                        }
+                    }
+
+                    // 2. Check shape body
+                    const clickedIdx = getShapeAt(mouseX, mouseY);
+                    if (clickedIdx !== -1) {
+                        selectShapeIdx(clickedIdx);
+                        dragMode = 'move';
+                        dragStartMouseX = mouseX;
+                        dragStartMouseY = mouseY;
+                        dragStartShape = JSON.parse(JSON.stringify(shapes[clickedIdx]));
+                        isDragging = true;
+                        saveState();
+                    } else {
+                        selectShapeIdx(-1);
+                    }
+                    redraw();
                     return;
                 }
 
@@ -766,217 +1040,225 @@
             });
 
             canvas.addEventListener("pointermove", (e) => {
-                if (!isDrawing) return;
-                const rect = canvas.getBoundingClientRect();
-                currentX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
-                currentY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
-
-                if (activeTool === 'brush' && pendingShape) {
-                    const w = canvas.width / dpr;
-                    const h = canvas.height / dpr;
-                    pendingShape.points.push({x: currentX / w, y: currentY / h});
-                }
-
-                redraw();
-            });
-
-            window.addEventListener("pointerup", (e) => {
-                if (!isDrawing) return;
-                isDrawing = false;
-                canvas.releasePointerCapture(e.pointerId);
-
                 const rect = canvas.getBoundingClientRect();
                 const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
                 const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
-                currentX = mouseX;
-                currentY = mouseY;
 
-                const w = canvas.width / dpr;
-                const h = canvas.height / dpr;
+                if (isDrawing) {
+                    currentX = mouseX;
+                    currentY = mouseY;
 
-                const normX1 = Math.max(0, Math.min(1, Math.min(startX, currentX) / w));
-                const normY1 = Math.max(0, Math.min(1, Math.min(startY, currentY) / h));
-                const normX2 = Math.max(0, Math.min(1, Math.max(startX, currentX) / w));
-                const normY2 = Math.max(0, Math.min(1, Math.max(startY, currentY) / h));
-
-                if (activeTool === 'rect') {
-                    const pxWidth = Math.abs(currentX - startX);
-                    const pxHeight = Math.abs(currentY - startY);
-                    if (pxWidth > 6 && pxHeight > 6) {
-                        pendingShape = {
-                            type: 'rect',
-                            x1: normX1,
-                            y1: normY1,
-                            x2: normX2,
-                            y2: normY2,
-                            color: activeColor,
-                            label: ''
-                        };
-                        showPopover(currentX, currentY, "Label this box:");
+                    if (activeTool === 'brush' && pendingShape) {
+                        const w = canvas.width / dpr;
+                        const h = canvas.height / dpr;
+                        pendingShape.points.push({x: currentX / w, y: currentY / h});
                     }
-                } else if (activeTool === 'circle') {
-                    const pxWidth = Math.abs(currentX - startX);
-                    const pxHeight = Math.abs(currentY - startY);
-                    if (pxWidth > 6 && pxHeight > 6) {
-                        saveState();
-                        shapes.push({
-                            type: 'circle',
-                            x1: normX1,
-                            y1: normY1,
-                            x2: normX2,
-                            y2: normY2,
-                            color: activeColor
-                        });
-                        isDirty = true;
-                    }
-                } else if (activeTool === 'arrow') {
-                    const length = Math.hypot(currentX - startX, currentY - startY);
-                    if (length > 8) {
-                        saveState();
-                        shapes.push({
-                            type: 'arrow',
-                            x1: Math.max(0, Math.min(1, startX / w)),
-                            y1: Math.max(0, Math.min(1, startY / h)),
-                            x2: Math.max(0, Math.min(1, currentX / w)),
-                            y2: Math.max(0, Math.min(1, currentY / h)),
-                            color: activeColor
-                        });
-                        isDirty = true;
-                    }
-                } else if (activeTool === 'brush') {
-                    if (pendingShape && pendingShape.points.length > 1) {
-                        saveState();
-                        shapes.push(pendingShape);
-                        isDirty = true;
-                    }
-                    pendingShape = null;
-                } else if (activeTool === 'text') {
-                    pendingShape = {
-                        type: 'text',
-                        x1: Math.max(0, Math.min(1, mouseX / w)),
-                        y1: Math.max(0, Math.min(1, mouseY / h)),
-                        x2: Math.max(0, Math.min(1, mouseX / w)),
-                        y2: Math.max(0, Math.min(1, mouseY / h)),
-                        color: activeColor,
-                        text: ''
-                    };
-                    showPopover(mouseX, mouseY, "Type label text:");
+                    redraw();
+                    return;
                 }
 
-                redraw();
+                if (isDragging && activeTool === 'select' && selectedShapeIdx !== -1) {
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
+                    const dx = (mouseX - dragStartMouseX) / w;
+                    const dy = (mouseY - dragStartMouseY) / h;
+
+                    const shape = shapes[selectedShapeIdx];
+                    if (dragMode === 'move') {
+                        if (shape.type === 'path') {
+                            shape.points = dragStartShape.points.map(p => ({
+                                x: Math.max(0, Math.min(1, p.x + dx)),
+                                y: Math.max(0, Math.min(1, p.y + dy))
+                            }));
+                        } else {
+                            shape.x1 = Math.max(0, Math.min(1, dragStartShape.x1 + dx));
+                            shape.y1 = Math.max(0, Math.min(1, dragStartShape.y1 + dy));
+                            shape.x2 = Math.max(0, Math.min(1, dragStartShape.x2 + dx));
+                            shape.y2 = Math.max(0, Math.min(1, dragStartShape.y2 + dy));
+                        }
+                    } else if (dragMode.startsWith('resize-')) {
+                        const handleName = dragMode.substring(7);
+                        if (shape.type === 'rect' || shape.type === 'circle') {
+                            if (handleName.includes('l')) shape.x1 = Math.max(0, Math.min(1, dragStartShape.x1 + dx));
+                            if (handleName.includes('r')) shape.x2 = Math.max(0, Math.min(1, dragStartShape.x2 + dx));
+                            if (handleName.includes('t')) shape.y1 = Math.max(0, Math.min(1, dragStartShape.y1 + dy));
+                            if (handleName.includes('b')) shape.y2 = Math.max(0, Math.min(1, dragStartShape.y2 + dy));
+                        } else if (shape.type === 'arrow') {
+                            if (handleName === 'start') {
+                                shape.x1 = Math.max(0, Math.min(1, dragStartShape.x1 + dx));
+                                shape.y1 = Math.max(0, Math.min(1, dragStartShape.y1 + dy));
+                            } else if (handleName === 'end') {
+                                shape.x2 = Math.max(0, Math.min(1, dragStartShape.x2 + dx));
+                                shape.y2 = Math.max(0, Math.min(1, dragStartShape.y2 + dy));
+                            }
+                        }
+                    }
+                    isDirty = true;
+                    redraw();
+                    return;
+                }
+
+                // Hover style & cursor updates (only in select mode)
+                if (activeTool === 'select') {
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
+                    let cursorSet = false;
+
+                    // 1. Check handles of selected shape
+                    if (selectedShapeIdx !== -1) {
+                        const shape = shapes[selectedShapeIdx];
+                        const handle = getHandleAt(mouseX, mouseY, shape, w, h);
+                        if (handle) {
+                            canvas.style.cursor = handle.cursor;
+                            cursorSet = true;
+                        }
+                    }
+
+                    // 2. Check shape body
+                    if (!cursorSet) {
+                        const idx = getShapeAt(mouseX, mouseY);
+                        if (idx !== -1) {
+                            canvas.style.cursor = 'move';
+                            if (hoveredShapeIdx !== idx) {
+                                hoveredShapeIdx = idx;
+                                redraw();
+                            }
+                        } else {
+                            canvas.style.cursor = 'default';
+                            if (hoveredShapeIdx !== -1) {
+                                hoveredShapeIdx = -1;
+                                redraw();
+                            }
+                        }
+                    }
+                }
             });
 
-            // SHAPE SELECTION DETECTOR
-            function selectShapeAt(x, y) {
-                const w = canvas.width / dpr;
-                const h = canvas.height / dpr;
-                let foundIdx = -1;
+            window.addEventListener("pointerup", (e) => {
+                if (isDrawing) {
+                    isDrawing = false;
+                    canvas.releasePointerCapture(e.pointerId);
 
-                for (let i = shapes.length - 1; i >= 0; i--) {
-                    const shape = shapes[i];
-                    if (shape.type === 'rect') {
-                        const x1 = shape.x1 * w;
-                        const y1 = shape.y1 * h;
-                        const x2 = shape.x2 * w;
-                        const y2 = shape.y2 * h;
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
+                    const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                    currentX = mouseX;
+                    currentY = mouseY;
 
-                        const tol = 8;
-                        const insideX = x >= x1 - tol && x <= x2 + tol;
-                        const insideY = y >= y1 - tol && y <= y2 + tol;
-                        
-                        if (insideX && insideY) {
-                            foundIdx = i;
-                            break;
-                        }
-                    } else if (shape.type === 'circle') {
-                        const cx = (shape.x1 + shape.x2) / 2 * w;
-                        const cy = (shape.y1 + shape.y2) / 2 * h;
-                        const rx = Math.abs(shape.x2 - shape.x1) / 2 * w;
-                        const ry = Math.abs(shape.y2 - shape.y1) / 2 * h;
+                    const w = canvas.width / dpr;
+                    const h = canvas.height / dpr;
 
-                        if (rx > 0 && ry > 0) {
-                            const normClickDist = Math.pow((x - cx) / (rx + 8), 2) + Math.pow((y - cy) / (ry + 8), 2);
-                            if (normClickDist <= 1) {
-                                foundIdx = i;
-                                break;
-                            }
+                    const normX1 = Math.max(0, Math.min(1, Math.min(startX, currentX) / w));
+                    const normY1 = Math.max(0, Math.min(1, Math.min(startY, currentY) / h));
+                    const normX2 = Math.max(0, Math.min(1, Math.max(startX, currentX) / w));
+                    const normY2 = Math.max(0, Math.min(1, Math.max(startY, currentY) / h));
+
+                    if (activeTool === 'rect') {
+                        const pxWidth = Math.abs(currentX - startX);
+                        const pxHeight = Math.abs(currentY - startY);
+                        if (pxWidth > 6 && pxHeight > 6) {
+                            pendingShape = {
+                                type: 'rect',
+                                x1: normX1,
+                                y1: normY1,
+                                x2: normX2,
+                                y2: normY2,
+                                color: activeColor,
+                                label: ''
+                            };
+                            showPopover(currentX, currentY, "Label this box:");
                         }
-                    } else if (shape.type === 'arrow') {
-                        const x1 = shape.x1 * w;
-                        const y1 = shape.y1 * h;
-                        const x2 = shape.x2 * w;
-                        const y2 = shape.y2 * h;
-                        
-                        const dist = distToSegment(x, y, x1, y1, x2, y2);
-                        if (dist < 10) {
-                            foundIdx = i;
-                            break;
+                    } else if (activeTool === 'circle') {
+                        const pxWidth = Math.abs(currentX - startX);
+                        const pxHeight = Math.abs(currentY - startY);
+                        if (pxWidth > 6 && pxHeight > 6) {
+                            pendingShape = {
+                                type: 'circle',
+                                x1: normX1,
+                                y1: normY1,
+                                x2: normX2,
+                                y2: normY2,
+                                color: activeColor,
+                                label: ''
+                            };
+                            showPopover(currentX, currentY, "Label this circle:");
                         }
-                    } else if (shape.type === 'path') {
-                        const p = shape.points;
-                        for (let j = 0; j < p.length - 1; j++) {
-                            const dist = distToSegment(x, y, p[j].x * w, p[j].y * h, p[j+1].x * w, p[j+1].y * h);
-                            if (dist < 10) {
-                                foundIdx = i;
-                                break;
-                            }
+                    } else if (activeTool === 'arrow') {
+                        const length = Math.hypot(currentX - startX, currentY - startY);
+                        if (length > 8) {
+                            pendingShape = {
+                                type: 'arrow',
+                                x1: Math.max(0, Math.min(1, startX / w)),
+                                y1: Math.max(0, Math.min(1, startY / h)),
+                                x2: Math.max(0, Math.min(1, currentX / w)),
+                                y2: Math.max(0, Math.min(1, currentY / h)),
+                                color: activeColor,
+                                label: ''
+                            };
+                            showPopover(currentX, currentY, "Label this arrow:");
                         }
-                        if (foundIdx === i) break;
-                    } else if (shape.type === 'text') {
-                        const tx = shape.x1 * w;
-                        const ty = shape.y1 * h;
-                        
-                        ctx.font = "bold 11px 'JetBrains Mono', monospace";
-                        const textW = ctx.measureText(shape.text || "").width;
-                        
-                        const inX = x >= tx - 4 && x <= tx + textW + 8;
-                        const inY = y >= ty - 13 && y <= ty + 6;
-                        
-                        if (inX && inY) {
-                            foundIdx = i;
-                            break;
+                    } else if (activeTool === 'brush') {
+                        if (pendingShape && pendingShape.points.length > 1) {
+                            saveState();
+                            shapes.push(pendingShape);
+                            isDirty = true;
                         }
+                        pendingShape = null;
+                    } else if (activeTool === 'text') {
+                        pendingShape = {
+                            type: 'text',
+                            x1: Math.max(0, Math.min(1, mouseX / w)),
+                            y1: Math.max(0, Math.min(1, mouseY / h)),
+                            x2: Math.max(0, Math.min(1, mouseX / w)),
+                            y2: Math.max(0, Math.min(1, mouseY / h)),
+                            color: activeColor,
+                            text: ''
+                        };
+                        showPopover(mouseX, mouseY, "Type label text:");
+                    }
+
+                    redraw();
+                }
+
+                if (isDragging) {
+                    isDragging = false;
+                    dragMode = null;
+                    dragStartShape = null;
+                    if (selectedShapeIdx !== -1) {
+                        normalizeShape(shapes[selectedShapeIdx]);
+                    }
+                    redraw();
+                }
+            });
+
+            // DOUBLE CLICK TO EDIT DESCRIPTIONS
+            canvas.addEventListener("dblclick", (e) => {
+                if (activeTool !== 'select') return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
+                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+
+                const idx = getShapeAt(mouseX, mouseY);
+                if (idx !== -1) {
+                    const shape = shapes[idx];
+                    if (shape.type === 'rect' || shape.type === 'circle' || shape.type === 'arrow' || shape.type === 'text') {
+                        pendingShape = shape;
+                        
+                        let placeholder = "Edit description:";
+                        let initialValue = "";
+                        if (shape.type === 'rect' || shape.type === 'circle' || shape.type === 'arrow') {
+                            placeholder = `Edit ${shape.type} description:`;
+                            initialValue = shape.label || "";
+                        } else if (shape.type === 'text') {
+                            placeholder = "Edit text note:";
+                            initialValue = shape.text || "";
+                        }
+                        
+                        showPopover(mouseX, mouseY, placeholder);
+                        popoverInput.value = initialValue;
                     }
                 }
-
-                selectedShapeIdx = foundIdx;
-                btnDelete.disabled = (foundIdx === -1);
-                
-                if (foundIdx !== -1) {
-                    activeColor = shapes[foundIdx].color || '#ff4d4d';
-                    colorBtns.forEach(btn => {
-                        const c = btn.getAttribute("data-color");
-                        btn.classList.toggle("active", c === activeColor);
-                    });
-                }
-                redraw();
-            }
-
-            function distToSegment(x, y, x1, y1, x2, y2) {
-                const A = x - x1;
-                const B = y - y1;
-                const C = x2 - x1;
-                const D = y2 - y1;
-
-                const dot = A * C + B * D;
-                const lenSq = C * C + D * D;
-                let param = -1;
-                if (lenSq !== 0) param = dot / lenSq;
-
-                let xx, yy;
-                if (param < 0) {
-                    xx = x1;
-                    yy = y1;
-                } else if (param > 1) {
-                    xx = x2;
-                    yy = y2;
-                } else {
-                    xx = x1 + param * C;
-                    yy = y1 + param * D;
-                }
-
-                return Math.hypot(x - xx, y - yy);
-            }
+            });
 
             // FLOATING POPOVER LABEL CAPTURE
             function showPopover(clientX, clientY, placeholder) {
@@ -1000,14 +1282,25 @@
 
             function submitLabel() {
                 const val = popoverInput.value.trim();
-                if (val && pendingShape) {
+                if (pendingShape) {
                     saveState();
-                    if (pendingShape.type === 'rect') {
+                    const isNew = !shapes.includes(pendingShape);
+                    if (isNew && !val) {
+                        // Discard new shapes with empty labels
+                        hidePopover();
+                        redraw();
+                        return;
+                    }
+
+                    if (pendingShape.type === 'rect' || pendingShape.type === 'circle' || pendingShape.type === 'arrow') {
                         pendingShape.label = val;
                     } else if (pendingShape.type === 'text') {
                         pendingShape.text = val;
                     }
-                    shapes.push(pendingShape);
+
+                    if (isNew) {
+                        shapes.push(pendingShape);
+                    }
                     isDirty = true;
                 }
                 hidePopover();
@@ -1030,8 +1323,7 @@
                 if (selectedShapeIdx !== -1) {
                     saveState();
                     shapes.splice(selectedShapeIdx, 1);
-                    selectedShapeIdx = -1;
-                    btnDelete.disabled = true;
+                    selectShapeIdx(-1);
                     isDirty = true;
                     redraw();
                 }
@@ -1059,8 +1351,7 @@
                     if (confirm("Are you sure you want to clear all drawings?")) {
                         saveState();
                         shapes = [];
-                        selectedShapeIdx = -1;
-                        btnDelete.disabled = true;
+                        selectShapeIdx(-1);
                         isDirty = true;
                         redraw();
                     }
