@@ -155,10 +155,10 @@ async function burnAnnotationsIntoImage(item) {
                         const y1 = ann.y1 * canvas.height;
                         const x2 = ann.x2 * canvas.width;
                         const y2 = ann.y2 * canvas.height;
-                        
+
                         ctx.strokeStyle = ann.color || "#ff4d4d";
                         ctx.fillStyle = ann.color || "#ff4d4d";
-                        
+
                         ctx.beginPath();
                         ctx.moveTo(x1, y1);
                         ctx.lineTo(x2, y2);
@@ -188,10 +188,10 @@ async function burnAnnotationsIntoImage(item) {
                         ctx.font = `bold ${Math.max(11, canvas.width / 75)}px monospace`;
                         const textW = ctx.measureText(ann.text || "").width;
                         const fontSize = Math.max(11, canvas.width / 75);
-                        
+
                         ctx.fillStyle = "rgba(0,0,0,0.85)";
                         ctx.fillRect(x - 4, y - fontSize - 2, textW + 8, fontSize + 6);
-                        
+
                         ctx.fillStyle = ann.color || "#ff4d4d";
                         ctx.fillText(ann.text || "", x, y);
                     } else if (ann.type === "path") {
@@ -294,7 +294,7 @@ async function runAgenticExecutionLoop(userText) {
                         if (item.annotations && item.annotations.length > 0) {
                             const dbgTextarea = document.getElementById("debug-output");
                             if (dbgTextarea) {
-                                dbgTextarea.value += `\n\n============================================================\n[${new Date().toISOString()}] [ANNOTATION DEBUG]\n` + 
+                                dbgTextarea.value += `\n\n============================================================\n[${new Date().toISOString()}] [ANNOTATION DEBUG]\n` +
                                     JSON.stringify({
                                         name: item.name,
                                         hasCompData: !!item.compData,
@@ -354,10 +354,15 @@ async function runAgenticExecutionLoop(userText) {
                             if (item.compData && Array.isArray(item.compData.layers)) {
                                 const compWidth = item.compData.width || 1920;
                                 const compHeight = item.compData.height || 1080;
-                                item.compData.layers.forEach(layer => {
-                                    if (layer.enabled !== false && layer.bounds && typeof layer.bounds.left === "number") {
+                                // Loop backwards to check targets in order from top to bottom
+                                for (let k = item.compData.layers.length - 1; k >= 0; k--) {
+                                    const layer = item.compData.layers[k];
+                                    if (layer.enabled !== false &&
+                                        layer.type !== "Null" &&
+                                        layer.type !== "Adjustment" &&
+                                        layer.bounds && typeof layer.bounds.left === "number") {
                                         targets.push({
-                                            name: `"${layer.name}" (layer ref: ${layer.id})`,
+                                            name: `"${layer.name}" (layerRef: ${layer.id})`,
                                             bounds: {
                                                 left: layer.bounds.left / compWidth,
                                                 right: layer.bounds.right / compWidth,
@@ -366,18 +371,18 @@ async function runAgenticExecutionLoop(userText) {
                                             }
                                         });
                                     }
-                                });
+                                }
                             }
 
                             // Intersection math helpers
                             const checkRectIntersection = (boxA, boxB) => {
                                 return (boxA.left <= boxB.right && boxA.right >= boxB.left &&
-                                        boxA.top <= boxB.bottom && boxA.bottom >= boxB.top);
+                                    boxA.top <= boxB.bottom && boxA.bottom >= boxB.top);
                             };
 
                             const checkEllipseIntersection = (cx, cy, rx, ry, box) => {
                                 if (rx === 0 || ry === 0) return false;
-                                
+
                                 const cxPrime = cx / rx;
                                 const cyPrime = cy / ry;
                                 const leftPrime = box.left / rx;
@@ -401,14 +406,14 @@ async function runAgenticExecutionLoop(userText) {
 
                                 if (ann.type === "rect") {
                                     shapeText = `\n- Bounding Box #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" bound coordinates: [Left: ${(ann.x1 * 100).toFixed(1)}%, Top: ${(ann.y1 * 100).toFixed(1)}%, Right: ${(ann.x2 * 100).toFixed(1)}%, Bottom: ${(ann.y2 * 100).toFixed(1)}%]`;
-                                    
+
                                     const annBox = {
                                         left: Math.min(ann.x1, ann.x2),
                                         right: Math.max(ann.x1, ann.x2),
                                         top: Math.min(ann.y1, ann.y2),
                                         bottom: Math.max(ann.y1, ann.y2)
                                     };
-                                    
+
                                     targets.forEach(target => {
                                         if (checkRectIntersection(annBox, target.bounds)) {
                                             matchedLayers.push(target.name);
@@ -420,7 +425,7 @@ async function runAgenticExecutionLoop(userText) {
                                     const rx = Math.abs(ann.x2 - ann.x1) / 2;
                                     const ry = Math.abs(ann.y2 - ann.y1) / 2;
                                     shapeText = `\n- Ellipse #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" Center at [X: ${(cx * 100).toFixed(1)}%, Y: ${(cy * 100).toFixed(1)}%] with radii [Horizontal: ${(rx * 100).toFixed(1)}%, Vertical: ${(ry * 100).toFixed(1)}%]`;
-                                    
+
                                     targets.forEach(target => {
                                         if (checkEllipseIntersection(cx, cy, rx, ry, target.bounds)) {
                                             matchedLayers.push(target.name);
@@ -428,14 +433,14 @@ async function runAgenticExecutionLoop(userText) {
                                     });
                                 } else if (ann.type === "arrow") {
                                     shapeText = `\n- Arrow Vector #${aIdx + 1} (${colorName}): Label: "${ann.label || "unlabeled"}" Directing from [X1: ${(ann.x1 * 100).toFixed(1)}%, Y1: ${(ann.y1 * 100).toFixed(1)}%] to [X2: ${(ann.x2 * 100).toFixed(1)}%, Y2: ${(ann.y2 * 100).toFixed(1)}%]`;
-                                    
+
                                     const arrowBox = {
                                         left: ann.x2 - 0.05,
                                         right: ann.x2 + 0.05,
                                         top: ann.y2 - 0.05,
                                         bottom: ann.y2 + 0.05
                                     };
-                                    
+
                                     targets.forEach(target => {
                                         if (checkRectIntersection(arrowBox, target.bounds)) {
                                             matchedLayers.push(target.name);
@@ -447,7 +452,8 @@ async function runAgenticExecutionLoop(userText) {
 
                                 embeddedText += shapeText;
                                 if (matchedLayers.length > 0) {
-                                    embeddedText += `\n    * Possible highlighted layers: ${JSON.stringify(matchedLayers)}`;
+                                    const topMatches = matchedLayers.slice(0, 5);
+                                    embeddedText += `\n    * Possible highlighted layers: ${JSON.stringify(topMatches)}`;
                                 }
                             });
 
@@ -717,7 +723,7 @@ async function runAgenticExecutionLoop(userText) {
 
                         // Don't send the base64 image again to save bandwidth
                         visualFrameInputs = null;
-                        
+
                         continue; // Self-correction retry
                     } else {
                         observations += (observations ? "\n" : "") + `Tool execution observation:\n${toolObservations}`;
@@ -1012,7 +1018,7 @@ async function runAgenticExecutionLoop(userText) {
 function extractJSONToolCalls(text) {
     if (!text) return null;
     const parts = text.split("```");
-    
+
     // Check standard closed blocks first
     const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
     for (let i = 1; i < limit; i += 2) {
@@ -1047,7 +1053,7 @@ function extractJSONToolCalls(text) {
                         try {
                             JSON.parse(repairJSONRawNewlines(code + "]"));
                             return code + "]";
-                        } catch (e3) {}
+                        } catch (e3) { }
                     }
                 }
             }
