@@ -494,7 +494,7 @@ async function getTimelineContext() {
 async function captureFrameAtTime(time, tempPath) {
     const safePath = tempPath.replace(/\\/g, '/');
     const jsxCommand = `(function() {
-        var comp = app.project.activeItem;
+        var comp = (typeof $._com_arceditor_ !== "undefined" && $._com_arceditor_.getActiveComp) ? $._com_arceditor_.getActiveComp() : app.project.activeItem;
         if (!comp || !(comp instanceof CompItem)) return "Error: No active composition";
         var originalTime = comp.time;
         try {
@@ -650,7 +650,7 @@ async function captureCompositionSequence(startTime, endTime, numFrames, isAgent
     }
 
     const jsxCommand = "(function() {\n" +
-        "        var comp = app.project.activeItem;\n" +
+        "        var comp = (typeof $._com_arceditor_ !== \"undefined\" && $._com_arceditor_.getActiveComp) ? $._com_arceditor_.getActiveComp() : app.project.activeItem;\n" +
         "        if (!comp || !(comp instanceof CompItem)) return \"Error: No active composition\";\n" +
         "        var originalTime = comp.time;\n" +
         "        var pathsResult = [];\n" +

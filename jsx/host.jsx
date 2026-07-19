@@ -76,6 +76,25 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         };
     }
 
+    /**
+     * Safely retrieves the active composition, attempting to focus the active viewer
+     * if the project activeItem is not valid (e.g. if the extension panel has focus).
+     */
+    function getActiveComp() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            try {
+                if (typeof app.activeViewer !== "undefined" && app.activeViewer) {
+                    app.activeViewer.setActive();
+                    comp = app.project.activeItem;
+                }
+            } catch (e) {
+                // Ignore silent errors from activeViewer
+            }
+        }
+        return comp;
+    }
+
     // --- SECTION 1: TIMELINE & COMPOSITION INSPECTOR ---
     var ArcInspector = {
         /**
@@ -89,7 +108,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Serializes structural details of the active composition and its layers.
          */
         getActiveCompositionData: function () {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) {
                 return ArcJSON.stringify({ error: "No active composition found. Please open a composition in the timeline." });
             }
@@ -426,7 +445,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
 
             try {
                 // Find or create active composition
-                var comp = app.project.activeItem;
+                var comp = getActiveComp();
                 if (!comp || !(comp instanceof CompItem)) {
                     tempComp = app.project.items.addComp("ArcEditorTempEffectInspect", 100, 100, 1, 1, 30);
                     comp = tempComp;
@@ -639,7 +658,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * @param {string} tempPath Absolute file path to save the preview PNG to.
          */
         saveCurrentFrame: function (tempPath) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) {
                 return "Error: No active composition found to render.";
             }
@@ -683,7 +702,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          */
          resolveLayer: function (layerRef) {
             if (!layerRef) return null;
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             // If layerRef is already a Layer object
@@ -888,7 +907,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * @param {Array} size Optional [width, height] array. Defaults to comp size.
          */
         createLayer: function (type, name, size, color, options) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             // Parameter normalization/shifting for optional parameters
@@ -1002,7 +1021,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Applies a native After Effects effect to a layer and sets its name.
          */
         applyEffect: function (layerRef, effectMatchName, effectDisplayName) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
@@ -1114,7 +1133,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Sets value on a property at a specific time or overall.
          */
         setPropertyValue: function (layerRef, propPath, value, time) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
@@ -1266,7 +1285,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Sets expression on a property.
          */
         setPropertyExpression: function (layerRef, propPath, expressionStr) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
@@ -1280,7 +1299,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Retrieves the raw expression string of a property.
          */
         getPropertyExpression: function (layerRef, propPath) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
@@ -1291,7 +1310,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Retrieves the current value of a property.
          */
         getPropertyValue: function (layerRef, propPath) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
@@ -1299,7 +1318,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         },
 
         setKeyframes: function (layerRef, propPath, times, values, easeIn, easeOut) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
@@ -1343,7 +1362,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Parents one layer to another on the timeline.
          */
         parentLayer: function (layerRef, parentLayerRef) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var child = this.resolveLayer(layerRef);
             var parent = parentLayerRef ? this.resolveLayer(parentLayerRef) : null;
@@ -1357,7 +1376,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Trims layer timing and start times on timeline.
          */
         trimLayer: function (layerRef, inPoint, outPoint, startTime, duration) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
@@ -1394,7 +1413,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * @param {string|number} relativeToLayerRef (Optional) Reference layer if position is "before" or "after".
          */
         reorderLayer: function (layerRef, position, relativeToLayerRef) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer to move not found: " + layerRef);
@@ -1431,7 +1450,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Precomposes a list of layer references into a precomposition.
          */
         precompose: function (layerRefs, precompName, moveAllAttributes) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             var indices = [];
@@ -1450,7 +1469,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Sets blend mode of a layer.
          */
         setLayerBlendMode: function (layerRef, blendModeName) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             if (!layer) throw new Error("Layer not found: " + layerRef);
@@ -1487,7 +1506,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Adds a marker to either the active composition or a specific layer.
          */
         addMarker: function (type, layerRef, time, comment, duration, labelIndex) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             if (time !== null && typeof time === "object") {
@@ -1527,7 +1546,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Deletes a marker from the active composition or a layer by index or time.
          */
         deleteMarker: function (type, layerRef, timeOrIndex) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             var markerProp;
@@ -1609,7 +1628,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Sets keyframe easing with high-level presets or custom Bezier parameters.
          */
         setKeyframeEasing: function (layerRef, propPath, keyIndex, easeInPresetOrCustom, easeOutPresetOrCustom) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
             var layer = this.resolveLayer(layerRef);
             var prop = this.resolveProperty(layer, propPath);
@@ -1712,7 +1731,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         setTextProperties: function (layerRef, properties) {
             if (!properties) throw new Error("No properties object provided.");
 
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
 
             var layer = this.resolveLayer(layerRef);
@@ -1773,7 +1792,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         addAssetToTimeline: function (assetRef, properties) {
             if (!assetRef) throw new Error("No asset reference provided.");
 
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) {
                 throw new Error("No active composition open.");
             }
@@ -1841,7 +1860,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Sets the playhead position of the active composition (absolute or relative).
          */
         setPlayheadTime: function (timeVal) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) {
                 return "Error: No active composition found.";
             }
@@ -1861,7 +1880,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
          * Selects multiple layers by an array of layerRefs, optionally deselecting others.
          */
         selectLayers: function (layerRefs, deselectOthers) {
-            var comp = app.project.activeItem;
+            var comp = getActiveComp();
             if (!comp || !(comp instanceof CompItem)) {
                 return "Error: No active composition found.";
             }
@@ -2311,6 +2330,7 @@ $._com_arceditor_ = $._com_arceditor_ || {};
     ns.ArcInspector = ArcInspector;
     ns.ArcCanvas = ArcCanvas;
     ns.ArcEditor = ArcEditor;
+    ns.getActiveComp = getActiveComp;
 
 })($._com_arceditor_);
 
