@@ -301,6 +301,14 @@ function makeStreamingRequest(url, method, headers, payload, onChunk) {
                     });
                     return;
                 }
+                res.on('aborted', () => {
+                    removeActiveRequest(req);
+                    reject(new Error("Connection aborted by LLM provider server."));
+                });
+                res.on('error', (err) => {
+                    removeActiveRequest(req);
+                    reject(err);
+                });
 
                 let buffer = '';
                 let decoder = null;

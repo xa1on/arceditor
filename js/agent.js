@@ -223,6 +223,46 @@ async function burnAnnotationsIntoImage(item) {
     });
 }
 
+function wrapExtendScript(scriptContent) {
+    return `(function() {
+        var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
+        var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
+        var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
+        var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
+        var JSON = ArcJSON;
+        var _arcEditorTempFolder;
+        var _scriptAlerts = [];
+        var alert = function(msg) {
+            _scriptAlerts.push(String(msg));
+        };
+        try {
+            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
+            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
+        } catch (dummyErr) {}
+        
+        app.beginUndoGroup("ArcEditor Agent Script");
+        try {
+            ${scriptContent}
+            app.endUndoGroup();
+            if (_scriptAlerts.length > 0) {
+                return "Success (Alerts during execution: " + _scriptAlerts.join(", ") + ")";
+            }
+            return "Success";
+        } catch (err) {
+            app.endUndoGroup();
+            try {
+                app.activate();
+                app.executeCommand(16);
+            } catch (undoErr) {}
+            var errMsg = "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
+            if (_scriptAlerts.length > 0) {
+                errMsg += " (Alerts during execution: " + _scriptAlerts.join(", ") + ")";
+            }
+            return errMsg;
+        }
+    })()`;
+}
+
 async function runAgenticExecutionLoop(userText) {
     isStopped = false;
     currentExecutionId++;
@@ -1452,32 +1492,7 @@ async function executeToolCalls(jsonStr) {
                 }
 
                 if (params.execute) {
-                    jsxCommand = `(function() {
-                        var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
-                        var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
-                        var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
-                        var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
-                        var JSON = ArcJSON;
-                        var _arcEditorTempFolder;
-                        try {
-                            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
-                            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
-                        } catch (dummyErr) {}
-                        
-                        app.beginUndoGroup("ArcEditor Agent Script");
-                        try {
-                            ${content}
-                            app.endUndoGroup();
-                            return "Success";
-                        } catch (err) {
-                            app.endUndoGroup();
-                            try {
-                                app.activate();
-                                app.executeCommand(16);
-                            } catch (undoErr) {}
-                            return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
-                        }
-                    })()`;
+                    jsxCommand = wrapExtendScript(content);
                 } else {
                     observations.push(`- Tool "createScript": Script "${sName}" created/overwritten successfully.`);
                     continue;
@@ -1553,32 +1568,7 @@ async function executeToolCalls(jsonStr) {
                 }
 
                 if (params.execute) {
-                    jsxCommand = `(function() {
-                        var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
-                        var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
-                        var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
-                        var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
-                        var JSON = ArcJSON;
-                        var _arcEditorTempFolder;
-                        try {
-                            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
-                            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
-                        } catch (dummyErr) {}
-                        
-                        app.beginUndoGroup("ArcEditor Agent Script");
-                        try {
-                            ${newContent}
-                            app.endUndoGroup();
-                            return "Success";
-                        } catch (err) {
-                            app.endUndoGroup();
-                            try {
-                                app.activate();
-                                app.executeCommand(16);
-                            } catch (undoErr) {}
-                            return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
-                        }
-                    })()`;
+                    jsxCommand = wrapExtendScript(newContent);
                 } else {
                     observations.push(`- Tool "editScript": Script "${sName}" edited successfully. New content:\n${newContent}`);
                     continue;
@@ -1615,32 +1605,7 @@ async function executeToolCalls(jsonStr) {
                 if (consoleOutput) {
                     consoleOutput.value = script;
                 }
-                jsxCommand = `(function() {
-                    var ArcEditor = $._com_arceditor_ ? $._com_arceditor_.ArcEditor : null;
-                    var ArcJSON = $._com_arceditor_ ? $._com_arceditor_.ArcJSON : null;
-                    var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
-                    var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
-                    var JSON = ArcJSON;
-                    var _arcEditorTempFolder;
-                    try {
-                        _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
-                        if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
-                    } catch (dummyErr) {}
-                    
-                    app.beginUndoGroup("ArcEditor Agent Script");
-                    try {
-                        ${script}
-                        app.endUndoGroup();
-                        return "Success";
-                    } catch (err) {
-                        app.endUndoGroup();
-                        try {
-                            app.activate();
-                            app.executeCommand(16);
-                        } catch (undoErr) {}
-                        return "Error (automatically undone, no need to rollback the errored script with the undo tool): " + err.toString() + (err.line ? " (line " + err.line + ")" : "");
-                    }
-                })()`;
+                jsxCommand = wrapExtendScript(script);
             } else {
                 throw new Error(`Unsupported tool name: ${toolName}`);
             }
