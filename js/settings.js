@@ -714,16 +714,35 @@ function updateCurrentSessionHistory() {
         if (session.title === "New Chat" && chatHistory.length > 0) {
             const firstUserMsg = chatHistory.find(m => m.role === "user");
             if (firstUserMsg) {
-                let rawPrompt = "";
-                if (typeof firstUserMsg.content === "string") {
-                    rawPrompt = firstUserMsg.content;
-                } else if (Array.isArray(firstUserMsg.content)) {
-                    const textPart = firstUserMsg.content.find(p => p.type === "text");
-                    if (textPart) rawPrompt = textPart.text;
+                let rawPrompt = firstUserMsg.userText || "";
+                if (!rawPrompt.trim()) {
+                    if (typeof firstUserMsg.content === "string") {
+                        rawPrompt = firstUserMsg.content;
+                    } else if (Array.isArray(firstUserMsg.content)) {
+                        const textPart = firstUserMsg.content.find(p => p.type === "text");
+                        if (textPart) rawPrompt = textPart.text;
+                    }
                 }
 
-                let summary = rawPrompt.trim().substring(0, 20);
-                if (rawPrompt.length > 20) summary += "...";
+                // Clean up rawPrompt if it starts with attachment syntax
+                let cleanPrompt = (rawPrompt || "").trim();
+                if (cleanPrompt.startsWith("[Uploaded File:") || 
+                    cleanPrompt.startsWith("[Uploaded Video:") || 
+                    cleanPrompt.startsWith("[Uploaded PDF File:") || 
+                    cleanPrompt.startsWith("[Captured Frame:")) {
+                    const match = cleanPrompt.match(/\[(?:Uploaded File|Uploaded Video|Uploaded PDF File|Captured Frame):\s*([^\]\n]+)\]/);
+                    if (match && match[1]) {
+                        cleanPrompt = match[1];
+                    }
+                }
+
+                // If cleanPrompt has newlines, extract only the first line
+                if (cleanPrompt.includes("\n")) {
+                    cleanPrompt = cleanPrompt.split("\n")[0];
+                }
+
+                let summary = cleanPrompt.trim().substring(0, 20);
+                if (cleanPrompt.length > 20) summary += "...";
                 session.title = summary || "New Chat";
 
                 if (typeof renderChatTabs === "function") {

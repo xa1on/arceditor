@@ -504,13 +504,39 @@
 
     <!-- IMAGE LIGHTBOX ZOOM OVERLAY -->
     <div id="image-lightbox" class="lightbox-overlay">
-        <button class="lightbox-close" aria-label="Close image viewer">
+        <div class="lightbox-scroller">
+            <div class="lightbox-content"></div>
+        </div>
+        
+        <button class="lightbox-close" aria-label="Close image viewer" style="position: absolute; top: 20px; right: 20px; z-index: 10001;">
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
         </button>
-        <div class="lightbox-content"></div>
+        
+        <!-- Floating Zoom Controls in Lightbox -->
+        <div class="lightbox-zoom-bar" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.6); padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.15); z-index: 10001; user-select: none;">
+            <button id="btn-lightbox-zoom-out" class="lightbox-zoom-btn" title="Zoom Out (Ctrl+Scroll Down)" style="background: transparent; border: none; color: #d5d5d5; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 2px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+            </button>
+            <span id="lightbox-zoom-level" style="font-family: monospace; font-size: 11px; min-width: 35px; text-align: center; color: #d5d5d5;">100%</span>
+            <button id="btn-lightbox-zoom-in" class="lightbox-zoom-btn" title="Zoom In (Ctrl+Scroll Up)" style="background: transparent; border: none; color: #d5d5d5; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 2px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    <line x1="8" y1="11" x2="14" y2="11"></line>
+                    <line x1="11" y1="8" x2="11" y2="14"></line>
+                    <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+            </button>
+            <div style="width: 1px; height: 12px; background: rgba(255, 255, 255, 0.2); margin: 0 4px;"></div>
+            <button id="btn-lightbox-zoom-reset" class="lightbox-zoom-btn" title="Reset Zoom (Double click background also resets)" style="background: transparent; border: none; color: #d5d5d5; cursor: pointer; font-size: 10px; display: flex; align-items: center;">Reset</button>
+        </div>
     </div>
 </body>
 </html>

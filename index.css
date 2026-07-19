@@ -173,20 +173,34 @@ html, body {
     gap: 8px;
 }
 
+.chat-scroller,
+.code-viewport,
+.drawer-body,
+#settings-skills-list {
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a var(--bg-input);
+}
+
 .chat-scroller::-webkit-scrollbar,
-.code-viewport::-webkit-scrollbar {
+.code-viewport::-webkit-scrollbar,
+.drawer-body::-webkit-scrollbar,
+#settings-skills-list::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 
 .chat-scroller::-webkit-scrollbar-thumb,
-.code-viewport::-webkit-scrollbar-thumb {
+.code-viewport::-webkit-scrollbar-thumb,
+.drawer-body::-webkit-scrollbar-thumb,
+#settings-skills-list::-webkit-scrollbar-thumb {
     background: #3a3a3a;
     border-radius: 0;
 }
 
 .chat-scroller::-webkit-scrollbar-track,
-.code-viewport::-webkit-scrollbar-track {
+.code-viewport::-webkit-scrollbar-track,
+.drawer-body::-webkit-scrollbar-track,
+#settings-skills-list::-webkit-scrollbar-track {
     background: var(--bg-input);
 }
 
@@ -770,13 +784,17 @@ textarea::placeholder {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.35);
     opacity: 0;
-    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.25s cubic-bezier(0.4, 0, 0.2, 1), -webkit-backdrop-filter 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .drawer.active .drawer-overlay {
     opacity: 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .drawer.active .drawer-content {
@@ -2196,19 +2214,45 @@ body.no-transitions *::after {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.85);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.6);
     z-index: 10000;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 0.2s cubic-bezier(0.4, 0, 0.2, 1), -webkit-backdrop-filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.lightbox-scroller {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a rgba(0, 0, 0, 0.4);
+}
+
+.lightbox-scroller::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.lightbox-scroller::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border-radius: 0;
+}
+
+.lightbox-scroller::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.4);
 }
 
 .lightbox-overlay.active {
     opacity: 1;
     pointer-events: auto;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .lightbox-content {
@@ -2218,6 +2262,7 @@ body.no-transitions *::after {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     animation: lightbox-zoom 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2254,7 +2299,7 @@ body.no-transitions *::after {
 }
 
 .lightbox-close {
-    position: absolute;
+    position: fixed;
     top: 20px;
     right: 20px;
     background: rgba(0, 0, 0, 0.4);

@@ -144,6 +144,10 @@ function initUI() {
     if (btnCloseSettings) {
         btnCloseSettings.addEventListener("click", () => toggleSettingsDrawer(false));
     }
+    const drawerOverlay = document.querySelector(".drawer-overlay");
+    if (drawerOverlay) {
+        drawerOverlay.addEventListener("click", () => toggleSettingsDrawer(false));
+    }
     if (formSettings) {
         formSettings.addEventListener("submit", saveSettings);
     }
@@ -561,6 +565,82 @@ ${code}`;
     const lightbox = document.getElementById("image-lightbox");
     if (lightbox) {
         const lightboxContent = lightbox.querySelector(".lightbox-content");
+        const lightboxScroller = lightbox.querySelector(".lightbox-scroller");
+        let lightboxZoom = 1.0;
+        let lightboxBaseWidth = 0;
+        let lightboxBaseHeight = 0;
+        let lightboxIsPanning = false;
+        let lightboxPanStartMouseX = 0;
+        let lightboxPanStartMouseY = 0;
+        let lightboxPanStartScrollLeft = 0;
+        let lightboxPanStartScrollTop = 0;
+
+        const updateLightboxZoom = () => {
+            if (lightboxBaseWidth === 0) return;
+            const w = lightboxBaseWidth * lightboxZoom;
+            const h = lightboxBaseHeight * lightboxZoom;
+            
+            const clone = lightboxContent.querySelector(".bubble-image-wrap");
+            const cloneImg = clone ? clone.querySelector("img") : null;
+            if (clone && cloneImg) {
+                clone.style.setProperty("width", w + "px", "important");
+                clone.style.setProperty("height", h + "px", "important");
+                cloneImg.style.setProperty("width", w + "px", "important");
+                cloneImg.style.setProperty("height", h + "px", "important");
+            }
+            
+            // Adjust overlay flex alignment dynamically based on overflow
+            const workRect = lightboxScroller.getBoundingClientRect();
+            // 40px is padding offset
+            if (w > workRect.width - 40) {
+                lightboxScroller.style.justifyContent = "flex-start";
+            } else {
+                lightboxScroller.style.justifyContent = "center";
+            }
+            if (h > workRect.height - 40) {
+                lightboxScroller.style.alignItems = "flex-start";
+            } else {
+                lightboxScroller.style.alignItems = "center";
+            }
+
+            // Update zoom indicator
+            const zoomEl = lightbox.querySelector("#lightbox-zoom-level");
+            if (zoomEl) {
+                zoomEl.innerText = Math.round(lightboxZoom * 100) + "%";
+            }
+        };
+
+        const resetLightboxZoom = () => {
+            if (lightboxBaseWidth === 0) return;
+            lightboxZoom = 1.0;
+            updateLightboxZoom();
+            lightboxScroller.scrollLeft = 0;
+            lightboxScroller.scrollTop = 0;
+        };
+
+        const zoomLightboxTo = (factor, mouseX_screen, mouseY_screen) => {
+            if (lightboxBaseWidth === 0) return;
+            const minZoom = 0.5;
+            const maxZoom = 20.0;
+            const zoom_old = lightboxZoom;
+            const zoom_new = Math.max(minZoom, Math.min(maxZoom, zoom_old * factor));
+            
+            if (zoom_new === zoom_old) return;
+            
+            const scrollLeft = lightboxScroller.scrollLeft;
+            const scrollTop = lightboxScroller.scrollTop;
+            
+            lightboxZoom = zoom_new;
+            updateLightboxZoom();
+            
+            lightboxScroller.scrollLeft = (scrollLeft + mouseX_screen) * (zoom_new / zoom_old) - mouseX_screen;
+            lightboxScroller.scrollTop = (scrollTop + mouseY_screen) * (zoom_new / zoom_old) - mouseY_screen;
+        };
+
+        const zoomLightboxToCenter = (factor) => {
+            const workRect = lightboxScroller.getBoundingClientRect();
+            zoomLightboxTo(factor, workRect.width / 2, workRect.height / 2);
+        };
 
         const closeLightbox = () => {
             lightbox.classList.remove("active");
@@ -589,15 +669,168 @@ ${code}`;
                 
                 lightboxContent.appendChild(clone);
                 lightbox.classList.add("active");
+                
+                // Reset states
+                lightboxZoom = 1.0;
+                lightboxBaseWidth = 0;
+                lightboxBaseHeight = 0;
+                
+                // Restore default overlay alignment for measuring
+                lightboxScroller.style.justifyContent = "center";
+                lightboxScroller.style.alignItems = "center";
+                lightboxContent.style.maxWidth = "90%";
+                lightboxContent.style.maxHeight = "90%";
+                
+                const cloneImg = clone.querySelector("img");
+                const onImageLoad = () => {
+                    const naturalWidth = cloneImg.naturalWidth || 800;
+                    const naturalHeight = cloneImg.naturalHeight || 600;
+                    const ratio = naturalWidth / naturalHeight;
+                    const containerWidth = window.innerWidth * 0.9;
+                    const containerHeight = window.innerHeight * 0.9;
+                    
+                    let w = naturalWidth;
+                    let h = naturalHeight;
+                    
+                    if (w > containerWidth) {
+                        w = containerWidth;
+                        h = w / ratio;
+                    }
+                    if (h > containerHeight) {
+                        h = containerHeight;
+                        w = h * ratio;
+                    }
+                    
+                    lightboxBaseWidth = w;
+                    lightboxBaseHeight = h;
+                    
+                    // Remove constraints so they can scale past viewport
+                    lightboxContent.style.maxWidth = "none";
+                    lightboxContent.style.maxHeight = "none";
+                    clone.style.setProperty("max-width", "none", "important");
+                    clone.style.setProperty("max-height", "none", "important");
+                    cloneImg.style.setProperty("max-width", "none", "important");
+                    cloneImg.style.setProperty("max-height", "none", "important");
+                    clone.style.setProperty("flex-shrink", "0", "important");
+                    
+                    resetLightboxZoom();
+                };
+                
+                if (cloneImg.complete) {
+                    onImageLoad();
+                } else {
+                    cloneImg.onload = onImageLoad;
+                }
             }
         });
 
         // Close lightbox on click on overlay or close button
         lightbox.addEventListener("click", (e) => {
-            if (e.target === lightbox || e.target.closest(".lightbox-close")) {
+            if (e.target === lightbox || e.target === lightboxScroller || e.target.closest(".lightbox-close")) {
                 closeLightbox();
             }
         });
+
+        // Wheel listener on scroller for Zooming (Ctrl+Scroll)
+        lightboxScroller.addEventListener("wheel", (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                const workRect = lightboxScroller.getBoundingClientRect();
+                const mouseX_screen = e.clientX - workRect.left;
+                const mouseY_screen = e.clientY - workRect.top;
+                
+                zoomLightboxTo(factor, mouseX_screen, mouseY_screen);
+            }
+            // Normal scroll (without Ctrl) rolls scrollbars naturally
+        }, { passive: false });
+
+        // Middle click drag to pan on lightbox scroller (native scroll based)
+        lightboxScroller.addEventListener("pointerdown", (e) => {
+            if (e.button === 1) { // Middle click / scroll wheel click
+                e.preventDefault();
+                lightboxIsPanning = true;
+                lightboxPanStartMouseX = e.clientX;
+                lightboxPanStartMouseY = e.clientY;
+                lightboxPanStartScrollLeft = lightboxScroller.scrollLeft;
+                lightboxPanStartScrollTop = lightboxScroller.scrollTop;
+                lightboxScroller.style.cursor = "grabbing";
+                lightboxContent.style.pointerEvents = "none";
+                lightboxScroller.setPointerCapture(e.pointerId);
+            }
+        });
+
+        lightboxScroller.addEventListener("pointermove", (e) => {
+            if (lightboxIsPanning) {
+                if (!(e.buttons & 4)) {
+                    lightboxIsPanning = false;
+                    lightboxScroller.style.cursor = "";
+                    lightboxContent.style.pointerEvents = "auto";
+                    return;
+                }
+                const dx = e.clientX - lightboxPanStartMouseX;
+                const dy = e.clientY - lightboxPanStartMouseY;
+                lightboxScroller.scrollLeft = lightboxPanStartScrollLeft - dx;
+                lightboxScroller.scrollTop = lightboxPanStartScrollTop - dy;
+            }
+        });
+
+        lightboxScroller.addEventListener("pointerup", (e) => {
+            if (lightboxIsPanning && e.button === 1) {
+                lightboxIsPanning = false;
+                lightboxScroller.style.cursor = "";
+                lightboxContent.style.pointerEvents = "auto";
+                try { lightboxScroller.releasePointerCapture(e.pointerId); } catch(err) {}
+            }
+        });
+
+        lightboxScroller.addEventListener("pointercancel", (e) => {
+            if (lightboxIsPanning) {
+                lightboxIsPanning = false;
+                lightboxScroller.style.cursor = "";
+                lightboxContent.style.pointerEvents = "auto";
+            }
+        });
+
+        // Cancel panning when window loses focus
+        window.addEventListener("blur", () => {
+            if (lightboxIsPanning) {
+                lightboxIsPanning = false;
+                lightboxScroller.style.cursor = "";
+                lightboxContent.style.pointerEvents = "auto";
+            }
+        });
+
+        // Double click background to reset zoom/pan
+        lightboxScroller.addEventListener("dblclick", (e) => {
+            if (e.target === lightboxScroller || e.target === lightboxContent) {
+                resetLightboxZoom();
+            }
+        });
+
+        // Floating Zoom Bar Buttons
+        const btnLightboxIn = lightbox.querySelector("#btn-lightbox-zoom-in");
+        const btnLightboxOut = lightbox.querySelector("#btn-lightbox-zoom-out");
+        const btnLightboxReset = lightbox.querySelector("#btn-lightbox-zoom-reset");
+
+        if (btnLightboxIn) {
+            btnLightboxIn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                zoomLightboxToCenter(1.25);
+            });
+        }
+        if (btnLightboxOut) {
+            btnLightboxOut.addEventListener("click", (e) => {
+                e.stopPropagation();
+                zoomLightboxToCenter(1 / 1.25);
+            });
+        }
+        if (btnLightboxReset) {
+            btnLightboxReset.addEventListener("click", (e) => {
+                e.stopPropagation();
+                resetLightboxZoom();
+            });
+        }
 
         // Close lightbox on Escape key
         document.addEventListener("keydown", (e) => {

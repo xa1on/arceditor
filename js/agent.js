@@ -537,10 +537,15 @@ async function runAgenticExecutionLoop(userText) {
             contentParts.unshift({ type: "text", text: embeddedText });
             userMsg = {
                 role: "user",
-                content: contentParts
+                content: contentParts,
+                userText: userText
             };
         } else {
-            userMsg = { role: "user", content: userText };
+            userMsg = {
+                role: "user",
+                content: userText,
+                userText: userText
+            };
         }
 
         pushToHistory(userMsg);
