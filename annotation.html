@@ -180,6 +180,22 @@
             padding: 20px;
             position: relative;
             background: #141414;
+            scrollbar-width: thin;
+            scrollbar-color: #3a3a3a var(--bg-input);
+        }
+
+        .workspace::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .workspace::-webkit-scrollbar-thumb {
+            background: #3a3a3a;
+            border-radius: 0;
+        }
+
+        .workspace::-webkit-scrollbar-track {
+            background: var(--bg-input);
         }
 
         .canvas-wrapper {
@@ -189,6 +205,9 @@
             background-color: black;
             max-width: 100%;
             max-height: calc(100vh - 120px);
+            transform-origin: 0 0;
+            transition: none !important;
+            flex-shrink: 0;
         }
 
         #preview-image {
@@ -360,6 +379,29 @@
             <span>Redo</span>
         </button>
 
+        <div class="tool-divider"></div>
+
+        <button id="btn-zoom-out" class="tool-btn" title="Zoom Out (Scroll Down)">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+        </button>
+        <span id="zoom-level" style="font-family: var(--font-mono); font-size: 10px; min-width: 32px; text-align: center; color: var(--text-secondary); user-select: none;">100%</span>
+        <button id="btn-zoom-in" class="tool-btn" title="Zoom In (Scroll Up)">
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+        </button>
+        <button id="btn-zoom-reset" class="tool-btn" title="Reset Zoom (Double click empty space also resets)">
+            <span>Reset</span>
+        </button>
+
         <div class="tool-spacer"></div>
 
         <button id="btn-clear-all" class="tool-btn" style="color: var(--text-secondary);" title="Clear all annotations">
@@ -416,6 +458,16 @@
             let redoStack = [];
             
             let dpr = window.devicePixelRatio || 1;
+
+            // Zoom & Pan States
+            let zoom = 1.0;
+            let baseWidth = 0;
+            let baseHeight = 0;
+            let isPanning = false;
+            let panStartMouseX = 0;
+            let panStartMouseY = 0;
+            let panStartScrollLeft = 0;
+            let panStartScrollTop = 0;
 
             const img = document.getElementById("preview-image");
             const canvas = document.getElementById("drawing-canvas");
@@ -489,40 +541,70 @@
 
                     img.src = `data:${data.mimeType || 'image/png'};base64,${data.base64Data}`;
                     img.onload = () => {
+                        baseWidth = img.clientWidth;
+                        baseHeight = img.clientHeight;
+                        
+                        img.style.maxWidth = "none";
+                        img.style.maxHeight = "none";
+                        wrapper.style.maxWidth = "none";
+                        wrapper.style.maxHeight = "none";
+                        
+                        wrapper.style.width = baseWidth + "px";
+                        wrapper.style.height = baseHeight + "px";
+                        img.style.width = baseWidth + "px";
+                        img.style.height = baseHeight + "px";
+                        
                         resizeCanvas();
                     };
                 } else {
                     document.getElementById("file-info").innerText = "No image context loaded (stand-alone mockup mode).";
                     img.style.display = "none";
-                    canvas.width = 600;
-                    canvas.height = 400;
-                    canvas.style.position = "static";
-                    canvas.style.backgroundColor = "#000";
+                    baseWidth = 600;
+                    baseHeight = 400;
+                    wrapper.style.width = baseWidth + "px";
+                    wrapper.style.height = baseHeight + "px";
                     resizeCanvas();
                 }
             });
 
-            window.addEventListener("resize", resizeCanvas);
+            window.addEventListener("resize", () => {
+                if (baseWidth === 0 && img.style.display !== "none") {
+                    baseWidth = img.clientWidth;
+                    baseHeight = img.clientHeight;
+                }
+                resizeCanvas();
+            });
 
             function resizeCanvas() {
-                if (img.style.display !== "none") {
-                    const w = img.clientWidth;
-                    const h = img.clientHeight;
+                if (baseWidth > 0) {
+                    const w = baseWidth * zoom;
+                    const h = baseHeight * zoom;
                     dpr = window.devicePixelRatio || 1;
                     
                     canvas.width = w * dpr;
                     canvas.height = h * dpr;
                     canvas.style.width = w + "px";
                     canvas.style.height = h + "px";
-                    canvas.style.top = img.offsetTop + "px";
-                    canvas.style.left = img.offsetLeft + "px";
+                    canvas.style.top = "0px";
+                    canvas.style.left = "0px";
                     
                     ctx.restore();
                     ctx.save();
                     ctx.scale(dpr, dpr);
-                    
-                    wrapper.style.width = w + "px";
-                    wrapper.style.height = h + "px";
+
+                    // Adjust workspace flex alignment dynamically based on overflow
+                    const workRect = workspace.getBoundingClientRect();
+                    // 40px is padding offset (20px each side)
+                    if (w > workRect.width - 40) {
+                        workspace.style.justifyContent = "flex-start";
+                    } else {
+                        workspace.style.justifyContent = "center";
+                    }
+                    if (h > workRect.height - 40) {
+                        workspace.style.alignItems = "flex-start";
+                    } else {
+                        workspace.style.alignItems = "center";
+                    }
                 }
                 redraw();
             }
@@ -975,10 +1057,11 @@
 
             // CANVAS POINTER EVENTS
             canvas.addEventListener("pointerdown", (e) => {
+                if (e.button !== 0) return; // Only draw/select on left click
                 canvas.setPointerCapture(e.pointerId);
                 const rect = canvas.getBoundingClientRect();
-                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
-                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                const mouseX = rect.width ? Math.max(0, Math.min(canvas.width / dpr, ((e.clientX - rect.left) / rect.width) * (canvas.width / dpr))) : 0;
+                const mouseY = rect.height ? Math.max(0, Math.min(canvas.height / dpr, ((e.clientY - rect.top) / rect.height) * (canvas.height / dpr))) : 0;
 
                 if (!popover.classList.contains("hidden")) {
                     hidePopover();
@@ -1041,8 +1124,8 @@
 
             canvas.addEventListener("pointermove", (e) => {
                 const rect = canvas.getBoundingClientRect();
-                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
-                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                const mouseX = rect.width ? Math.max(0, Math.min(canvas.width / dpr, ((e.clientX - rect.left) / rect.width) * (canvas.width / dpr))) : 0;
+                const mouseY = rect.height ? Math.max(0, Math.min(canvas.height / dpr, ((e.clientY - rect.top) / rect.height) * (canvas.height / dpr))) : 0;
 
                 if (isDrawing) {
                     currentX = mouseX;
@@ -1140,8 +1223,8 @@
                     canvas.releasePointerCapture(e.pointerId);
 
                     const rect = canvas.getBoundingClientRect();
-                    const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
-                    const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                    const mouseX = rect.width ? Math.max(0, Math.min(canvas.width / dpr, ((e.clientX - rect.left) / rect.width) * (canvas.width / dpr))) : 0;
+                    const mouseY = rect.height ? Math.max(0, Math.min(canvas.height / dpr, ((e.clientY - rect.top) / rect.height) * (canvas.height / dpr))) : 0;
                     currentX = mouseX;
                     currentY = mouseY;
 
@@ -1235,8 +1318,8 @@
             canvas.addEventListener("dblclick", (e) => {
                 if (activeTool !== 'select') return;
                 const rect = canvas.getBoundingClientRect();
-                const mouseX = Math.max(0, Math.min(canvas.width / dpr, e.clientX - rect.left));
-                const mouseY = Math.max(0, Math.min(canvas.height / dpr, e.clientY - rect.top));
+                const mouseX = rect.width ? Math.max(0, Math.min(canvas.width / dpr, ((e.clientX - rect.left) / rect.width) * (canvas.width / dpr))) : 0;
+                const mouseY = rect.height ? Math.max(0, Math.min(canvas.height / dpr, ((e.clientY - rect.top) / rect.height) * (canvas.height / dpr))) : 0;
 
                 const idx = getShapeAt(mouseX, mouseY);
                 if (idx !== -1) {
@@ -1388,6 +1471,169 @@
                 hidePopover();
                 redraw();
             });
+
+            // Zoom & Pan Functions
+            const workspace = document.querySelector(".workspace");
+
+            function updateZoomIndicator() {
+                const zoomEl = document.getElementById("zoom-level");
+                if (zoomEl) {
+                    zoomEl.innerText = Math.round(zoom * 100) + "%";
+                }
+            }
+
+            function resetZoom() {
+                if (baseWidth === 0) return;
+                zoom = 1.0;
+                
+                const w = baseWidth * zoom;
+                const h = baseHeight * zoom;
+                wrapper.style.width = w + "px";
+                wrapper.style.height = h + "px";
+                img.style.width = w + "px";
+                img.style.height = h + "px";
+                
+                resizeCanvas();
+                
+                // Reset native scroll positions
+                workspace.scrollLeft = 0;
+                workspace.scrollTop = 0;
+                
+                updateZoomIndicator();
+            }
+
+            // Zoom relative to a screen coordinate on the workspace
+            function zoomTo(factor, mouseX_screen, mouseY_screen) {
+                if (baseWidth === 0) return;
+                const minZoom = 0.5;
+                const maxZoom = 20.0;
+                const zoom_old = zoom;
+                const zoom_new = Math.max(minZoom, Math.min(maxZoom, zoom_old * factor));
+                
+                if (zoom_new === zoom_old) return;
+                
+                // Save current scroll positions before resizing
+                const scrollLeft = workspace.scrollLeft;
+                const scrollTop = workspace.scrollTop;
+                
+                zoom = zoom_new;
+                
+                const w = baseWidth * zoom;
+                const h = baseHeight * zoom;
+                wrapper.style.width = w + "px";
+                wrapper.style.height = h + "px";
+                img.style.width = w + "px";
+                img.style.height = h + "px";
+                
+                resizeCanvas();
+                
+                // Adjust scroll offsets so the point under the mouse stays under the mouse
+                workspace.scrollLeft = (scrollLeft + mouseX_screen) * (zoom_new / zoom_old) - mouseX_screen;
+                workspace.scrollTop = (scrollTop + mouseY_screen) * (zoom_new / zoom_old) - mouseY_screen;
+                
+                updateZoomIndicator();
+            }
+
+            function zoomToCenter(factor) {
+                const workRect = workspace.getBoundingClientRect();
+                zoomTo(factor, workRect.width / 2, workRect.height / 2);
+            }
+
+            // Wheel listener on workspace for Zooming (Ctrl+Scroll)
+            workspace.addEventListener("wheel", (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                    const workRect = workspace.getBoundingClientRect();
+                    const mouseX_screen = e.clientX - workRect.left;
+                    const mouseY_screen = e.clientY - workRect.top;
+                    
+                    zoomTo(factor, mouseX_screen, mouseY_screen);
+                }
+                // When e.ctrlKey is false, we let the browser natively handle scrolling (horizontal side-wheel & vertical wheel)
+            }, { passive: false });
+
+            // Middle click drag to pan on workspace (native scroll based)
+            workspace.addEventListener("pointerdown", (e) => {
+                if (e.button === 1) { // Middle click / scroll wheel click
+                    e.preventDefault();
+                    isPanning = true;
+                    panStartMouseX = e.clientX;
+                    panStartMouseY = e.clientY;
+                    panStartScrollLeft = workspace.scrollLeft;
+                    panStartScrollTop = workspace.scrollTop;
+                    workspace.style.cursor = "grabbing";
+                    canvas.style.pointerEvents = "none";
+                    workspace.setPointerCapture(e.pointerId);
+                }
+            });
+
+            workspace.addEventListener("pointermove", (e) => {
+                if (isPanning) {
+                    if (!(e.buttons & 4)) {
+                        isPanning = false;
+                        workspace.style.cursor = "";
+                        canvas.style.pointerEvents = "auto";
+                        return;
+                    }
+                    const dx = e.clientX - panStartMouseX;
+                    const dy = e.clientY - panStartMouseY;
+                    workspace.scrollLeft = panStartScrollLeft - dx;
+                    workspace.scrollTop = panStartScrollTop - dy;
+                }
+            });
+
+            workspace.addEventListener("pointerup", (e) => {
+                if (isPanning && e.button === 1) {
+                    isPanning = false;
+                    workspace.style.cursor = "";
+                    canvas.style.pointerEvents = "auto";
+                    try { workspace.releasePointerCapture(e.pointerId); } catch(err) {}
+                }
+            });
+
+            workspace.addEventListener("pointercancel", (e) => {
+                if (isPanning) {
+                    isPanning = false;
+                    workspace.style.cursor = "";
+                    canvas.style.pointerEvents = "auto";
+                }
+            });
+
+            // Cancel panning when window loses focus
+            window.addEventListener("blur", () => {
+                if (isPanning) {
+                    isPanning = false;
+                    workspace.style.cursor = "";
+                    canvas.style.pointerEvents = "auto";
+                }
+            });
+
+            // Double click empty space to reset zoom/pan
+            workspace.addEventListener("dblclick", (e) => {
+                if (e.target === workspace || e.target === wrapper || e.target === img) {
+                    resetZoom();
+                }
+            });
+
+            // Toolbar zoom buttons
+            const btnZoomIn = document.getElementById("btn-zoom-in");
+            const btnZoomOut = document.getElementById("btn-zoom-out");
+            const btnZoomReset = document.getElementById("btn-zoom-reset");
+
+            if (btnZoomIn) {
+                btnZoomIn.addEventListener("click", () => {
+                    zoomToCenter(1.25);
+                });
+            }
+            if (btnZoomOut) {
+                btnZoomOut.addEventListener("click", () => {
+                    zoomToCenter(1 / 1.25);
+                });
+            }
+            if (btnZoomReset) {
+                btnZoomReset.addEventListener("click", resetZoom);
+            }
 
             window.addEventListener("beforeunload", (e) => {
                 if (isDirty && !isSaved) {
