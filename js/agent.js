@@ -567,6 +567,46 @@ async function runAgenticExecutionLoop(userText) {
         const completedTurns = [];
         let stateModifiedSinceLastCapture = false;
 
+        const packageAbortedTurnIfAny = () => {
+            const lastLlmText = aiBubble.getAttribute("data-raw-full-text");
+            if (lastLlmText && lastLlmText.trim()) {
+                const parsed = parseStreamingReasoning(lastLlmText);
+                completedTurns.push({
+                    type: "failed",
+                    turnNum: completedTurns.length + 1,
+                    turnTitle: "Turn aborted by user",
+                    content: parsed.content || "(Aborted mid-generation)",
+                    reasoning: parsed.reasoning || "",
+                    llmResponse: lastLlmText,
+                    observations: "Execution stopped by user."
+                });
+
+                // Package and save the partial response to chat/agent history
+                const assistantMsg = {
+                    role: "assistant",
+                    content: parsed.content || "(Aborted mid-generation)",
+                    reasoning: parsed.reasoning || ""
+                };
+                pushToHistory(assistantMsg);
+
+                // Add a system observation indicating the user stopped the agent
+                const systemMsg = {
+                    role: "user",
+                    content: "[System Observation]: Execution was stopped by the user during this turn.",
+                    isIntermediate: true
+                };
+                pushToHistory(systemMsg);
+
+                // Update debug log pane
+                writeToDebugLog("Turn Aborted (Saved to History)", JSON.stringify({
+                    assistantMessage: assistantMsg,
+                    systemObservation: systemMsg
+                }, null, 2));
+
+                aiBubble.removeAttribute("data-raw-full-text");
+            }
+        };
+
         while (!isCompleted && loopRetries < maxRetries) {
             if (executionId !== currentExecutionId || isStopped) {
                 isCompleted = true;
@@ -583,19 +623,25 @@ async function runAgenticExecutionLoop(userText) {
                 window._activeToolStatuses = null;
 
                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
-                    if (executionId !== currentExecutionId || isStopped) return;
+                    if (executionId !== currentExecutionId) return;
                     const activeTurnNum = completedTurns.length + 1;
 
                     const parsed = parseStreamingReasoning(chunkText);
                     const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
                     const contentHtml = formatMarkdown(parsed.content, activeTurnNum);
 
-                    updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
+                    if (!isStopped) {
+                        updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
+                    }
 
                     aiBubble.setAttribute("data-raw-text", parsed.content);
+                    aiBubble.setAttribute("data-raw-full-text", chunkText);
                     if (typeof scrollToBottom === "function") scrollToBottom();
                 });
                 if (executionId !== currentExecutionId || isStopped) {
+                    if (isStopped || executionId !== currentExecutionId) {
+                        packageAbortedTurnIfAny();
+                    }
                     isCompleted = true;
                     break;
                 }
@@ -940,14 +986,26 @@ async function runAgenticExecutionLoop(userText) {
 
             } catch (err) {
                 console.error("Loop iteration failed:", err);
-                updateAiBubbleTurns(aiBubble, completedTurns, "", `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`, true);
-                if (typeof scrollToBottom === "function") scrollToBottom();
-                isCompleted = true;
+                packageAbortedTurnIfAny();
+                if (isStopped || executionId !== currentExecutionId) {
+                    isCompleted = true;
+                } else {
+                    updateAiBubbleTurns(aiBubble, completedTurns, "", `<p style="color:var(--text-error);">Error executing loop: ${err.message}</p>`, true);
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+                    isCompleted = true;
+                }
             }
         }
 
         if (executionId !== currentExecutionId) {
-            // Obsolete thread, exit silently
+            // Obsolete thread - if it was stopped, we still need to perform the final UI render once
+            if (isStopped) {
+                updateAiBubbleTurns(aiBubble, completedTurns, "",
+                    `<div style="margin-top:8px; font-size:11px; color:var(--text-warning); display:flex; align-items:center; gap:6px;">` +
+                    `<svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>` +
+                    `Execution stopped by user.</div>`, true);
+                if (typeof scrollToBottom === "function") scrollToBottom();
+            }
             return;
         }
 
