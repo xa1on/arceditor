@@ -1132,7 +1132,7 @@ select.form-input {
 }
 
 .chat-tab.active {
-    background-color: var(--bg-input);
+    background-color: var(--bg-surface);
     color: var(--text-primary);
     border-top: 2px solid var(--text-accent);
     height: 25px;
@@ -1173,7 +1173,26 @@ select.form-input {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Past Chats Dropdown styling */
+/* Past Chats Button & Dropdown styling */
+.past-chats-btn {
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: var(--border-radius-sm);
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.past-chats-btn:hover {
+    background: var(--bg-tab-hover);
+    color: var(--text-primary);
+}
+
 .past-chats-dropdown {
     position: absolute;
     top: 26px;
@@ -2375,7 +2394,13 @@ body.no-transitions *::after {
     gap: 8px;
     z-index: 10005;
     pointer-events: none;
+    transition: filter 0.25s ease, opacity 0.25s ease;
 }
+
+.toast-container.blur-toasts {
+    filter: blur(6px);
+}
+
 
 .toast {
     pointer-events: auto;

@@ -473,6 +473,30 @@ ${code}`;
         }
     });
 
+    // Automatically blur/unblur toasts and chat history when the past chats dropdown class changes
+    if (pastChatsDropdown) {
+        const observer = new MutationObserver(() => {
+            const isHidden = pastChatsDropdown.classList.contains("hidden");
+            const toastContainer = document.getElementById("toast-container");
+            if (toastContainer) {
+                if (!isHidden) {
+                    toastContainer.classList.add("blur-toasts");
+                } else {
+                    toastContainer.classList.remove("blur-toasts");
+                }
+            }
+            const paneChat = document.getElementById("pane-chat");
+            if (paneChat) {
+                if (!isHidden) {
+                    paneChat.classList.add("blur-chat");
+                } else {
+                    paneChat.classList.remove("blur-chat");
+                }
+            }
+        });
+        observer.observe(pastChatsDropdown, { attributes: true, attributeFilter: ["class"] });
+    }
+
     // Copy Bubble Text & Toggle Tool View Event Delegation
     const chatMessages = document.getElementById("chat-messages");
     if (chatMessages) {
