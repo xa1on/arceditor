@@ -677,7 +677,7 @@ function formatMarkdown(text, turnNum, observations, images) {
             const lineHtml = processedLines[j];
             if (!lineHtml) continue;
 
-            const isBlock = lineHtml.startsWith("<div") || lineHtml.startsWith("<h") || lineHtml.startsWith("<block") || lineHtml.startsWith("<table") || lineHtml.startsWith("<ul") || lineHtml.startsWith("<ol") || lineHtml.startsWith("<hr");
+            const isBlock = lineHtml.startsWith("__PRE_BLOCK_") || lineHtml.startsWith("<div") || lineHtml.startsWith("<h") || lineHtml.startsWith("<block") || lineHtml.startsWith("<table") || lineHtml.startsWith("<ul") || lineHtml.startsWith("<ol") || lineHtml.startsWith("<hr");
             if (isBlock) {
                 if (inParagraph) {
                     finalHtml += "</p>";
