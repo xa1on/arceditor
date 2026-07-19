@@ -585,7 +585,8 @@ async function runAgenticExecutionLoop(userText) {
                 const assistantMsg = {
                     role: "assistant",
                     content: parsed.content || "(Aborted mid-generation)",
-                    reasoning: parsed.reasoning || ""
+                    reasoning: parsed.reasoning || "",
+                    intermediateTurns: JSON.parse(JSON.stringify(completedTurns))
                 };
                 pushToHistory(assistantMsg);
 
@@ -622,13 +623,21 @@ async function runAgenticExecutionLoop(userText) {
                 // Clear active tool statuses from the previous turn to prevent leaking them during streaming preview
                 window._activeToolStatuses = null;
 
-                const llmResponse = await callLLMApi(activeContext, (chunkText) => {
+                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId) return;
                     const activeTurnNum = completedTurns.length + 1;
 
                     const parsed = parseStreamingReasoning(chunkText);
                     const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
                     const contentHtml = formatMarkdown(parsed.content, activeTurnNum);
+
+                    if (parsed.content && /```(?:javascript|js(?!on)|jsx|extendscript)/i.test(parsed.content) && !isStopped && executionId === currentExecutionId) {
+                        window._abortedDueToRedundantCode = true;
+                        if (typeof abortActiveRequests === "function") {
+                            abortActiveRequests();
+                        }
+                        return;
+                    }
 
                     if (!isStopped) {
                         updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
@@ -985,6 +994,27 @@ async function runAgenticExecutionLoop(userText) {
                 }
 
             } catch (err) {
+                if (window._abortedDueToRedundantCode) {
+                    window._abortedDueToRedundantCode = false;
+                    loopRetries++;
+
+                    writeToDebugLog("Redundant Code Block Intercepted", "Aborted stream because LLM started outputting a raw ExtendScript code block outside a JSON tool call.");
+
+                    const correctionMsg = {
+                        role: "user",
+                        content: "[System Observation - Rule Violation]: You started outputting a raw ExtendScript code block in your conversational text. You are strictly forbidden from writing or drafting raw code blocks in conversational text. Please output the JSON tool call block directly (e.g. ```json ... ```) to execute or draft your script. Do NOT write conversational preamble or show raw javascript code.",
+                        isIntermediate: true
+                    };
+                    activeContext.push(correctionMsg);
+                    pushToHistory(correctionMsg);
+
+                    updateAiBubbleTurns(aiBubble, completedTurns, "",
+                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Redundant code block detected. Self-correcting...</div>`, true);
+                    if (typeof scrollToBottom === "function") scrollToBottom();
+
+                    continue;
+                }
+
                 console.error("Loop iteration failed:", err);
                 packageAbortedTurnIfAny();
                 if (isStopped || executionId !== currentExecutionId) {
@@ -2021,7 +2051,8 @@ function writeToDebugLog(category, text) {
         "Tool Calls Extracted": true,
         "Tool Execution": true,
         "Tool Execution Error": true,
-        "API Network Error": true
+        "API Network Error": true,
+        "Turn Aborted": true
     };
 
     const catKey = Object.keys(ALLOWED_CATEGORIES).find(key => category.indexOf(key) === 0);
