@@ -654,6 +654,11 @@ function loadSessionHistory(sessionId) {
     if (typeof window !== "undefined" && typeof window.updatePinnedPlanUI === "function") {
         window.updatePinnedPlanUI();
     }
+    
+    // Clear temporary attachments for the previous session
+    if (typeof window !== "undefined" && typeof window.clearAttachmentDock === "function") {
+        window.clearAttachmentDock();
+    }
 
     // Clear Chat Scroller and re-render messages!
     const scroller = document.getElementById("chat-messages");

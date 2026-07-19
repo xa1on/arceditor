@@ -281,6 +281,10 @@ ${code}`;
     if (chipCapture) {
         chipCapture.addEventListener("click", () => captureCompositionFrame(false));
     }
+    const welcomeChipCapture = document.getElementById("welcome-chip-capture");
+    if (welcomeChipCapture) {
+        welcomeChipCapture.addEventListener("click", () => captureCompositionFrame(false));
+    }
 
     const fileUploadInput = document.getElementById("file-upload-input");
     if (fileUploadInput) {
@@ -334,6 +338,20 @@ ${code}`;
     const chipCaptureSequence = document.getElementById("chip-capture-sequence");
     if (chipCaptureSequence) {
         chipCaptureSequence.addEventListener("click", async () => {
+            if (isExecuting) return;
+            isExecuting = true;
+            setUIReadyState(false);
+            try {
+                await captureCompositionSequence(null, null, 5, false);
+            } finally {
+                isExecuting = false;
+                setUIReadyState(true);
+            }
+        });
+    }
+    const welcomeChipCaptureSequence = document.getElementById("welcome-chip-capture-sequence");
+    if (welcomeChipCaptureSequence) {
+        welcomeChipCaptureSequence.addEventListener("click", async () => {
             if (isExecuting) return;
             isExecuting = true;
             setUIReadyState(false);
@@ -951,11 +969,7 @@ function sendUserMessage(userText, isFromWelcome = false) {
     window._userToggledReasoning = false;
     window._userReasoningState = false;
 
-    if (isFromWelcome) {
-        toggleWelcomeScreen(false, true);
-    } else {
-        toggleWelcomeScreen(false, false);
-    }
+    toggleWelcomeScreen(false, false);
 
     addBubble("user", userText, attachedFrames);
     
@@ -993,6 +1007,14 @@ function toggleWelcomeScreen(isEmpty, animate = false) {
     const welcomeScreen = document.getElementById("welcome-screen");
     const chatMessages = document.getElementById("chat-messages");
     const footer = document.querySelector("footer.app-footer");
+    const quickUtilities = document.getElementById("active-quick-utilities");
+    
+    // If executing or there are attached files/frames, the composer is active, so we are not empty
+    const hasAttachments = (typeof attachedFrames !== "undefined" && attachedFrames && attachedFrames.length > 0);
+    const executing = (typeof isExecuting !== "undefined" && isExecuting);
+    if (executing || hasAttachments) {
+        isEmpty = false;
+    }
     
     if (isEmpty) {
         if (welcomeScreen) {
@@ -1001,44 +1023,22 @@ function toggleWelcomeScreen(isEmpty, animate = false) {
         }
         if (chatMessages) chatMessages.classList.add("hidden");
         if (footer) footer.classList.add("hidden");
+        if (quickUtilities) quickUtilities.classList.add("hidden");
     } else {
-        if (animate && welcomeScreen && !welcomeScreen.classList.contains("hidden")) {
-            // Apply fade transition
-            welcomeScreen.classList.add("fade-out");
-            
-            if (chatMessages) {
-                chatMessages.classList.remove("hidden");
-                chatMessages.classList.add("fade-in-start");
-            }
-            if (footer) {
-                footer.classList.remove("hidden");
-                footer.classList.add("fade-in-start");
-            }
-            
-            // Force repaint
-            welcomeScreen.offsetHeight;
-            
-            if (chatMessages) chatMessages.classList.remove("fade-in-start");
-            if (footer) footer.classList.remove("fade-in-start");
-            
-            setTimeout(() => {
-                welcomeScreen.classList.add("hidden");
-                welcomeScreen.classList.remove("fade-out");
-            }, 200);
-        } else {
-            // Instant transition
-            if (welcomeScreen) {
-                welcomeScreen.classList.add("hidden");
-                welcomeScreen.classList.remove("fade-out");
-            }
-            if (chatMessages) {
-                chatMessages.classList.remove("hidden");
-                chatMessages.classList.remove("fade-in-start");
-            }
-            if (footer) {
-                footer.classList.remove("hidden");
-                footer.classList.remove("fade-in-start");
-            }
+        if (welcomeScreen) {
+            welcomeScreen.classList.add("hidden");
+            welcomeScreen.classList.remove("fade-out");
+        }
+        if (chatMessages) {
+            chatMessages.classList.remove("hidden");
+            chatMessages.classList.remove("fade-in-start");
+        }
+        if (footer) {
+            footer.classList.remove("hidden");
+            footer.classList.remove("fade-in-start");
+        }
+        if (quickUtilities) {
+            quickUtilities.classList.remove("hidden");
         }
     }
 }
@@ -1912,9 +1912,16 @@ function clearAttachmentDock() {
     const dockThumbnails = document.getElementById("dock-thumbnails");
     if (dockThumbnails) dockThumbnails.innerHTML = "";
     document.getElementById("frame-attachment-preview").classList.add("hidden");
+    
+    // Update welcome screen state since attachments changed
+    if (typeof toggleWelcomeScreen === "function") {
+        toggleWelcomeScreen(chatHistory.length === 0, false);
+    }
+    
     updateContextSizeInfo();
     updateSendButtonState();
 }
+window.clearAttachmentDock = clearAttachmentDock;
 
 window.currentAnnotationData = null;
 
@@ -2065,6 +2072,10 @@ function setUIReadyState(ready) {
     if (btnPastChats) btnPastChats.disabled = !ready;
     if (chipCapture) chipCapture.disabled = !ready;
     if (chipCaptureSequence) chipCaptureSequence.disabled = !ready;
+    const welcomeChipCapture = document.getElementById("welcome-chip-capture");
+    const welcomeChipCaptureSequence = document.getElementById("welcome-chip-capture-sequence");
+    if (welcomeChipCapture) welcomeChipCapture.disabled = !ready;
+    if (welcomeChipCaptureSequence) welcomeChipCaptureSequence.disabled = !ready;
     if (btnSettings) btnSettings.disabled = !ready;
     if (btnInspectComp) btnInspectComp.disabled = !ready;
 
