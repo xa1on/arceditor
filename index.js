@@ -1499,18 +1499,148 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
     return id;
 }
 
-function addSystemMessage(text) {
-    const scroller = document.getElementById("chat-messages");
+function showToast(message, type = "info") {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+
+    // Create toast element
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+
+    // Wrapper for icon + content
     const wrapper = document.createElement("div");
-    wrapper.className = "message system-msg";
+    wrapper.className = "toast-content-wrapper";
 
+    // Icon based on type
+    const iconContainer = document.createElement("div");
+    iconContainer.className = `toast-icon ${type}`;
+    if (type === "success") {
+        iconContainer.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        `;
+    } else if (type === "error") {
+        iconContainer.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+        `;
+    } else {
+        iconContainer.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        `;
+    }
+    wrapper.appendChild(iconContainer);
+
+    // Text content
     const content = document.createElement("div");
-    content.className = "message-content";
-    content.innerHTML = `<p>${text}</p>`;
-
+    content.className = "toast-content";
+    content.innerText = message;
     wrapper.appendChild(content);
-    scroller.appendChild(wrapper);
-    scrollToBottom(true, true);
+
+    toast.appendChild(wrapper);
+
+    // Close button
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "toast-close";
+    closeBtn.title = "Dismiss";
+    closeBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+    `;
+    
+    let isDismissed = false;
+
+    const dismiss = () => {
+        if (isDismissed) return;
+        isDismissed = true;
+        
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(10px) scale(0.95)";
+        
+        // Remove hover blur if no other toast is hovered (excluding the current one)
+        setTimeout(() => {
+            const otherHovered = Array.from(container.querySelectorAll(".toast:hover"))
+                .filter(t => t !== toast);
+            if (otherHovered.length === 0) {
+                const pane = document.getElementById("pane-chat");
+                if (pane) {
+                    pane.classList.remove("blur-chat");
+                }
+            }
+        }, 50);
+
+        setTimeout(() => {
+            if (toast.parentNode) {
+                container.removeChild(toast);
+            }
+        }, 200);
+    };
+
+    closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dismiss();
+    });
+    toast.appendChild(closeBtn);
+
+    // Hover blur effects
+    toast.addEventListener("mouseenter", () => {
+        const pane = document.getElementById("pane-chat");
+        if (pane) {
+            pane.classList.add("blur-chat");
+        }
+    });
+
+    toast.addEventListener("mouseleave", () => {
+        setTimeout(() => {
+            const hovered = container.querySelector(".toast:hover");
+            if (!hovered) {
+                const pane = document.getElementById("pane-chat");
+                if (pane) {
+                    pane.classList.remove("blur-chat");
+                }
+            }
+        }, 50);
+    });
+
+    // Append to container
+    container.appendChild(toast);
+
+    // Auto dismiss after 5 seconds
+    setTimeout(dismiss, 5000);
+}
+
+function addSystemMessage(text) {
+    if (!text) return;
+    
+    // Check for intermediate status messages to ignore completely
+    const lower = text.toLowerCase();
+    if (lower.includes("capturing current timeline frame") ||
+        lower.includes("capturing composition sequence") ||
+        lower.includes("loading active timeline context") ||
+        lower.includes("executing custom extendscript") ||
+        lower.includes("extracting frames from video")) {
+        return;
+    }
+
+    // Determine type (error, success, info)
+    let type = "info";
+    if (lower.startsWith("error") || lower.includes("failed")) {
+        type = "error";
+    } else if (lower.includes("successfully") || lower.includes("success")) {
+        type = "success";
+    }
+
+    showToast(text, type);
 }
 
 let tokenCountTimeout = null;
