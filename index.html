@@ -501,5 +501,16 @@
         <button id="btn-close-annotation-modal" style="position: absolute; top: 12px; right: 12px; z-index: 10000; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color, #2b2b2b); color: var(--text-primary, #d5d5d5); border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;">&times;</button>
         <iframe id="annotation-iframe" src="" style="width: 100%; height: 100%; border: none;"></iframe>
     </div>
+
+    <!-- IMAGE LIGHTBOX ZOOM OVERLAY -->
+    <div id="image-lightbox" class="lightbox-overlay">
+        <button class="lightbox-close" aria-label="Close image viewer">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <div class="lightbox-content"></div>
+    </div>
 </body>
 </html>

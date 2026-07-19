@@ -554,6 +554,58 @@ ${code}`;
     if (window.commandsManager && typeof window.commandsManager.init === "function") {
         window.commandsManager.init();
     }
+
+    // ----------------------------------------------------
+    // IMAGE LIGHTBOX ZOOM SYSTEM
+    // ----------------------------------------------------
+    const lightbox = document.getElementById("image-lightbox");
+    if (lightbox) {
+        const lightboxContent = lightbox.querySelector(".lightbox-content");
+
+        const closeLightbox = () => {
+            lightbox.classList.remove("active");
+            setTimeout(() => {
+                if (!lightbox.classList.contains("active")) {
+                    lightboxContent.innerHTML = "";
+                }
+            }, 200);
+        };
+
+        // Delegate clicks on images in the chat history or messages
+        document.addEventListener("click", (e) => {
+            const wrap = e.target.closest(".bubble-image-wrap");
+            if (wrap) {
+                // If the click is already inside the lightbox content, ignore it
+                if (e.target.closest(".lightbox-content")) {
+                    return;
+                }
+                lightboxContent.innerHTML = "";
+                const clone = wrap.cloneNode(true);
+                
+                // Remove any inline styles on the clone to let the stylesheet take control
+                clone.style.removeProperty("margin-top");
+                clone.style.removeProperty("max-width");
+                clone.style.removeProperty("max-height");
+                
+                lightboxContent.appendChild(clone);
+                lightbox.classList.add("active");
+            }
+        });
+
+        // Close lightbox on click on overlay or close button
+        lightbox.addEventListener("click", (e) => {
+            if (e.target === lightbox || e.target.closest(".lightbox-close")) {
+                closeLightbox();
+            }
+        });
+
+        // Close lightbox on Escape key
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && lightbox.classList.contains("active")) {
+                closeLightbox();
+            }
+        });
+    }
 }
 
 window.updatePermissionModeDescription = function(mode) {
