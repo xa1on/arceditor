@@ -583,7 +583,7 @@ textarea.code-viewport {
     display: flex;
     gap: 4px;
     overflow-x: auto;
-    padding: 4px 8px;
+    padding: 6px 6px 3px 6px;
     background-color: var(--bg-base);
 }
 
