@@ -1927,6 +1927,12 @@ function renderAttachmentDock() {
     }
 
     previewContainer.classList.remove("hidden");
+    
+    // Auto-transition welcome screen if attachments change
+    if (typeof toggleWelcomeScreen === "function") {
+        toggleWelcomeScreen(chatHistory.length === 0, false);
+    }
+    
     updateContextSizeInfo();
     updateSendButtonState();
 }
