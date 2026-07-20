@@ -15,6 +15,7 @@ let openaiReasoningEffort = "medium";
 let claudeThinkingBudget = 2048;
 let agentPermissionMode = "review";
 let webSearchEnabled = true;
+let webScrapeEnabled = true;
 let uiTransitionsEnabled = true;
 let apiTemperature = 0.2;
 let apiTopP = 0.95;

@@ -52,6 +52,7 @@ async function loadSettings() {
 
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
             webSearchEnabled = data.webSearchEnabled !== undefined ? !!data.webSearchEnabled : true;
+            webScrapeEnabled = data.webScrapeEnabled !== undefined ? !!data.webScrapeEnabled : true;
             maxToolRetryLimit = data.maxToolRetryLimit !== undefined ? parseInt(data.maxToolRetryLimit, 10) : 15;
             agentPermissionMode = data.agentPermissionMode || "review";
             uiTransitionsEnabled = data.uiTransitionsEnabled !== undefined ? !!data.uiTransitionsEnabled : true;
@@ -73,6 +74,7 @@ async function loadSettings() {
         modelName = providerSettings.lemonade.model;
         includeBase64InDebugLog = false;
         webSearchEnabled = true;
+        webScrapeEnabled = true;
         maxToolRetryLimit = 15;
         agentPermissionMode = "review";
         uiTransitionsEnabled = true;
@@ -105,6 +107,8 @@ async function loadSettings() {
     if (base64Checkbox) base64Checkbox.checked = includeBase64InDebugLog;
     const webSearchCheckbox = document.getElementById("setting-web-search");
     if (webSearchCheckbox) webSearchCheckbox.checked = webSearchEnabled;
+    const webScrapeCheckbox = document.getElementById("setting-web-scrape");
+    if (webScrapeCheckbox) webScrapeCheckbox.checked = webScrapeEnabled;
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxRetryInput.value = maxToolRetryLimit;
 
@@ -173,6 +177,9 @@ async function saveSettings(e) {
     const webSearchCheckbox = document.getElementById("setting-web-search");
     if (webSearchCheckbox) webSearchEnabled = webSearchCheckbox.checked;
 
+    const webScrapeCheckbox = document.getElementById("setting-web-scrape");
+    if (webScrapeCheckbox) webScrapeEnabled = webScrapeCheckbox.checked;
+
     const maxRetryInput = document.getElementById("setting-max-tool-retry");
     if (maxRetryInput) maxToolRetryLimit = parseInt(maxRetryInput.value, 10) || 15;
 
@@ -203,6 +210,7 @@ async function saveSettings(e) {
         model: modelName,
         includeBase64InDebugLog: includeBase64InDebugLog,
         webSearchEnabled: webSearchEnabled,
+        webScrapeEnabled: webScrapeEnabled,
         maxToolRetryLimit: maxToolRetryLimit,
         agentPermissionMode: agentPermissionMode,
         uiTransitionsEnabled: uiTransitionsEnabled,

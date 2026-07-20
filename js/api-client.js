@@ -1160,6 +1160,121 @@ async function searchWeb(query) {
 }
 if (typeof window !== "undefined") window.searchWeb = searchWeb;
 
+let scrapedPagesCache = {};
+
+async function scrapeWeb(url, chunk = 0, format = "text") {
+    const debugTextarea = document.getElementById("debug-output");
+    const timestamp = new Date().toISOString();
+    if (debugTextarea) {
+        debugTextarea.value += `\n[${timestamp}] [DEBUG] Executing Web Scrape for: "${url}" (Chunk: ${chunk}, Format: ${format})\n`;
+        debugTextarea.scrollTop = debugTextarea.scrollHeight;
+    }
+
+    try {
+        if (!scrapedPagesCache[url]) {
+            const headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            };
+            const html = await makeRequest(url, 'GET', headers, null);
+            
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            
+            // 1. Remove script, style, iframe, svg, noscript
+            const destructiveTags = ['script', 'style', 'iframe', 'svg', 'noscript'];
+            destructiveTags.forEach(tag => {
+                doc.querySelectorAll(tag).forEach(el => el.remove());
+            });
+
+            // 2. Generate sanitized HTML version
+            let cleanedHtml = doc.body ? doc.body.innerHTML : html;
+            // Sanitize prompt injection markers in HTML
+            cleanedHtml = cleanedHtml
+                .replace(/<thinking>/gi, "[thinking]")
+                .replace(/<\/thinking>/gi, "[/thinking]")
+                .replace(/<antthinking>/gi, "[thinking]")
+                .replace(/<\/antthinking>/gi, "[/thinking]")
+                .replace(/```/g, "\\`\\`\\`")
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            // 3. Generate plain text version
+            // Remove navigation and footer elements to parse text cleaner
+            const ignoredElements = ['nav', 'footer', 'header', 'aside'];
+            ignoredElements.forEach(tag => {
+                doc.querySelectorAll(tag).forEach(el => el.remove());
+            });
+
+            const mainContentEl = doc.querySelector('article, main, #content, .content, #main, .main') || doc.body || doc;
+            const lines = [];
+            const processNode = (node) => {
+                if (node.nodeType === 3) { // Text Node
+                    const txt = node.textContent.trim();
+                    if (txt) {
+                        lines.push(txt);
+                    }
+                } else if (node.nodeType === 1) { // Element Node
+                    const tagName = node.tagName.toLowerCase();
+                    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+                        lines.push(`\n## ${node.textContent.trim()} ##\n`);
+                    } else if (tagName === 'p' || tagName === 'li' || tagName === 'pre' || tagName === 'code') {
+                        const txt = node.textContent.trim();
+                        if (txt) {
+                            lines.push(`\n${txt}\n`);
+                        }
+                    } else {
+                        for (let i = 0; i < node.childNodes.length; i++) {
+                            processNode(node.childNodes[i]);
+                        }
+                    }
+                }
+            };
+            processNode(mainContentEl);
+            
+            let cleanedText = lines.join(' ').replace(/\s+/g, ' ').trim();
+            // Sanitize prompt injection markers in Text
+            cleanedText = cleanedText
+                .replace(/<thinking>/gi, "[thinking]")
+                .replace(/<\/thinking>/gi, "[/thinking]")
+                .replace(/<antthinking>/gi, "[thinking]")
+                .replace(/<\/antthinking>/gi, "[/thinking]")
+                .replace(/```/g, "\\`\\`\\`")
+                .trim();
+
+            scrapedPagesCache[url] = {
+                text: cleanedText || "No text content found on the page.",
+                html: cleanedHtml || "No HTML content found on the page."
+            };
+        }
+
+        const cache = scrapedPagesCache[url];
+        const targetContent = format === "html" ? cache.html : cache.text;
+
+        const totalChars = targetContent.length;
+        const chunkSize = 4000;
+        const totalChunks = Math.max(1, Math.ceil(totalChars / chunkSize));
+        
+        const validatedChunk = Math.min(Math.max(0, parseInt(chunk, 10) || 0), totalChunks - 1);
+        const startIdx = validatedChunk * chunkSize;
+        const chunkText = targetContent.substring(startIdx, startIdx + chunkSize);
+
+        const currentChunkDisplay = validatedChunk + 1;
+        
+        let headerMessage = `[BEGIN SCRAPED WEB DATA - URL: ${url} | CHUNK: ${currentChunkDisplay}/${totalChunks} | FORMAT: ${format}]\n`;
+        let footerMessage = `\n[END SCRAPED WEB DATA]`;
+        if (currentChunkDisplay < totalChunks) {
+            footerMessage += `\nNote: There is more content. To read the next part, execute "webScrape" with parameters: { "url": "${url}", "chunk": ${currentChunkDisplay}, "format": "${format}" }`;
+        }
+
+        return `${headerMessage}${chunkText}${footerMessage}`;
+    } catch (err) {
+        console.error("Web scrape failed:", err);
+        return `[BEGIN SCRAPED WEB DATA - URL: ${url} | ERROR]\nWeb scrape request failed: ${err.message || err}\n[END SCRAPED WEB DATA]`;
+    }
+}
+if (typeof window !== "undefined") window.scrapeWeb = scrapeWeb;
+
+
 function normalizeResponse(text) {
     if (!text) return "";
     

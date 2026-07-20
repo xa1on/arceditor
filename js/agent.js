@@ -31,6 +31,7 @@ function getCanonicalToolName(name) {
         "submitplan": "submitPlan",
         "updateplan": "updatePlan",
         "websearch": "webSearch",
+        "webscrape": "webScrape",
         "getprojectassets": "getProjectAssets",
         "geteffectproperties": "getEffectProperties",
         "createscript": "createScript",
@@ -57,6 +58,7 @@ const CANVAS_READONLY_TOOLS = [
     "submitPlan",
     "updatePlan",
     "webSearch",
+    "webScrape",
     "getProjectAssets",
     "createScript",
     "viewScript",
@@ -76,6 +78,7 @@ const PERMISSION_READONLY_TOOLS = [
     "askQuestion",
     "updatePlan",
     "webSearch",
+    "webScrape",
     "getProjectAssets",
     "createScript",
     "viewScript",
@@ -628,7 +631,7 @@ async function runAgenticExecutionLoop(userText) {
                 // Clear active tool statuses from the previous turn to prevent leaking them during streaming preview
                 window._activeToolStatuses = null;
 
-                 const llmResponse = await callLLMApi(activeContext, (chunkText) => {
+                const llmResponse = await callLLMApi(activeContext, (chunkText) => {
                     if (executionId !== currentExecutionId) return;
                     const activeTurnNum = completedTurns.length + 1;
 
@@ -1085,6 +1088,11 @@ async function runAgenticExecutionLoop(userText) {
             }
         }
 
+        if (isStopped || loopRetries >= maxRetries || isCompleted) {
+            pruneLargeWebObservations(chatHistory);
+            pruneLargeWebObservations(agentHistory);
+        }
+
         // Update persistent history size information
         updateCurrentSessionHistory();
         updateContextSizeInfo();
@@ -1418,7 +1426,14 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "webSearch") {
                 const query = params.query;
                 const results = await window.searchWeb(query);
-                observations.push(`- Tool "webSearch": ${JSON.stringify(results)}`);
+                observations.push(`- Tool "webSearch": ${JSON.stringify(results)}\n Follow this up with the webScrape tool for retrieve information from the following links.`);
+                continue;
+            } else if (toolName === "webScrape") {
+                const url = params.url;
+                const chunk = params.chunk !== undefined ? params.chunk : 0;
+                const format = params.format || "text";
+                const result = await window.scrapeWeb(url, chunk, format);
+                observations.push(`- Tool "webScrape": ${result}`);
                 continue;
             } else if (toolName === "askQuestion") {
                 if (typeof setUIReadyState === "function") {
@@ -1838,6 +1853,31 @@ function repairJSON(jsonStr) {
 }
 
 
+
+function pruneLargeWebObservations(historyArray) {
+    if (!historyArray || !Array.isArray(historyArray)) return;
+    for (let i = 0; i < historyArray.length; i++) {
+        const msg = historyArray[i];
+        if (msg && msg.role === "user" && msg.isIntermediate && typeof msg.content === "string") {
+            if (msg.content.indexOf("- Tool \"webScrape\":") !== -1) {
+                const marker = "- Tool \"webScrape\":";
+                const idx = msg.content.indexOf(marker);
+                const prefix = msg.content.substring(0, idx + marker.length);
+                let url = "";
+                const urlMatch = msg.content.match(/URL:\s*(https?:\/\/[^\s|\]]+)/i);
+                if (urlMatch) {
+                    url = urlMatch[1];
+                }
+                msg.content = `${prefix} [Web Scrape of ${url || "page"} (scraped text truncated to save context)]\n\nPlease analyze this result and proceed with your next planned steps.`;
+            } else if (msg.content.indexOf("- Tool \"webSearch\":") !== -1) {
+                const marker = "- Tool \"webSearch\":";
+                const idx = msg.content.indexOf(marker);
+                const prefix = msg.content.substring(0, idx + marker.length);
+                msg.content = `${prefix} [Web Search Results (results list truncated to save context)]\n\nPlease analyze this result and proceed with your next planned steps.`;
+            }
+        }
+    }
+}
 
 function pruneBase64Images(context, maxKeep) {
     if (!context) return;
