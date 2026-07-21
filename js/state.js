@@ -1,50 +1,14 @@
 /**
  * ArcEditor State Module
- * Holds global states, Node.js runtime bindings, and settings persistence path keys.
+ * Encapsulates application state under window.ArcEditor.state namespace
+ * and provides safe Node.js runtime path bindings.
  */
 
-// Global state variables
-let currentProvider = "lemonade";
-let apiUrl = "http://localhost:13305/v1";
-let modelName = "";
-let apiKey = "";
-let isConnected = false;
-let includeBase64InDebugLog = false;
-let maxToolRetryLimit = 15;
-let openaiReasoningEffort = "medium";
-let claudeThinkingBudget = 2048;
-let agentPermissionMode = "review";
-let webSearchEnabled = true;
-let webScrapeEnabled = true;
-let uiTransitionsEnabled = true;
-let apiTemperature = 0.2;
-let apiTopP = 0.95;
+window.ArcEditor = window.ArcEditor || {};
 
-let providerSettings = {
-    lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
-    gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
-    openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
-    anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
-};
-
-let chatHistory = [];
-let agentHistory = [];
-let attachedFrames = [];
-let installedEffects = {};
-let lastApiUsage = null; // { promptTokens, completionTokens, totalTokens }
-let skillsList = [];
-let enabledSkills = {};
-
-// Safe Node.js loading (allows mockup testing inside standalone browsers)
+// Node.js & CEP runtime handles
 let fs = null, path = null, os = null, httpsClient = null, httpClient = null, url = null;
 let csInterface = null;
-let extensionPath = "./";
-let configPath = "./config.json";
-let chatsConfigPath = "./chats.json";
-let scriptsConfigPath = "./scripts.json";
-let effectsCachePath = "./effects_cache.json";
-let effectPropertiesCachePath = "./effect_properties_cache.json";
-let appConfigDir = "";
 
 try {
     if (typeof require !== "undefined") {
@@ -56,143 +20,195 @@ try {
         url = require('url');
     }
 } catch (e) {
-    console.warn("[ArcEditor] Node.js context not detected. Running in mockup browser mode.");
+    console.warn("[ArcEditor] Node.js context not detected. Running in browser mockup mode.");
 }
 
-// Initialize Adobe CEP CSInterface
+/**
+ * Normalizes file:// URIs and platform paths.
+ */
+function normalizeFilePath(pathStr) {
+    if (!pathStr || typeof pathStr !== "string") return pathStr || "";
+    if (pathStr.indexOf("file://") === 0) {
+        if (url && typeof url.fileURLToPath === "function") {
+            return url.fileURLToPath(pathStr);
+        }
+        let clean = /^file:\/\/\/[a-zA-Z]:/.test(pathStr)
+            ? pathStr.replace(/^file:\/\/\//, "")
+            : pathStr.replace(/^file:\/\//, "");
+        clean = decodeURIComponent(clean);
+        if (path && os && os.platform() === "win32") {
+            clean = clean.replace(/\//g, "\\");
+        }
+        return clean;
+    }
+    return pathStr;
+}
+
+// Initialize CSInterface
+let extensionPath = "./";
 try {
     if (typeof CSInterface !== "undefined") {
         csInterface = new CSInterface();
-        extensionPath = csInterface.getSystemPath('extension');
-        if (extensionPath && extensionPath.indexOf("file://") === 0) {
-            if (url && typeof url.fileURLToPath === "function") {
-                extensionPath = url.fileURLToPath(extensionPath);
-            } else {
-                if (/^file:\/\/\/[a-zA-Z]:/.test(extensionPath)) {
-                    extensionPath = extensionPath.replace(/^file:\/\/\//, "");
-                } else {
-                    extensionPath = extensionPath.replace(/^file:\/\//, "");
-                }
-                extensionPath = decodeURIComponent(extensionPath);
-                if (path && os && os.platform() === "win32") {
-                    extensionPath = extensionPath.replace(/\//g, "\\");
-                }
-            }
+        const rawExtPath = csInterface.getSystemPath('extension');
+        if (rawExtPath) {
+            extensionPath = normalizeFilePath(rawExtPath);
         }
     }
 } catch (e) {
-    console.error("CSInterface initialization failed:", e);
+    console.error("[ArcEditor] CSInterface initialization failed:", e);
 }
 
-// Set writable config path in dynamic Documents/ArcEditor folder (avoids Program Files read-only permission issues!)
+// Compute dynamic config directory
+let appConfigDir = "";
+let configPath = "./config.json";
+let chatsConfigPath = "./chats.json";
+let scriptsConfigPath = "./scripts.json";
+let effectsCachePath = "./effects_cache.json";
+let effectPropertiesCachePath = "./effect_properties_cache.json";
+
 if (os && path && fs) {
-    appConfigDir = "";
     try {
         let docsPath = "";
         if (csInterface && typeof csInterface.getSystemPath === "function") {
             docsPath = csInterface.getSystemPath("myDocuments");
         }
-        if (docsPath) {
-            // Normalize path if it starts with file:// scheme
-            if (docsPath.indexOf("file://") === 0) {
-                if (url && typeof url.fileURLToPath === "function") {
-                    docsPath = url.fileURLToPath(docsPath);
-                } else {
-                    // Manual parsing fallback if url module is unavailable
-                    if (/^file:\/\/\/[a-zA-Z]:/.test(docsPath)) {
-                        docsPath = docsPath.replace(/^file:\/\/\//, ""); // Remove file:///
-                    } else {
-                        docsPath = docsPath.replace(/^file:\/\//, ""); // Remove file://, keeping root /
-                    }
-                    docsPath = decodeURIComponent(docsPath);
-                    if (path && os && os.platform() === "win32") {
-                        docsPath = docsPath.replace(/\//g, "\\");
-                    }
-                }
-            }
-        }
-        if (!docsPath) {
-            docsPath = path.join(os.homedir(), 'Documents');
-        }
+        docsPath = normalizeFilePath(docsPath) || path.join(os.homedir(), 'Documents');
 
         appConfigDir = path.join(docsPath, 'ArcEditor');
         if (!fs.existsSync(appConfigDir)) {
             fs.mkdirSync(appConfigDir, { recursive: true });
         }
     } catch (e) {
-        console.error("Failed to dynamically locate or create ArcEditor Documents folder:", e);
-        appConfigDir = os.homedir(); // Safe fallback to user home directory
+        console.error("[ArcEditor] Failed to locate or create ArcEditor Documents folder:", e);
+        appConfigDir = os.homedir();
     }
     configPath = path.join(appConfigDir, 'config.json');
     chatsConfigPath = path.join(appConfigDir, 'chats.json');
     scriptsConfigPath = path.join(appConfigDir, 'scripts.json');
     effectsCachePath = path.join(appConfigDir, 'effects_cache.json');
     effectPropertiesCachePath = path.join(appConfigDir, 'effect_properties_cache.json');
-} else {
-    configPath = "./config.json";
-    chatsConfigPath = "./chats.json";
-    scriptsConfigPath = "./scripts.json";
-    effectsCachePath = "./effects_cache.json";
-    effectPropertiesCachePath = "./effect_properties_cache.json";
 }
 
-// Project specific chat sessions state
-let allProjectChats = {};
-let activeSessionId = null;
-let allProjectScripts = {};
-let activeScriptName = null;
-let currentProjectPath = "Unsaved Project";
-let isExecuting = false;
-let isStopped = false;
-let currentExecutionId = 0;
-let historyVersion = 0;
-let activeAiBubbleId = null;
+// Core State Container
+ArcEditor.state = {
+    // Connection & Provider
+    currentProvider: "lemonade",
+    apiUrl: "http://localhost:13305/v1",
+    modelName: "",
+    apiKey: "",
+    isConnected: false,
 
-// Project-level tool execution permissions helpers
-function getProjectAllowedTools(projectPath) {
-    const key = "settings_" + (projectPath || currentProjectPath);
-    if (!allProjectChats[key]) {
-        allProjectChats[key] = { allowedTools: [], deniedTools: [] };
-    }
-    if (!allProjectChats[key].allowedTools) {
-        allProjectChats[key].allowedTools = [];
-    }
-    if (!allProjectChats[key].deniedTools) {
-        allProjectChats[key].deniedTools = [];
-    }
-    return allProjectChats[key].allowedTools;
-}
+    // Settings & Features
+    includeBase64InDebugLog: false,
+    maxToolRetryLimit: 15,
+    openaiReasoningEffort: "medium",
+    claudeThinkingBudget: 2048,
+    agentPermissionMode: "review",
+    webSearchEnabled: true,
+    webScrapeEnabled: true,
+    uiTransitionsEnabled: true,
+    apiTemperature: 0.2,
+    apiTopP: 0.95,
 
-function setProjectAllowedTools(projectPath, allowedList) {
-    const key = "settings_" + (projectPath || currentProjectPath);
-    if (!allProjectChats[key]) {
-        allProjectChats[key] = {};
-    }
-    allProjectChats[key].allowedTools = allowedList;
-    if (typeof saveChats === "function") {
-        saveChats();
-    }
-}
+    // Provider Config Presets
+    providerSettings: {
+        lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
+        gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
+        openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
+        anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
+    },
 
-function getProjectDeniedTools(projectPath) {
-    const key = "settings_" + (projectPath || currentProjectPath);
-    if (!allProjectChats[key]) {
-        allProjectChats[key] = { allowedTools: [], deniedTools: [] };
-    }
-    if (!allProjectChats[key].deniedTools) {
-        allProjectChats[key].deniedTools = [];
-    }
-    return allProjectChats[key].deniedTools;
-}
+    // Session Data
+    chatHistory: [],
+    agentHistory: [],
+    attachedFrames: [],
+    installedEffects: {},
+    lastApiUsage: null,
+    skillsList: [],
+    enabledSkills: {},
 
-function setProjectDeniedTools(projectPath, deniedList) {
-    const key = "settings_" + (projectPath || currentProjectPath);
-    if (!allProjectChats[key]) {
-        allProjectChats[key] = {};
+    // Paths & Runtime Modules
+    fs, path, os, httpsClient, httpClient, url, csInterface,
+    extensionPath, configPath, chatsConfigPath, scriptsConfigPath,
+    effectsCachePath, effectPropertiesCachePath, appConfigDir,
+
+    // Execution & Workspace State
+    allProjectChats: {},
+    activeSessionId: null,
+    allProjectScripts: {},
+    activeScriptName: null,
+    currentProjectPath: "Unsaved Project",
+    isExecuting: false,
+    isStopped: false,
+    currentExecutionId: 0,
+    historyVersion: 0,
+    activeAiBubbleId: null,
+
+    // Utility methods
+    normalizeFilePath
+};
+
+// Project permission helpers
+ArcEditor.state.getProjectAllowedTools = function(projectPath) {
+    const key = "settings_" + (projectPath || ArcEditor.state.currentProjectPath);
+    if (!ArcEditor.state.allProjectChats[key]) {
+        ArcEditor.state.allProjectChats[key] = { allowedTools: [], deniedTools: [] };
     }
-    allProjectChats[key].deniedTools = deniedList;
-    if (typeof saveChats === "function") {
-        saveChats();
+    return ArcEditor.state.allProjectChats[key].allowedTools || (ArcEditor.state.allProjectChats[key].allowedTools = []);
+};
+
+ArcEditor.state.setProjectAllowedTools = function(projectPath, allowedList) {
+    const key = "settings_" + (projectPath || ArcEditor.state.currentProjectPath);
+    if (!ArcEditor.state.allProjectChats[key]) ArcEditor.state.allProjectChats[key] = {};
+    ArcEditor.state.allProjectChats[key].allowedTools = allowedList;
+    if (typeof saveChats === "function") saveChats();
+};
+
+ArcEditor.state.getProjectDeniedTools = function(projectPath) {
+    const key = "settings_" + (projectPath || ArcEditor.state.currentProjectPath);
+    if (!ArcEditor.state.allProjectChats[key]) {
+        ArcEditor.state.allProjectChats[key] = { allowedTools: [], deniedTools: [] };
     }
-}
+    return ArcEditor.state.allProjectChats[key].deniedTools || (ArcEditor.state.allProjectChats[key].deniedTools = []);
+};
+
+ArcEditor.state.setProjectDeniedTools = function(projectPath, deniedList) {
+    const key = "settings_" + (projectPath || ArcEditor.state.currentProjectPath);
+    if (!ArcEditor.state.allProjectChats[key]) ArcEditor.state.allProjectChats[key] = {};
+    ArcEditor.state.allProjectChats[key].deniedTools = deniedList;
+    if (typeof saveChats === "function") saveChats();
+};
+
+// Proxy property getters/setters on window for backward compatibility with scripts before Phase 5
+(function() {
+    const keys = [
+        "currentProvider", "apiUrl", "modelName", "apiKey", "isConnected", "includeBase64InDebugLog",
+        "maxToolRetryLimit", "openaiReasoningEffort", "claudeThinkingBudget", "agentPermissionMode",
+        "webSearchEnabled", "webScrapeEnabled", "uiTransitionsEnabled", "apiTemperature", "apiTopP",
+        "providerSettings", "chatHistory", "agentHistory", "attachedFrames", "installedEffects",
+        "lastApiUsage", "skillsList", "enabledSkills", "allProjectChats", "activeSessionId",
+        "allProjectScripts", "activeScriptName", "currentProjectPath", "isExecuting", "isStopped",
+        "currentExecutionId", "historyVersion", "activeAiBubbleId",
+        "fs", "path", "os", "httpsClient", "httpClient", "url", "csInterface",
+        "extensionPath", "configPath", "chatsConfigPath", "scriptsConfigPath",
+        "effectsCachePath", "effectPropertiesCachePath", "appConfigDir"
+    ];
+    keys.forEach(key => {
+        if (!(key in window)) {
+            Object.defineProperty(window, key, {
+                get: () => ArcEditor.state[key],
+                set: (val) => { ArcEditor.state[key] = val; },
+                configurable: true,
+                enumerable: true
+            });
+        }
+    });
+})();
+
+function getProjectAllowedTools(p) { return ArcEditor.state.getProjectAllowedTools(p); }
+function setProjectAllowedTools(p, l) { ArcEditor.state.setProjectAllowedTools(p, l); }
+function getProjectDeniedTools(p) { return ArcEditor.state.getProjectDeniedTools(p); }
+function setProjectDeniedTools(p, l) { ArcEditor.state.setProjectDeniedTools(p, l); }
+
+
 

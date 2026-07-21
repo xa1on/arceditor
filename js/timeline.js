@@ -4,6 +4,53 @@
  * and serializes timeline metadata or exports preview canvas PNG layers.
  */
 
+window.ArcEditor = window.ArcEditor || {};
+
+/**
+ * Standardized JSON-RPC host bridge for executing ExtendScript methods.
+ */
+function evalHost(methodName, params) {
+    return new Promise((resolve, reject) => {
+        if (!csInterface) {
+            resolve({ status: "mock", result: null });
+            return;
+        }
+        const jsonArgs = params !== undefined ? JSON.stringify(params) : "";
+        const script = `$._com_arceditor_.ArcEditor.${methodName}(${jsonArgs})`;
+        csInterface.evalScript(script, (resultStr) => {
+            if (!resultStr || resultStr === "EvalScript error.") {
+                reject(new Error(`ExtendScript host execution error for ${methodName}`));
+                return;
+            }
+            try {
+                const parsed = JSON.parse(resultStr);
+                resolve(parsed);
+            } catch (e) {
+                // Return raw string if host returned plain non-JSON string
+                resolve(resultStr);
+            }
+        });
+    });
+}
+
+let hostLoaded = false;
+
+function loadHostScriptIfNeeded() {
+    if (hostLoaded || !csInterface || !fs || !path) return;
+    try {
+        const jsxFilePath = path.join(extensionPath, 'jsx', 'host.jsx');
+        if (fs.existsSync(jsxFilePath)) {
+            const jsxContent = fs.readFileSync(jsxFilePath, 'utf8');
+            csInterface.evalScript(jsxContent, (res) => {
+                console.log("[ArcEditor] Dynamically evaluated host.jsx on startup:", res);
+                hostLoaded = true;
+            });
+        }
+    } catch (jsxErr) {
+        console.error("[ArcEditor] Failed to dynamically load host.jsx on startup:", jsxErr);
+    }
+}
+
 async function validateConnection() {
     const statusDot = document.getElementById("status-dot");
     const sendBtn = document.getElementById("btn-send");
@@ -26,19 +73,7 @@ async function validateConnection() {
     }
 
     try {
-        if (csInterface && fs && path) {
-            try {
-                const jsxFilePath = path.join(extensionPath, 'jsx', 'host.jsx');
-                if (fs.existsSync(jsxFilePath)) {
-                    const jsxContent = fs.readFileSync(jsxFilePath, 'utf8');
-                    csInterface.evalScript(jsxContent, (res) => {
-                        console.log("[ArcEditor] Dynamically evaluated host.jsx via file reading on startup:", res);
-                    });
-                }
-            } catch (jsxErr) {
-                console.error("[ArcEditor] Failed to dynamically load host.jsx on startup:", jsxErr);
-            }
-        }
+        loadHostScriptIfNeeded();
 
         if (currentProvider === "lemonade") {
             // Check local Lemonade status
@@ -50,8 +85,6 @@ async function validateConnection() {
                 statusDot.title = `Connected successfully via ${currentProvider}`;
             }
         } else {
-            // For cloud APIs, skip proactive key validation checks (preventing false positives).
-            // Cloud model state is assumed ready, Send is enabled, and real failures are captured on demand.
             if (statusDot) {
                 statusDot.className = "status-dot online";
                 statusDot.title = `Cloud model '${modelName}' active. Connection is verified upon sending message.`;
@@ -64,10 +97,17 @@ async function validateConnection() {
             statusDot.className = "status-dot error";
             statusDot.title = `Failed to connect to local Lemonade server: ${err.message}`;
         }
-        if (sendBtn) sendBtn.disabled = false; // Let the user send anyway to troubleshoot
+        if (sendBtn) sendBtn.disabled = false;
         isConnected = false;
     }
 }
+
+ArcEditor.timeline = ArcEditor.timeline || {
+    evalHost,
+    loadHostScriptIfNeeded,
+    validateConnection
+};
+
 
 const defaultStandardEffects = {
     "Blur & Sharpen": [

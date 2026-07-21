@@ -3,6 +3,8 @@
  * Handles local user configurations, provider presets, and disk settings serialization.
  */
 
+window.ArcEditor = window.ArcEditor || {};
+
 window.activePlan = null;
 
 function updateProviderSectionsUI() {
@@ -17,7 +19,21 @@ function updateProviderSectionsUI() {
     });
 }
 
+ArcEditor.settings = ArcEditor.settings || {
+    updateProviderSectionsUI,
+    loadSettings,
+    saveSettings
+};
+
+
 async function loadSettings() {
+    const defaultProviderSettings = {
+        lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
+        gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
+        openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
+        anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
+    };
+
     let loaded = false;
     if (fs) {
         try {
@@ -25,30 +41,23 @@ async function loadSettings() {
             const data = JSON.parse(dataStr);
             currentProvider = data.provider || "lemonade";
 
-            if (data.providerSettings) {
-                providerSettings = {
-                    lemonade: { ...providerSettings.lemonade, ...data.providerSettings.lemonade },
-                    gemini: { ...providerSettings.gemini, ...data.providerSettings.gemini },
-                    openai: { ...providerSettings.openai, ...data.providerSettings.openai },
-                    anthropic: { ...providerSettings.anthropic, ...data.providerSettings.anthropic }
-                };
-            } else {
-                // Migrate legacy settings
-                if (data.provider) {
-                    providerSettings[data.provider].url = data.url || getDefaultUrl(data.provider);
-                    providerSettings[data.provider].key = data.key || "";
-                }
-                if (data.model) {
-                    providerSettings[currentProvider].model = data.model;
-                }
-            }
+            const basePS = (typeof providerSettings === "object" && providerSettings) ? providerSettings : defaultProviderSettings;
+            const dataPS = (data && data.providerSettings) ? data.providerSettings : {};
 
-            apiUrl = providerSettings[currentProvider].url;
-            apiKey = providerSettings[currentProvider].key;
-            modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
+            providerSettings = {
+                lemonade: { ...(basePS.lemonade || defaultProviderSettings.lemonade), ...(dataPS.lemonade || {}) },
+                gemini: { ...(basePS.gemini || defaultProviderSettings.gemini), ...(dataPS.gemini || {}) },
+                openai: { ...(basePS.openai || defaultProviderSettings.openai), ...(dataPS.openai || {}) },
+                anthropic: { ...(basePS.anthropic || defaultProviderSettings.anthropic), ...(dataPS.anthropic || {}) }
+            };
 
-            openaiReasoningEffort = providerSettings.openai.reasoningEffort || "medium";
-            claudeThinkingBudget = providerSettings.anthropic.thinkingBudget !== undefined ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
+            const curProvSettings = providerSettings[currentProvider] || providerSettings.lemonade;
+            apiUrl = curProvSettings.url;
+            apiKey = curProvSettings.key;
+            modelName = curProvSettings.model || getDefaultModel(currentProvider);
+
+            openaiReasoningEffort = (providerSettings.openai && providerSettings.openai.reasoningEffort) || "medium";
+            claudeThinkingBudget = (providerSettings.anthropic && providerSettings.anthropic.thinkingBudget !== undefined) ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
 
             includeBase64InDebugLog = data.includeBase64InDebugLog !== undefined ? !!data.includeBase64InDebugLog : false;
             webSearchEnabled = data.webSearchEnabled !== undefined ? !!data.webSearchEnabled : true;
@@ -69,9 +78,10 @@ async function loadSettings() {
 
     if (!loaded) {
         currentProvider = "lemonade";
-        apiUrl = providerSettings.lemonade.url;
-        apiKey = providerSettings.lemonade.key;
-        modelName = providerSettings.lemonade.model;
+        const curProvSettings = (providerSettings && providerSettings.lemonade) ? providerSettings.lemonade : defaultProviderSettings.lemonade;
+        apiUrl = curProvSettings.url;
+        apiKey = curProvSettings.key;
+        modelName = curProvSettings.model;
         includeBase64InDebugLog = false;
         webSearchEnabled = true;
         webScrapeEnabled = true;
@@ -79,6 +89,7 @@ async function loadSettings() {
         agentPermissionMode = "review";
         uiTransitionsEnabled = true;
         apiTemperature = 0.2;
+
         apiTopP = 0.95;
         enabledSkills = {};
     }

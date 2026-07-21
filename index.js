@@ -2042,7 +2042,13 @@ function updateConsolePane(code) {
 }
 
 function setUIReadyState(ready) {
+    if (ready) {
+        isExecuting = false;
+    } else {
+        isExecuting = true;
+    }
     const chatInput = document.getElementById("chat-input");
+
     const btnSend = document.getElementById("btn-send");
     const selectSession = document.getElementById("select-chat-session");
     const btnDeleteSession = document.getElementById("btn-delete-session");
@@ -2106,12 +2112,18 @@ function setUIReadyState(ready) {
     const welcomeChipCaptureSequence = document.getElementById("welcome-chip-capture-sequence");
     if (welcomeChipCapture) welcomeChipCapture.disabled = !ready;
     if (welcomeChipCaptureSequence) welcomeChipCaptureSequence.disabled = !ready;
-    if (btnSettings) btnSettings.disabled = !ready;
-    if (btnInspectComp) btnInspectComp.disabled = !ready;
+    const btnNewScriptTab = document.getElementById("btn-new-script-tab");
+    const btnRunConsole = document.getElementById("btn-run-console");
+    if (btnNewScriptTab) btnNewScriptTab.disabled = !ready;
+    if (btnRunConsole) btnRunConsole.disabled = !ready;
 
     if (typeof renderChatTabs === "function") {
         renderChatTabs();
     }
+    if (typeof renderScriptTabs === "function") {
+        renderScriptTabs();
+    }
+
 
     // Apply transient style classes for visual execution lock feedback
     const quickUtilities = document.querySelector(".quick-utilities");

@@ -3,6 +3,9 @@
  * Manages the high-level system context instructions, structured tool call routing,
  * the automated ReAct self-correction execution loop, and custom markdown paragraph parser.
  */
+
+window.ArcEditor = window.ArcEditor || {};
+
 let capturedFrameDataDuringLoop = null;
 
 const ANNOTATION_COLORS = {
@@ -12,38 +15,38 @@ const ANNOTATION_COLORS = {
     "#39ff14": "Green"
 };
 
-// Helper to canonicalize tool names case-insensitively to standard camelCase
+// Tool name mapping dictionary for O(1) canonicalization
+const TOOL_NAME_MAP = {
+    "captureactiveframe": "captureActiveFrame",
+    "capturecompositionsequence": "captureCompositionSequence",
+    "gettimelinecontext": "getTimelineContext",
+    "getinstalledeffects": "getInstalledEffects",
+    "searchinstalledeffects": "searchInstalledEffects",
+    "getlayerproperties": "getLayerProperties",
+    "selectlayers": "selectLayers",
+    "switchcomposition": "switchComposition",
+    "setplayheadtime": "setPlayheadTime",
+    "undolastaction": "undoLastAction",
+    "askquestion": "askQuestion",
+    "submitplan": "submitPlan",
+    "updateplan": "updatePlan",
+    "websearch": "webSearch",
+    "webscrape": "webScrape",
+    "getprojectassets": "getProjectAssets",
+    "geteffectproperties": "getEffectProperties",
+    "createscript": "createScript",
+    "viewscript": "viewScript",
+    "editscript": "editScript",
+    "executescript": "executeScript"
+};
+
 function getCanonicalToolName(name) {
     if (!name) return "";
-    const lower = name.toLowerCase();
-    const mapping = {
-        "captureactiveframe": "captureActiveFrame",
-        "capturecompositionsequence": "captureCompositionSequence",
-        "gettimelinecontext": "getTimelineContext",
-        "getinstalledeffects": "getInstalledEffects",
-        "searchinstalledeffects": "searchInstalledEffects",
-        "getlayerproperties": "getLayerProperties",
-        "selectlayers": "selectLayers",
-        "switchcomposition": "switchComposition",
-        "setplayheadtime": "setPlayheadTime",
-        "undolastaction": "undoLastAction",
-        "askquestion": "askQuestion",
-        "submitplan": "submitPlan",
-        "updateplan": "updatePlan",
-        "websearch": "webSearch",
-        "webscrape": "webScrape",
-        "getprojectassets": "getProjectAssets",
-        "geteffectproperties": "getEffectProperties",
-        "createscript": "createScript",
-        "viewscript": "viewScript",
-        "editscript": "editScript",
-        "executescript": "executeScript"
-    };
-    return mapping[lower] || name;
+    return TOOL_NAME_MAP[name.toLowerCase()] || name;
 }
 
-// Central definition of tool categories for read-only checks
-const CANVAS_READONLY_TOOLS = [
+// Consolidated read-only tool set for O(1) lookups
+const READONLY_TOOLS = new Set([
     "captureActiveFrame",
     "captureCompositionSequence",
     "getTimelineContext",
@@ -63,36 +66,26 @@ const CANVAS_READONLY_TOOLS = [
     "createScript",
     "viewScript",
     "editScript"
-];
+]);
 
-const PERMISSION_READONLY_TOOLS = [
-    "captureActiveFrame",
-    "captureCompositionSequence",
-    "getTimelineContext",
-    "searchInstalledEffects",
-    "getLayerProperties",
-    "getEffectProperties",
-    "selectLayers",
-    "switchComposition",
-    "setPlayheadTime",
-    "askQuestion",
-    "updatePlan",
-    "webSearch",
-    "webScrape",
-    "getProjectAssets",
-    "createScript",
-    "viewScript",
-    "editScript"
-];
+const CANVAS_READONLY_TOOLS = Array.from(READONLY_TOOLS);
+const PERMISSION_READONLY_TOOLS = Array.from(READONLY_TOOLS);
 
 function pushToHistory(msg) {
-    const serialized = JSON.parse(JSON.stringify(msg));
+    const serialized = typeof structuredClone === "function" ? structuredClone(msg) : JSON.parse(JSON.stringify(msg));
     chatHistory.push(serialized);
-    agentHistory.push(JSON.parse(JSON.stringify(msg)));
+    agentHistory.push(serialized);
     if (typeof saveChats === "function") {
         saveChats();
     }
 }
+
+ArcEditor.agent = ArcEditor.agent || {
+    getCanonicalToolName,
+    READONLY_TOOLS,
+    pushToHistory
+};
+
 
 async function burnAnnotationsIntoImage(item) {
     if (!item.annotations || item.annotations.length === 0) {
@@ -639,17 +632,10 @@ async function runAgenticExecutionLoop(userText) {
                     const reasoningHtml = parsed.reasoning ? `<details class="reasoning-details" id="reasoning-turn-${aiBubble.id}-${activeTurnNum}" open><summary>Reasoning / Assembly Plan (Thinking...)</summary><div class="reasoning-content">${formatMarkdown(parsed.reasoning, activeTurnNum)}</div></details>` : "";
                     const contentHtml = formatMarkdown(parsed.content, activeTurnNum);
 
-                    if (parsed.content && /```(?:javascript|js(?!on)|jsx|extendscript)/i.test(parsed.content) && !isStopped && executionId === currentExecutionId) {
-                        window._abortedDueToRedundantCode = true;
-                        if (typeof abortActiveRequests === "function") {
-                            abortActiveRequests();
-                        }
-                        return;
-                    }
-
                     if (!isStopped) {
                         updateAiBubbleTurns(aiBubble, completedTurns, reasoningHtml, contentHtml);
                     }
+
 
                     aiBubble.setAttribute("data-raw-text", parsed.content);
                     aiBubble.setAttribute("data-raw-full-text", chunkText);
@@ -1002,28 +988,8 @@ async function runAgenticExecutionLoop(userText) {
                 }
 
             } catch (err) {
-                if (window._abortedDueToRedundantCode) {
-                    window._abortedDueToRedundantCode = false;
-                    loopRetries++;
-
-                    writeToDebugLog("Redundant Code Block Intercepted", "Aborted stream because LLM started outputting a raw ExtendScript code block outside a JSON tool call.");
-
-                    const correctionMsg = {
-                        role: "user",
-                        content: "[System Observation - Rule Violation]: You started outputting a raw ExtendScript code block in your conversational text. You are strictly forbidden from writing or drafting raw code blocks in conversational text. Please output the JSON tool call block directly (e.g. ```json ... ```) to execute or draft your script. Do NOT write conversational preamble or show raw javascript code.",
-                        isIntermediate: true
-                    };
-                    activeContext.push(correctionMsg);
-                    pushToHistory(correctionMsg);
-
-                    updateAiBubbleTurns(aiBubble, completedTurns, "",
-                        `<div style="margin-top:8px; font-size:11px; color:var(--text-accent); display:flex; align-items:center; gap:6px;"><div class="dots-loader"><span></span><span></span><span></span></div> Redundant code block detected. Self-correcting...</div>`, true);
-                    if (typeof scrollToBottom === "function") scrollToBottom();
-
-                    continue;
-                }
-
                 console.error("Loop iteration failed:", err);
+
                 packageAbortedTurnIfAny();
                 if (isStopped || executionId !== currentExecutionId) {
                     isCompleted = true;
@@ -1140,20 +1106,19 @@ async function runAgenticExecutionLoop(userText) {
             lastActiveContext = activeContext;
         } catch (e) { }
     } finally {
-        if (executionId === currentExecutionId) {
-            isExecuting = false;
-            attachedFrames = [];
-            if (typeof window !== "undefined") {
-                window._activeToolStatuses = null;
-            }
-            if (typeof updateContextSizeInfo === "function") {
-                updateContextSizeInfo();
-            }
-            if (typeof setUIReadyState === "function") {
-                setUIReadyState(true);
-            }
+        isExecuting = false;
+        attachedFrames = [];
+        if (typeof window !== "undefined") {
+            window._activeToolStatuses = null;
+        }
+        if (typeof updateContextSizeInfo === "function") {
+            updateContextSizeInfo();
+        }
+        if (typeof setUIReadyState === "function") {
+            setUIReadyState(true);
         }
     }
+
 }
 
 function extractJSONToolCalls(text) {

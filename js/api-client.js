@@ -1,3 +1,10 @@
+/**
+ * ArcEditor API Client Module
+ * Provides network adapters for AI models and log payload sanitization.
+ */
+
+window.ArcEditor = window.ArcEditor || {};
+
 const EXCLUDED_KEYS = {
     system: true,
     systemInstruction: true,
@@ -12,7 +19,8 @@ const EXCLUDED_KEYS = {
 function sanitizePayload(obj) {
     if (obj === null || obj === undefined) return obj;
     if (typeof obj === "string") {
-        if (typeof includeBase64InDebugLog !== "undefined" && !includeBase64InDebugLog) {
+        const checkBase64 = typeof ArcEditor !== "undefined" && ArcEditor.state ? ArcEditor.state.includeBase64InDebugLog : includeBase64InDebugLog;
+        if (!checkBase64) {
             if (obj.indexOf("data:image/") === 0 && obj.indexOf(";base64,") !== -1) {
                 return "data:image/png;base64,[Base64 Image Data (Omitted)]";
             }
@@ -103,6 +111,16 @@ function abortActiveRequests() {
     }
     activeRequests = [];
 }
+
+ArcEditor.api = ArcEditor.api || {
+    sanitizePayload,
+    sanitizeLogHeaders,
+    sanitizeLogUrl,
+    abortActiveRequests,
+    addActiveRequest,
+    removeActiveRequest
+};
+
 
 function makeRequest(url, method, headers, payload) {
     return new Promise((resolve, reject) => {

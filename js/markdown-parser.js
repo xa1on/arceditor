@@ -3,7 +3,11 @@
  * Handles HTML escaping, markdown conversions, tool call table formatting, and detailed turn wrappers.
  */
 
+window.ArcEditor = window.ArcEditor || {};
+ArcEditor.markdown = ArcEditor.markdown || {};
+
 function getOpenTurnNums(aiBubble) {
+
     const openTurnNums = [];
     if (aiBubble) {
         const detailsElems = aiBubble.querySelectorAll(".agent-turn-details");
