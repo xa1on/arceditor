@@ -4,7 +4,19 @@
 
 <img class="trimmed-cover" src="assets/arceditor-header.png" alt="ArcEditor Header" width="100%">
 
-ArcEditor is a context-aware AI co-pilot and timeline automation harness built as a self-contained Adobe After Effects CEP Extension. ArcEditor enables real-time natural language interaction to build, edit, and animate complex motion graphics rigs directly inside After Effects.
+<p align="center" style="font-weight: bold">
+    Generative AI gives you flat pixels, 
+    <br/>
+    ArcEditor gives you editable compositions that are fully controllable.
+</p>
+
+---
+
+<p align="center">
+    ArcEditor is a context-aware AI co-pilot and timeline automation harness built as a self-contained Adobe After Effects CEP Extension.
+    <br/>
+    Built with a focus on <strong>privacy-first local AI models</strong> (via <a href="https://github.com/lemonade-sdk/lemonade">Lemonade</a> or OpenAI-compatible local endpoints) as well as <a href="https://gemini.google.com/">Gemini</a>, <a href="https://openai.com/">OpenAI</a>, and <a href="https://docs.anthropic.com/">Anthropic</a> cloud providers, enabling real-time natural language interaction to build, edit, and animate complex compositions directly inside After Effects.
+</p>
 
 ---
 
@@ -35,7 +47,8 @@ The extension operates on a closed-loop **ReAct (Reasoning and Action) self-corr
 
 ## Key Features
 
-* **Zero-Dependency Setup**: Runs entirely within the Adobe CEP panel context. No external terminal servers or external background processes are needed.
+* **Local Model & Privacy First**: Primary support for running local LLMs on-device via **Lemonade** (or any OpenAI-compatible local server). Keeps all composition data, keyframe logic, and script execution 100% private.
+* **Zero-Dependency Setup**: Runs entirely within the Adobe CEP panel context. No external terminal servers or background processes required for panel operation.
 * **Expression-Centric Automation**: Instead of baking hardcoded keyframes, the agent creates Control Null layers containing Sliders, Angle, and Color controls, linking attributes via dynamic expressions so motion designers maintain creative control.
 * **Visual & Structural Context**: Grabs active composition context, layer hierarchies, properties, and on-demand frames to let multi-modal models review layout coordinates, typography, and alignment.
 * **Multi-Modal File & Video Uploads**: Drag-and-drop or select images, text files, PDFs, or video files. Videos automatically extract 5 frames at spaced intervals for vision models.
@@ -45,7 +58,6 @@ The extension operates on a closed-loop **ReAct (Reasoning and Action) self-corr
 * **Slash Commands**: Trigger autocomplete commands (like `/grill-me` for interactive design alignment interviews).
 * **Interactive Execution Planning**: Renders running step-by-step checklists in the UI panel so you can follow the agent's progress.
 * **ReAct Self-Correction**: Active scripting exceptions are captured, reverted automatically via atomic Undo points, and sent back for iterative debugging.
-* **Project Privacy**: Chat sessions, settings, and media analysis run completely locally on your system.
 
 ---
 
@@ -113,7 +125,7 @@ This automatically enables Adobe `PlayerDebugMode` across CSXS versions 9 to 11 
 
 1. Launch **After Effects** and open or create a composition.
 2. Open the panel via **Window > Extensions > ArcEditor**.
-3. Open the drawer by clicking the **Gear Icon** in the header. Set your AI provider (Gemini, OpenAI, Anthropic, or Lemonade), specify your model parameters (Temperature, Top-P, Reasoning Effort, or Thinking Budget), and configure features (Web Search, Permission Level, Allowed/Denied Tools, UI Transitions). Click **Save & Apply**.
+3. Open the drawer by clicking the **Gear Icon** in the header. Set your AI provider (Lemonade / Local LLM, Gemini, OpenAI, or Anthropic), specify your model parameters (Temperature, Top-P, Reasoning Effort, or Thinking Budget), and configure features (Web Search, Permission Level, Allowed/Denied Tools, UI Transitions). Click **Save & Apply**.
 4. The status indicator dot in the header will turn green once a successful connection is established.
 5. **Chat Interface**: Describe your animation requests. Drop files or videos to upload assets or reference files.
 6. **Autocomplete Commands**: Type `/` to see available slash commands. Execute `/grill-me` to start a structured alignment session to clarify design decisions before execution.
