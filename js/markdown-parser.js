@@ -632,10 +632,10 @@ function formatMarkdown(text, turnNum, observations, images) {
                 return `<hr>`;
             }
 
-            // Calculate indentation styling based on leading spaces
-            const leadingSpaces = line.match(/^(\s*)/)[0];
-            const indentLevel = leadingSpaces.length;
-            const indentStyle = indentLevel > 0 ? ` style="padding-left: ${indentLevel * 16}px;"` : '';
+            // Calculate indentation styling based on tab-stop steps (max 4 levels, 12px per level)
+            const leadingSpaces = line.match(/^(\s*)/)[0].replace(/\t/g, "  ");
+            const indentSteps = Math.min(4, Math.floor(leadingSpaces.length / 2));
+            const indentStyle = indentSteps > 0 ? ` style="padding-left: ${indentSteps * 12}px;"` : '';
 
             // Headings
             if (lTrim.startsWith("#")) {

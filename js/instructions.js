@@ -392,7 +392,21 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
       * \`layerRef\`: Layer unique ID, name, or index.
       * \`timeOrIndex\`: 1-based marker index (integer), or absolute time/frame (defaults to frames if suffix-less).
 
-13. \`ArcEditor.setKeyframeEasing(layerRef, propPath, keyIndex, easeIn, easeOut)\`
+13. \`ArcEditor.readAudioPeaks(audioLayerRef, options)\`
+    - Description: Analyzes an audio layer to detect volume peaks/beats and optionally places markers on the composition timeline. Reuses existing \`"Audio Amplitude"\` keyframes unless \`forceReanalyze: true\` is passed.
+    - Parameters:
+      * \`audioLayerRef\`: Layer unique ID, name, or index.
+      * \`options\`: (Optional) JSON object with \`{ thresholdPercent: 80, minDistanceFrames: 8, addMarkers: true, markerComment: "Beat Peak", clearExistingMarkers: true, forceReanalyze: false }\`.
+    - Returns: JSON string containing \`{ amplitudeLayer, maxAmplitude, thresholdUsed, peakCount, peakFrames, markersAdded }\` where \`peakFrames\` are strings formatted as \`"45f"\`.
+
+14. \`ArcEditor.readMarkers(type, layerRef)\`
+    - Description: Retrieves all timeline markers from the active composition (\`type: "comp"\`) or an individual layer (\`type: "layer"\`).
+    - Parameters:
+      * \`type\`: String. \`"comp"\` or \`"layer"\` (defaults to \`"comp"\`).
+      * \`layerRef\`: (Optional) Layer ID, name, or index if \`type === "layer"\`.
+    - Returns: JSON string containing \`{ target, markerCount, markers }\` where each marker includes \`frame\` formatted as \`"45f"\`.
+
+15. \`ArcEditor.setKeyframeEasing(layerRef, propPath, keyIndex, easeIn, easeOut)\`
     - Description: Sets high-level ease curve presets or custom Bezier weights on an existing keyframe.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
@@ -400,7 +414,7 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
       * \`keyIndex\`: Integer 1-based keyframe index.
       * \`easeIn\`, \`easeOut\`: String preset name (\`"linear"\`, \`"easyEase"\`, \`"easeInQuad"\`, \`"easeOutQuad"\`, \`"easeInOutQuad"\`, \`"easeInExpo"\`, \`"easeOutExpo"\`, \`"easeInOutExpo"\`) OR custom Bezier object \`{ speed: Number, influence: Number }\`.
 
-14. \`ArcEditor.setTextProperties(layerRef, properties)\`
+16. \`ArcEditor.setTextProperties(layerRef, properties)\`
     - Description: Sets multiple typography and style properties on an existing Text layer in a single atomic call.
     - Parameters:
       * \`layerRef\`: Layer unique ID, name, or index.
@@ -870,6 +884,47 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
       }
       \`\`\`
 `
+  },
+  readAudioPeaks: {
+    name: "readAudioPeaks",
+    text: `- Description: Analyzes an audio layer's keyframes to detect volume peaks/beats. Automatically creates/reuses the "Audio Amplitude" layer and optionally places composition timeline markers at every detected peak.
+    - Parameters:
+      * \`audioLayer\`: String or Number. Audio layer ID, name, or index (e.g. \`"Music.mp3"\`).
+      * \`thresholdPercent\`: (Optional) Number. Sensitivity percentage relative to max volume peak (defaults to 80).
+      * \`minDistanceFrames\`: (Optional) Number. Minimum frame gap between peaks to prevent double triggers (defaults to 8).
+      * \`addMarkers\`: (Optional) Boolean. If true, places markers on the main composition timeline at each peak (defaults to true).
+      * \`markerComment\`: (Optional) String. Marker text comment (defaults to "Beat Peak").
+      * \`clearExistingMarkers\`: (Optional) Boolean. If true, clears prior markers with matching comment string before adding new ones (defaults to true).
+      * \`forceReanalyze\`: (Optional) Boolean. If true, forces re-running "Convert Audio to Keyframes" even if an "Audio Amplitude" layer exists (defaults to false).
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "readAudioPeaks",
+        "parameters": {
+          "audioLayer": "Music Track",
+          "thresholdPercent": 80,
+          "addMarkers": true
+        }
+      }
+      \`\`\`
+`
+  },
+  readMarkers: {
+    name: "readMarkers",
+    text: `- Description: Retrieves timeline markers from either the composition timeline or a specific layer. Timestamps and durations are returned as frame strings (e.g. "45f").
+    - Parameters:
+      * \`type\`: (Optional) String. "comp" (composition markers) or "layer" (layer markers). Defaults to "comp".
+      * \`layerRef\`: (Optional) String or Number. Required if type is "layer". Target layer ID, name, or index.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "readMarkers",
+        "parameters": {
+          "type": "comp"
+        }
+      }
+      \`\`\`
+`
   }
 };
 
@@ -882,6 +937,8 @@ const SYSTEM_TOOLS_ORDER = [
   "searchInstalledEffects",
   "getEffectProperties",
   "getLayerProperties",
+  "readAudioPeaks",
+  "readMarkers",
   "captureActiveFrame",
   "captureCompositionSequence",
   "undoLastAction",

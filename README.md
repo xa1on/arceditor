@@ -165,6 +165,8 @@ To simplify timeline manipulations, the host environment exposes a global API na
 | `resolveLayer(layerRef)` | Safely resolves a layer reference to a native After Effects Layer object. |
 | `addMarker(type, layerRef, time, comment, duration, labelIndex)` | Appends a marker to the composition or an individual layer. Also accepts an options object. |
 | `deleteMarker(type, layerRef, timeOrIndex)` | Deletes a marker from the composition or a specific layer. |
+| `readAudioPeaks(audioLayerRef, options)` | Analyzes audio keyframes, detects volume peaks, and optionally places markers on the main composition timeline. |
+| `readMarkers(type, layerRef)` | Retrieves composition or layer timeline markers formatted with frame suffixes (e.g. `"45f"`). |
 
 ---
 

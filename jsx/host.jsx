@@ -1625,6 +1625,202 @@ $._com_arceditor_ = $._com_arceditor_ || {};
         },
 
         /**
+         * Converts/analyzes audio keyframes and detects volume peaks on an audio layer.
+         * Optionally adds composition timeline markers at peak frame locations.
+         * 
+         * @param {string|number} audioLayerRef Audio layer reference.
+         * @param {Object} options Configuration parameters:
+         *   - thresholdPercent (default 80): Percent threshold relative to max amplitude.
+         *   - minDistanceFrames (default 8): Minimum frame gap between peaks.
+         *   - addMarkers (default true): Place comp markers at detected peaks.
+         *   - markerComment (default "Beat Peak"): Text comment for generated markers.
+         *   - clearExistingMarkers (default true): Clear prior comp markers matching markerComment.
+         *   - forceReanalyze (default false): Re-run "Convert Audio to Keyframes" even if "Audio Amplitude" exists.
+         */
+        readAudioPeaks: function (audioLayerRef, options) {
+            var comp = getActiveComp();
+            if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+            // Parameter normalization/shifting for flexible call signatures
+            if (audioLayerRef && typeof audioLayerRef === "object") {
+                if (audioLayerRef instanceof Array || (audioLayerRef.constructor && audioLayerRef.constructor === Array)) {
+                    options = audioLayerRef[1];
+                    audioLayerRef = audioLayerRef[0];
+                } else if (typeof audioLayerRef.audioLayer !== "undefined" || typeof audioLayerRef.audioLayerRef !== "undefined" || typeof audioLayerRef.layerRef !== "undefined") {
+                    options = audioLayerRef;
+                    audioLayerRef = audioLayerRef.audioLayer || audioLayerRef.audioLayerRef || audioLayerRef.layerRef;
+                }
+            }
+
+            var opts = options || {};
+            var thresholdPercent = opts.thresholdPercent !== undefined ? Number(opts.thresholdPercent) : 80;
+            var minDistanceFrames = opts.minDistanceFrames !== undefined ? Number(opts.minDistanceFrames) : 8;
+            var addMarkers = opts.addMarkers !== false;
+            var markerComment = opts.markerComment || "Beat Peak";
+            var clearExistingMarkers = opts.clearExistingMarkers !== false;
+            var forceReanalyze = opts.forceReanalyze === true;
+
+            var audioLayer = this.resolveLayer(audioLayerRef);
+            if (!audioLayer) throw new Error("Audio layer not found: " + audioLayerRef);
+            if (audioLayer.hasAudio === false) {
+                throw new Error("Layer '" + audioLayer.name + "' is not an audio layer or has audio disabled.");
+            }
+
+            // Look for existing "Audio Amplitude" layer
+            var ampLayer = null;
+            if (!forceReanalyze) {
+                for (var l = 1; l <= comp.numLayers; l++) {
+                    if (comp.layer(l).name === "Audio Amplitude") {
+                        ampLayer = comp.layer(l);
+                        break;
+                    }
+                }
+            }
+
+            // Run "Convert Audio to Keyframes" if no existing Audio Amplitude layer or forceReanalyze is true
+            if (!ampLayer) {
+                for (var d = 1; d <= comp.numLayers; d++) {
+                    comp.layer(d).selected = false;
+                }
+                audioLayer.selected = true;
+
+                var commandId = app.findMenuCommandId("Convert Audio to Keyframes");
+                if (!commandId || commandId === 0) {
+                    commandId = 2639; // Native AE internal menu command ID for Convert Audio to Keyframes
+                }
+
+                try {
+                    app.executeCommand(commandId);
+                } catch (cmdErr) {
+                    throw new Error("Failed to execute menu command 'Convert Audio to Keyframes' (ID: " + commandId + "). Ensure audio layer is selected and active.");
+                }
+                ampLayer = comp.layer("Audio Amplitude");
+            }
+
+            if (!ampLayer) throw new Error("Failed to generate or locate 'Audio Amplitude' layer.");
+
+            var fx = ampLayer.effect("Both Channels") || ampLayer.effect(1);
+            if (!fx) throw new Error("Could not find amplitude effect on 'Audio Amplitude' layer.");
+            var slider = fx.property("Slider") || fx.property(1);
+            if (!slider || slider.numKeys === 0) throw new Error("No amplitude keyframes found on 'Audio Amplitude' layer.");
+
+            // Clear previous beat markers if requested
+            if (addMarkers && clearExistingMarkers) {
+                var compMarkers = comp.markerProperty;
+                for (var m = compMarkers.numKeys; m >= 1; m--) {
+                    var mVal = compMarkers.keyValue(m);
+                    if (mVal && mVal.comment === markerComment) {
+                        compMarkers.removeKey(m);
+                    }
+                }
+            }
+
+            // Find peak frames
+            var maxAmp = 0;
+            var numKeys = slider.numKeys;
+            for (var k = 1; k <= numKeys; k++) {
+                var val = slider.keyValue(k);
+                if (val > maxAmp) maxAmp = val;
+            }
+
+            var cutoff = maxAmp * (thresholdPercent / 100);
+            var lastPeakFrame = -999;
+            var peakFrames = [];
+            var markersAddedCount = 0;
+
+            for (var i = 1; i <= numKeys; i++) {
+                var ampVal = slider.keyValue(i);
+                var keyTime = slider.keyTime(i);
+                var frame = Math.round(keyTime * comp.frameRate);
+
+                if (ampVal >= cutoff && (frame - lastPeakFrame) >= minDistanceFrames) {
+                    var frameStr = frame + "f";
+                    peakFrames.push(frameStr);
+                    lastPeakFrame = frame;
+
+                    if (addMarkers) {
+                        var markerVal = new MarkerValue(markerComment);
+                        comp.markerProperty.setValueAtTime(keyTime, markerVal);
+                        markersAddedCount++;
+                    }
+                }
+            }
+
+            var resObj = {
+                amplitudeLayer: ampLayer.name,
+                maxAmplitude: maxAmp,
+                thresholdUsed: cutoff,
+                peakCount: peakFrames.length,
+                peakFrames: peakFrames,
+                markersAdded: markersAddedCount
+            };
+
+            return ArcJSON.stringify(resObj);
+        },
+
+        /**
+         * Reads composition or layer timeline markers.
+         * Returns an array of objects with frame formatted as "45f".
+         * 
+         * @param {string} type "comp" or "layer" (defaults to "comp").
+         * @param {string|number} layerRef Layer reference if type is "layer".
+         */
+        readMarkers: function (type, layerRef) {
+            var comp = getActiveComp();
+            if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+
+            // Parameter normalization/shifting for flexible call signatures
+            if (type && typeof type === "object") {
+                if (type instanceof Array || (type.constructor && type.constructor === Array)) {
+                    layerRef = type[1];
+                    type = type[0];
+                } else if (typeof type.type !== "undefined") {
+                    layerRef = type.layerRef;
+                    type = type.type;
+                }
+            }
+
+            var markerProp;
+            var targetName = "Composition";
+
+            if (type && String(type).toLowerCase() === "layer") {
+                if (!layerRef) throw new Error("Layer reference required for reading layer markers.");
+                var layer = this.resolveLayer(layerRef);
+                if (!layer) throw new Error("Layer not found: " + layerRef);
+                markerProp = layer.property("Marker") || layer.property("ADBE Marker");
+                targetName = "Layer '" + layer.name + "'";
+            } else {
+                markerProp = comp.markerProperty;
+            }
+
+            if (!markerProp) throw new Error("Marker property not available on " + targetName + ".");
+
+            var markers = [];
+            for (var i = 1; i <= markerProp.numKeys; i++) {
+                var timeVal = markerProp.keyTime(i);
+                var mVal = markerProp.keyValue(i);
+                var frameNum = Math.round(timeVal * comp.frameRate);
+                var durNum = mVal ? Math.round(mVal.duration * comp.frameRate) : 0;
+
+                markers.push({
+                    index: i,
+                    frame: frameNum + "f",
+                    comment: mVal ? (mVal.comment || "") : "",
+                    duration: durNum + "f",
+                    label: mVal ? (mVal.label || 0) : 0
+                });
+            }
+
+            var resObj = {
+                target: targetName,
+                markerCount: markers.length,
+                markers: markers
+            };
+
+            return ArcJSON.stringify(resObj);
+        },
+
+        /**
          * Sets keyframe easing with high-level presets or custom Bezier parameters.
          */
         setKeyframeEasing: function (layerRef, propPath, keyIndex, easeInPresetOrCustom, easeOutPresetOrCustom) {

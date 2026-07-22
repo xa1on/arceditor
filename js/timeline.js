@@ -15,8 +15,19 @@ function evalHost(methodName, params) {
             resolve({ status: "mock", result: null });
             return;
         }
-        const jsonArgs = params !== undefined ? JSON.stringify(params) : "";
-        const script = `$._com_arceditor_.ArcEditor.${methodName}(${jsonArgs})`;
+        let jsonArgs = "";
+        if (Array.isArray(params)) {
+            jsonArgs = params.map(p => p !== undefined ? JSON.stringify(p) : "undefined").join(",");
+        } else if (params !== undefined) {
+            jsonArgs = JSON.stringify(params);
+        }
+        const script = `(function() {
+            try {
+                return $._com_arceditor_.ArcEditor.${methodName}(${jsonArgs});
+            } catch(err) {
+                return "Error: " + err.toString();
+            }
+        })()`;
         csInterface.evalScript(script, (resultStr) => {
             if (!resultStr || resultStr === "EvalScript error.") {
                 reject(new Error(`ExtendScript host execution error for ${methodName}`));
@@ -102,10 +113,20 @@ async function validateConnection() {
     }
 }
 
+async function readAudioPeaks(audioLayerRef, options) {
+    return await evalHost("readAudioPeaks", [audioLayerRef, options]);
+}
+
+async function readMarkers(type, layerRef) {
+    return await evalHost("readMarkers", [type, layerRef]);
+}
+
 ArcEditor.timeline = ArcEditor.timeline || {
     evalHost,
     loadHostScriptIfNeeded,
-    validateConnection
+    validateConnection,
+    readAudioPeaks,
+    readMarkers
 };
 
 

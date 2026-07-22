@@ -26,6 +26,8 @@ const TOOL_NAME_MAP = {
     "selectlayers": "selectLayers",
     "switchcomposition": "switchComposition",
     "setplayheadtime": "setPlayheadTime",
+    "readaudiopeaks": "readAudioPeaks",
+    "readmarkers": "readMarkers",
     "undolastaction": "undoLastAction",
     "askquestion": "askQuestion",
     "submitplan": "submitPlan",
@@ -56,6 +58,8 @@ const READONLY_TOOLS = new Set([
     "selectLayers",
     "switchComposition",
     "setPlayheadTime",
+    "readAudioPeaks",
+    "readMarkers",
     "undoLastAction",
     "askQuestion",
     "submitPlan",
@@ -226,15 +230,10 @@ function wrapExtendScript(scriptContent) {
         var ArcInspector = $._com_arceditor_ ? $._com_arceditor_.ArcInspector : null;
         var ArcCanvas = $._com_arceditor_ ? $._com_arceditor_.ArcCanvas : null;
         var JSON = ArcJSON;
-        var _arcEditorTempFolder;
         var _scriptAlerts = [];
         var alert = function(msg) {
             _scriptAlerts.push(String(msg));
         };
-        try {
-            _arcEditorTempFolder = app.project.items.addFolder("ArcEditorTemp");
-            if (_arcEditorTempFolder) _arcEditorTempFolder.remove();
-        } catch (dummyErr) {}
         
         app.beginUndoGroup("ArcEditor Agent Script");
         try {
@@ -1535,6 +1534,27 @@ async function executeToolCalls(jsonStr) {
             } else if (toolName === "getLayerProperties") {
                 const groupFilterVal = params.groupFilter ? `"${params.groupFilter.replace(/"/g, '\\"')}"` : "null";
                 jsxCommand = `$._com_arceditor_.ArcEditor.inspectLayerProperties(${serializedRef}, ${groupFilterVal})`;
+            } else if (toolName === "readAudioPeaks") {
+                try {
+                    const audioRef = params.audioLayer || params.audioLayerRef || params.layerRef;
+                    if (!audioRef) {
+                        observations.push(`- Tool "readAudioPeaks": Error - Missing audioLayer parameter.`);
+                        continue;
+                    }
+                    const resStr = await ArcEditor.timeline.readAudioPeaks(audioRef, params);
+                    observations.push(`- Tool "readAudioPeaks": ${resStr}`);
+                } catch (err) {
+                    observations.push(`- Tool "readAudioPeaks": Error: ${err.message}`);
+                }
+                continue;
+            } else if (toolName === "readMarkers") {
+                try {
+                    const resStr = await ArcEditor.timeline.readMarkers(params.type || "comp", params.layerRef);
+                    observations.push(`- Tool "readMarkers": ${resStr}`);
+                } catch (err) {
+                    observations.push(`- Tool "readMarkers": Error: ${err.message}`);
+                }
+                continue;
             } else if (toolName === "createScript") {
                 const sName = params.scriptName;
                 const content = params.content;
