@@ -5,9 +5,9 @@
 <img class="trimmed-cover" src="assets/arceditor-header.png" alt="ArcEditor Header" width="100%">
 
 <p align="center" style="font-weight: bold">
-    Generative AI spits out flat pixels, 
+    Gen AI spits out flat pixels, 
     <br/>
-    ArcEditor creates editable compositions that are fully controllable.
+    ArcEditor writes editable compositions that are fully configurable via expressions.
 </p>
 
 ---
@@ -15,7 +15,7 @@
 <p align="center">
     ArcEditor is a context-aware AI co-pilot/harness built as an Adobe After Effects CEP Extension.
     <br/>
-    Built with a focus on <strong>privacy-first local models</strong> (via <a href="https://github.com/lemonade-sdk/lemonade">Lemonade</a> or OpenAI-compatible local endpoints) as well as <a href="https://gemini.google.com/">Gemini</a>, <a href="https://openai.com/">OpenAI</a>, and <a href="https://docs.anthropic.com/">Anthropic</a> cloud providers through API keys, enabling LLMs to build, edit, and animate complex compositions directly inside After Effects.
+    Built with a focus on <strong>privacy-first local models</strong> (via <a href="https://github.com/lemonade-sdk/lemonade">Lemonade</a> or OpenAI-compatible local endpoints) as well as <a href="https://gemini.google.com/">Gemini</a>, <a href="https://openai.com/">OpenAI</a>, and <a href="https://docs.anthropic.com/">Anthropic</a> cloud providers through API keys, enabling LLMs to build, edit, and animate complex, configurable compositions directly inside After Effects.
 </p>
 
 ---
