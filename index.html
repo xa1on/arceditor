@@ -278,7 +278,7 @@
                         <div class="field-group">
                             <label for="setting-provider">Active AI Provider</label>
                             <select id="setting-provider" class="form-input">
-                                <option value="lemonade">Lemonade (Local Server)</option>
+                                <option value="lemonade">Lemonade (OpenAI Compatible Local API)</option>
                                 <option value="gemini">Google Gemini</option>
                                 <option value="openai">OpenAI (ChatGPT)</option>
                                 <option value="anthropic">Anthropic Claude</option>
@@ -294,17 +294,25 @@
                                 style="border: 1px solid var(--border-color); padding: 8px; border-radius: var(--border-radius-sm); background: rgba(255,255,255,0.02);">
                                 <div
                                     style="font-weight: bold; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; color: var(--text-accent);">
-                                    Lemonade (Local)</div>
+                                    Lemonade (OpenAI Compatible Local API)</div>
                                 <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-url-lemonade" style="font-size: 9px;">Base URL</label>
                                     <input type="text" id="setting-url-lemonade" class="form-input"
                                         placeholder="http://localhost:13305/v1"
                                         style="padding: 4px 8px; font-size: 10px;">
                                 </div>
-                                <div class="field-group" style="margin-bottom: 0;">
+                                <div class="field-group" style="margin-bottom: 6px;">
                                     <label for="setting-key-lemonade" style="font-size: 9px;">API Key (Optional)</label>
                                     <input type="password" id="setting-key-lemonade" class="form-input"
                                         placeholder="API access key" style="padding: 4px 8px; font-size: 10px;">
+                                </div>
+                                <div class="field-group" style="margin-bottom: 0;">
+                                    <label for="setting-lemonade-reasoning-effort" style="font-size: 9px;">Reasoning Effort</label>
+                                    <select id="setting-lemonade-reasoning-effort" class="form-input" style="padding: 4px 8px; font-size: 10px; height: auto;">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
                                 </div>
                             </div>
 

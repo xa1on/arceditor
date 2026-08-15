@@ -101,6 +101,7 @@ ArcEditor.state = {
     // Settings & Features
     includeBase64InDebugLog: false,
     maxToolRetryLimit: 15,
+    lemonadeReasoningEffort: "medium",
     openaiReasoningEffort: "medium",
     claudeThinkingBudget: 2048,
     agentPermissionMode: "review",
@@ -112,7 +113,7 @@ ArcEditor.state = {
 
     // Provider Config Presets
     providerSettings: {
-        lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
+        lemonade: { url: "http://localhost:13305/v1", key: "", model: "", reasoningEffort: "medium" },
         gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
         openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
         anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
@@ -183,7 +184,7 @@ ArcEditor.state.setProjectDeniedTools = function(projectPath, deniedList) {
 (function() {
     const keys = [
         "currentProvider", "apiUrl", "modelName", "apiKey", "isConnected", "includeBase64InDebugLog",
-        "maxToolRetryLimit", "openaiReasoningEffort", "claudeThinkingBudget", "agentPermissionMode",
+        "maxToolRetryLimit", "lemonadeReasoningEffort", "openaiReasoningEffort", "claudeThinkingBudget", "agentPermissionMode",
         "webSearchEnabled", "webScrapeEnabled", "uiTransitionsEnabled", "apiTemperature", "apiTopP",
         "providerSettings", "chatHistory", "agentHistory", "attachedFrames", "installedEffects",
         "lastApiUsage", "skillsList", "enabledSkills", "allProjectChats", "activeSessionId",

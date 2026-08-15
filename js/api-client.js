@@ -543,23 +543,7 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
     return payload;
 }
 
-function checkModelSupportsNativeReasoning(provider, model) {
-    if (!model) return false;
-    const lowerModel = model.toLowerCase();
-    if (provider === "anthropic") {
-        return (claudeThinkingBudget > 0 && lowerModel.indexOf("3-7") !== -1);
-    }
-    if (provider === "openai") {
-        return (lowerModel.indexOf("o1") !== -1 || lowerModel.indexOf("o3-mini") !== -1);
-    }
-    if (provider === "lemonade") {
-        return (lowerModel.indexOf("r1") !== -1 || lowerModel.indexOf("reasoning") !== -1 || lowerModel.indexOf("thinking") !== -1);
-    }
-    return false;
-}
-
 async function callLLMApi(messages, onChunkReceived, skipSystemInstructions = false) {
-    const modelSupportsNativeReasoning = checkModelSupportsNativeReasoning(currentProvider, modelName);
 
     if (!httpsClient && !httpClient) {
         // Fallback mock mode ONLY inside standalone browsers
@@ -688,15 +672,20 @@ Here is the ExtendScript to build it:
                 messages: finalMessages,
                 stream: !!onChunkReceived
             };
-            if (modelSupportsNativeReasoning) {
-                payload.max_completion_tokens = 8192;
-                if (currentProvider === "openai" && typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
+            if (currentProvider === "lemonade") {
+                if (typeof lemonadeReasoningEffort !== "undefined" && lemonadeReasoningEffort) {
+                    payload.reasoning_effort = lemonadeReasoningEffort;
+                    payload.chat_template_kwargs = {
+                        reasoning_effort: lemonadeReasoningEffort
+                    };
+                }
+            } else if (currentProvider === "openai") {
+                if (typeof openaiReasoningEffort !== "undefined" && openaiReasoningEffort) {
                     payload.reasoning_effort = openaiReasoningEffort;
                 }
-            } else {
-                payload.temperature = typeof apiTemperature !== "undefined" ? apiTemperature : 0.2;
-                payload.top_p = typeof apiTopP !== "undefined" ? apiTopP : 0.95;
             }
+            payload.temperature = typeof apiTemperature !== "undefined" ? apiTemperature : 0.2;
+            payload.top_p = typeof apiTopP !== "undefined" ? apiTopP : 0.95;
             if (typeof writeToDebugLog === "function") {
                 writeToDebugLog("API Request Sent (OpenAI/Lemonade)", JSON.stringify({
                     provider: currentProvider,
@@ -949,7 +938,7 @@ Here is the ExtendScript to build it:
                 stream: !!onChunkReceived
             };
 
-            if (modelSupportsNativeReasoning) {
+            if (typeof claudeThinkingBudget !== "undefined" && claudeThinkingBudget > 0) {
                 payload.thinking = {
                     type: "enabled",
                     budget_tokens: claudeThinkingBudget

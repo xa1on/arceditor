@@ -28,7 +28,7 @@ ArcEditor.settings = ArcEditor.settings || {
 
 async function loadSettings() {
     const defaultProviderSettings = {
-        lemonade: { url: "http://localhost:13305/v1", key: "", model: "" },
+        lemonade: { url: "http://localhost:13305/v1", key: "", model: "", reasoningEffort: "medium" },
         gemini: { url: "https://generativelanguage.googleapis.com", key: "", model: "" },
         openai: { url: "https://api.openai.com/v1", key: "", model: "", reasoningEffort: "medium" },
         anthropic: { url: "https://api.anthropic.com/v1", key: "", model: "", thinkingBudget: 2048 }
@@ -54,8 +54,9 @@ async function loadSettings() {
             const curProvSettings = providerSettings[currentProvider] || providerSettings.lemonade;
             apiUrl = curProvSettings.url;
             apiKey = curProvSettings.key;
-            modelName = curProvSettings.model || getDefaultModel(currentProvider);
+            modelName = curProvSettings.model || "";
 
+            lemonadeReasoningEffort = (providerSettings.lemonade && providerSettings.lemonade.reasoningEffort) || "medium";
             openaiReasoningEffort = (providerSettings.openai && providerSettings.openai.reasoningEffort) || "medium";
             claudeThinkingBudget = (providerSettings.anthropic && providerSettings.anthropic.thinkingBudget !== undefined) ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
 
@@ -105,12 +106,16 @@ async function loadSettings() {
         if (keyEl) keyEl.value = providerSettings[prov].key;
     }
 
+    const lemEffortEl = document.getElementById("setting-lemonade-reasoning-effort");
+    if (lemEffortEl) lemEffortEl.value = providerSettings.lemonade.reasoningEffort || "medium";
+
     const opEffortEl = document.getElementById("setting-openai-reasoning-effort");
     if (opEffortEl) opEffortEl.value = providerSettings.openai.reasoningEffort || "medium";
     
     const anthThinkingEl = document.getElementById("setting-anthropic-thinking-budget");
     if (anthThinkingEl) anthThinkingEl.value = providerSettings.anthropic.thinkingBudget !== undefined ? providerSettings.anthropic.thinkingBudget : 2048;
 
+    lemonadeReasoningEffort = providerSettings.lemonade.reasoningEffort || "medium";
     openaiReasoningEffort = providerSettings.openai.reasoningEffort || "medium";
     claudeThinkingBudget = providerSettings.anthropic.thinkingBudget !== undefined ? parseInt(providerSettings.anthropic.thinkingBudget, 10) : 2048;
 
@@ -161,6 +166,12 @@ async function saveSettings(e) {
         if (keyEl) providerSettings[prov].key = keyEl.value;
     }
 
+    const lemEffortEl = document.getElementById("setting-lemonade-reasoning-effort");
+    if (lemEffortEl) {
+        providerSettings.lemonade.reasoningEffort = lemEffortEl.value;
+        lemonadeReasoningEffort = lemEffortEl.value;
+    }
+
     const opEffortEl = document.getElementById("setting-openai-reasoning-effort");
     if (opEffortEl) {
         providerSettings.openai.reasoningEffort = opEffortEl.value;
@@ -177,7 +188,7 @@ async function saveSettings(e) {
     // Sync active provider variables
     apiUrl = providerSettings[currentProvider].url;
     apiKey = providerSettings[currentProvider].key;
-    modelName = providerSettings[currentProvider].model || getDefaultModel(currentProvider);
+    modelName = providerSettings[currentProvider].model || "";
 
     const permissionModeSelect = document.getElementById("setting-permission-mode");
     if (permissionModeSelect) agentPermissionMode = permissionModeSelect.value || "review";
@@ -255,10 +266,6 @@ function getDefaultUrl(provider) {
     if (provider === "openai") return "https://api.openai.com/v1";
     if (provider === "anthropic") return "https://api.anthropic.com/v1";
     if (provider === "gemini") return "https://generativelanguage.googleapis.com";
-    return "";
-}
-
-function getDefaultModel(provider) {
     return "";
 }
 
