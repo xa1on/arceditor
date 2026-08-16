@@ -1135,48 +1135,46 @@ async function runAgenticExecutionLoop(userText) {
 
 function extractJSONToolCalls(text) {
     if (!text) return null;
-    const parts = text.split("```");
 
-    // Check standard closed blocks first
-    const limit = parts.length % 2 === 0 ? parts.length - 1 : parts.length;
-    for (let i = 1; i < limit; i += 2) {
-        let block = parts[i];
-        let lines = block.split("\n");
-        if (lines.length > 0) {
-            const lang = lines[0].trim().toLowerCase();
-            if (lang === "json") {
-                const code = lines.slice(1).join("\n").trim();
-                if (code) {
-                    return code;
+    // 1. Check standard markdown code blocks (```json ... ``` or ``` ... ```)
+    const blockRegex = /```(?:json)?\s*([\s\S]*?)(?:```|$)/gi;
+    let match;
+    while ((match = blockRegex.exec(text)) !== null) {
+        const candidate = match[1].trim();
+        if (!candidate) continue;
+        if (candidate.startsWith("{") || candidate.startsWith("[")) {
+            try {
+                const repaired = repairJSONRawNewlines(candidate);
+                const parsed = JSON.parse(repaired);
+                const isTool = parsed && (parsed.tool || (Array.isArray(parsed) && parsed.some(p => p && p.tool)));
+                if (isTool) {
+                    return candidate;
                 }
-            }
-        }
-    }
-
-    // Fallback: If the last block is unclosed (even number of parts), attempt to parse it anyway
-    if (parts.length > 1 && parts.length % 2 === 0) {
-        const lastPart = parts[parts.length - 1];
-        const lines = lastPart.split("\n");
-        if (lines.length > 0 && lines[0].trim().toLowerCase() === "json") {
-            const code = lines.slice(1).join("\n").trim();
-            if (code) {
+            } catch (e) {
+                // Try suffix recovery for unclosed streaming chunks
                 try {
-                    JSON.parse(repairJSONRawNewlines(code));
-                    return code;
-                } catch (e) {
-                    try {
-                        JSON.parse(repairJSONRawNewlines(code + "}"));
-                        return code + "}";
-                    } catch (e2) {
-                        try {
-                            JSON.parse(repairJSONRawNewlines(code + "]"));
-                            return code + "]";
-                        } catch (e3) { }
+                    const recovered = candidate + (candidate.startsWith("[") ? "]" : "}");
+                    const repaired = repairJSONRawNewlines(recovered);
+                    const parsed = JSON.parse(repaired);
+                    if (parsed && (parsed.tool || (Array.isArray(parsed) && parsed.some(p => p && p.tool)))) {
+                        return recovered;
                     }
-                }
+                } catch (e2) { }
             }
         }
     }
+
+    // 2. Fallback: Search for raw JSON objects containing a "tool" key outside code blocks
+    const rawToolMatch = text.match(/(\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?\}|\[\s*\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?\}\s*\])/);
+    if (rawToolMatch) {
+        try {
+            const candidate = rawToolMatch[1].trim();
+            const repaired = repairJSONRawNewlines(candidate);
+            JSON.parse(repaired);
+            return candidate;
+        } catch (e) { }
+    }
+
     return null;
 }
 
@@ -1583,19 +1581,19 @@ async function executeToolCalls(jsonStr) {
                             compW = compData.width;
                             compH = compData.height;
                         }
-                    } catch (e) {}
+                    } catch (e) { }
 
                     // 2. Transpile SVG into Intermediate Representation (IR)
                     let transpiler = (typeof window !== "undefined" && window.ArcSvgTranspiler) ||
-                                     (typeof ArcSvgTranspiler !== "undefined" ? ArcSvgTranspiler : null) ||
-                                     (typeof window !== "undefined" && window.ArcEditor && window.ArcEditor.svgTranspiler);
+                        (typeof ArcSvgTranspiler !== "undefined" ? ArcSvgTranspiler : null) ||
+                        (typeof window !== "undefined" && window.ArcEditor && window.ArcEditor.svgTranspiler);
                     if (!transpiler && typeof require === "function") {
                         try {
                             transpiler = require("./js/svg-transpiler.js");
                         } catch (reqErr1) {
                             try {
                                 transpiler = require("./svg-transpiler.js");
-                            } catch (reqErr2) {}
+                            } catch (reqErr2) { }
                         }
                     }
                     if (!transpiler) {
@@ -2008,29 +2006,9 @@ function estimateMessagesTokenCount(messagesArray) {
     if (typeof estimateTrueTokens === "function") {
         estTokens = estimateTrueTokens(textForEstimation);
     } else {
-        // Fallback high-fidelity BPE approximation if estimateTrueTokens is not available
-        const spaces = textForEstimation.match(/ {2,4}/g) || [];
-        let count = spaces.length;
-        const cleanedText = textForEstimation.replace(/ {2,4}/g, '');
-        const words = cleanedText.match(/[\w]+|[^\s\w]/g) || [];
-        for (var k = 0; k < words.length; k++) {
-            var token = words[k];
-            if (/^[^\s\w]$/.test(token)) {
-                count += 1;
-            } else {
-                if (token.length > 4) {
-                    count += Math.ceil(token.length / 3.5);
-                } else {
-                    count += 1;
-                }
-            }
-        }
-        const newlines = (textForEstimation.match(/\n/g) || []).length;
-        count += newlines * 0.5;
-        estTokens = Math.round(count);
+        estTokens = Math.ceil(textForEstimation.length / 3.8);
     }
-
-    estTokens += imageBlocksCount * 1600;
+    estTokens += imageBlocksCount * 1200;
     return estTokens;
 }
 

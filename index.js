@@ -1672,6 +1672,9 @@ let currentTrueTokens = null;
 
 function estimateTrueTokens(text) {
     if (!text) return 0;
+    if (typeof text !== "string") {
+        return typeof text === "number" ? Math.ceil(text / 3.8) : 0;
+    }
     // Count indentation blocks (each group of 2-4 spaces is roughly 1 token in BPE tokenizers)
     const spaces = text.match(/ {2,4}/g) || [];
     let count = spaces.length;

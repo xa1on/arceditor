@@ -124,41 +124,42 @@ ArcEditor.api = ArcEditor.api || {
 
 function makeRequest(url, method, headers, payload) {
     return new Promise((resolve, reject) => {
-        if (!httpsClient || !httpClient) {
-            if (typeof fetch !== "undefined") {
-                const controller = new AbortController();
-                const reqHandle = { abort: () => controller.abort() };
-                addActiveRequest(reqHandle);
+        if (typeof fetch !== "undefined") {
+            const controller = new AbortController();
+            const reqHandle = { abort: () => controller.abort() };
+            addActiveRequest(reqHandle);
 
-                const fetchOptions = {
-                    method: method,
-                    headers: headers || {},
-                    signal: controller.signal
-                };
-                if (method !== 'GET' && method !== 'HEAD' && payload !== undefined && payload !== null) {
-                    fetchOptions.body = typeof payload === "string" ? payload : JSON.stringify(payload);
-                }
-
-                fetch(url, fetchOptions)
-                    .then(response => {
-                        removeActiveRequest(reqHandle);
-                        if (!response.ok) {
-                            response.text().then(text => {
-                                reject(new Error(`HTTP Error ${response.status}: ${text}`));
-                            }).catch(() => {
-                                reject(new Error(`HTTP Error ${response.status}`));
-                            });
-                        } else {
-                            response.text().then(resolve).catch(reject);
-                        }
-                    })
-                    .catch(err => {
-                        removeActiveRequest(reqHandle);
-                        reject(err);
-                    });
-                return;
+            const fetchOptions = {
+                method: method,
+                headers: headers || {},
+                signal: controller.signal
+            };
+            if (method !== 'GET' && method !== 'HEAD' && payload !== undefined && payload !== null) {
+                fetchOptions.body = typeof payload === "string" ? payload : JSON.stringify(payload);
             }
-            reject(new Error("Node.js network modules (https/http) not loaded and browser fetch is unavailable."));
+
+            fetch(url, fetchOptions)
+                .then(response => {
+                    removeActiveRequest(reqHandle);
+                    if (!response.ok) {
+                        response.text().then(text => {
+                            reject(new Error(`HTTP Error ${response.status}: ${text}`));
+                        }).catch(() => {
+                            reject(new Error(`HTTP Error ${response.status}`));
+                        });
+                    } else {
+                        response.text().then(resolve).catch(reject);
+                    }
+                })
+                .catch(err => {
+                    removeActiveRequest(reqHandle);
+                    reject(err);
+                });
+            return;
+        }
+
+        if (!httpsClient && !httpClient) {
+            reject(new Error("Network fetch and Node.js network modules are unavailable."));
             return;
         }
 
@@ -213,81 +214,83 @@ function makeRequest(url, method, headers, payload) {
     });
 }
 
+function processSSEBlocks(buffer, onChunk) {
+    let eventBlocks = buffer.split(/\r?\n\r?\n/);
+    const remainder = eventBlocks.pop();
+    for (let i = 0; i < eventBlocks.length; i++) {
+        const block = eventBlocks[i].trim();
+        if (!block) continue;
+        const lines = block.split(/\r?\n/);
+        for (let j = 0; j < lines.length; j++) {
+            const line = lines[j].trim();
+            if (line) onChunk(line);
+        }
+    }
+    return remainder;
+}
+
 function makeStreamingRequest(url, method, headers, payload, onChunk) {
     return new Promise((resolve, reject) => {
-        if (!httpsClient && !httpClient) {
-            if (typeof fetch !== "undefined") {
-                const controller = new AbortController();
-                const reqHandle = { abort: () => controller.abort() };
-                addActiveRequest(reqHandle);
+        if (typeof fetch !== "undefined") {
+            const controller = new AbortController();
+            const reqHandle = { abort: () => controller.abort() };
+            addActiveRequest(reqHandle);
 
-                const fetchOptions = {
-                    method: method,
-                    headers: headers || {},
-                    signal: controller.signal
-                };
-                if (method !== 'GET' && method !== 'HEAD' && payload !== undefined && payload !== null) {
-                    fetchOptions.body = typeof payload === "string" ? payload : JSON.stringify(payload);
-                }
-
-                fetch(url, fetchOptions)
-                    .then(async (response) => {
-                        removeActiveRequest(reqHandle);
-                        if (!response.ok) {
-                            const text = await response.text().catch(() => "");
-                            reject(new Error(`HTTP Error ${response.status}: ${text}`));
-                            return;
-                        }
-
-                        const reader = response.body.getReader();
-                        const decoder = new TextDecoder("utf-8");
-                        let buffer = "";
-
-                        try {
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-
-                                const textChunk = decoder.decode(value, { stream: true });
-                                buffer += textChunk;
-
-                                let eventBlocks = buffer.split(/\r?\n\r?\n/);
-                                buffer = eventBlocks.pop();
-
-                                for (let i = 0; i < eventBlocks.length; i++) {
-                                    const block = eventBlocks[i].trim();
-                                    if (!block) continue;
-
-                                    const lines = block.split(/\r?\n/);
-                                    for (let j = 0; j < lines.length; j++) {
-                                        const line = lines[j].trim();
-                                        if (!line) continue;
-                                        onChunk(line);
-                                    }
-                                }
-                            }
-
-                            // Process remaining buffer
-                            let remaining = buffer + decoder.decode();
-                            if (remaining.trim()) {
-                                const lines = remaining.split(/\r?\n/);
-                                for (let j = 0; j < lines.length; j++) {
-                                    const line = lines[j].trim();
-                                    if (line) onChunk(line);
-                                }
-                            }
-                            resolve();
-                        } catch (err) {
-                            reject(err);
-                        }
-                    })
-                    .catch(err => {
-                        removeActiveRequest(reqHandle);
-                        reject(err);
-                    });
-                return;
+            const fetchOptions = {
+                method: method,
+                headers: headers || {},
+                signal: controller.signal
+            };
+            if (method !== 'GET' && method !== 'HEAD' && payload !== undefined && payload !== null) {
+                fetchOptions.body = typeof payload === "string" ? payload : JSON.stringify(payload);
             }
-            reject(new Error("Node.js network modules (https/http) not loaded and browser fetch is unavailable."));
+
+            fetch(url, fetchOptions)
+                .then(async (response) => {
+                    removeActiveRequest(reqHandle);
+                    if (!response.ok) {
+                        const text = await response.text().catch(() => "");
+                        reject(new Error(`HTTP Error ${response.status}: ${text}`));
+                        return;
+                    }
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+                    let buffer = "";
+
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+
+                            const textChunk = decoder.decode(value, { stream: true });
+                            buffer += textChunk;
+                            buffer = processSSEBlocks(buffer, onChunk);
+                        }
+
+                        // Process remaining buffer
+                        let remaining = buffer + decoder.decode();
+                        if (remaining.trim()) {
+                            const lines = remaining.split(/\r?\n/);
+                            for (let j = 0; j < lines.length; j++) {
+                                const line = lines[j].trim();
+                                if (line) onChunk(line);
+                            }
+                        }
+                        resolve();
+                    } catch (err) {
+                        reject(err);
+                    }
+                })
+                .catch(err => {
+                    removeActiveRequest(reqHandle);
+                    reject(err);
+                });
+            return;
+        }
+
+        if (!httpsClient && !httpClient) {
+            reject(new Error("Network fetch and Node.js network modules are unavailable."));
             return;
         }
 
