@@ -36,8 +36,6 @@ const TOOL_NAME_MAP = {
     "webscrape": "webScrape",
     "getprojectassets": "getProjectAssets",
     "geteffectproperties": "getEffectProperties",
-    "createsvgshape": "createSvgShape",
-    "updatesvgshape": "createSvgShape",
     "createscript": "createScript",
     "viewscript": "viewScript",
     "editscript": "editScript",
@@ -1565,80 +1563,6 @@ async function executeToolCalls(jsonStr) {
                 } catch (err) {
                     observations.push(`- Tool "readMarkers": Error: ${err.message}`);
                 }
-            } else if (toolName === "createSvgShape") {
-                const svgContent = params.svg;
-                if (!svgContent || typeof svgContent !== "string") {
-                    observations.push(`- Tool "createSvgShape": Error - Missing or invalid 'svg' parameter.`);
-                    continue;
-                }
-
-                try {
-                    // 1. Query active timeline dimensions for coordinate calculation if available
-                    let compW = 1920, compH = 1080;
-                    try {
-                        const compData = typeof getTimelineContext === "function" ? await getTimelineContext() : null;
-                        if (compData && compData.width && compData.height) {
-                            compW = compData.width;
-                            compH = compData.height;
-                        }
-                    } catch (e) { }
-
-                    // 2. Transpile SVG into Intermediate Representation (IR)
-                    let transpiler = (typeof window !== "undefined" && window.ArcSvgTranspiler) ||
-                        (typeof ArcSvgTranspiler !== "undefined" ? ArcSvgTranspiler : null) ||
-                        (typeof window !== "undefined" && window.ArcEditor && window.ArcEditor.svgTranspiler);
-                    if (!transpiler && typeof require === "function") {
-                        try {
-                            transpiler = require("./js/svg-transpiler.js");
-                        } catch (reqErr1) {
-                            try {
-                                transpiler = require("./svg-transpiler.js");
-                            } catch (reqErr2) { }
-                        }
-                    }
-                    if (!transpiler) {
-                        throw new Error("ArcSvgTranspiler module is not loaded. Please ensure js/svg-transpiler.js is included in index.html.");
-                    }
-
-                    const ir = transpiler.transpile(svgContent, {
-                        compWidth: compW,
-                        compHeight: compH,
-                        position: params.position,
-                        scale: params.scale,
-                        mode: params.mode || "single_layer",
-                        layerName: params.layerName
-                    });
-
-                    // 3. Execute on timeline
-                    let hostRes = "";
-                    if (params.targetLayer) {
-                        // In-place update / replacement
-                        const updateOpts = {
-                            targetGroup: params.targetGroup || null
-                        };
-                        const serializedRef = JSON.stringify(params.targetLayer);
-                        const serializedIR = JSON.stringify(ir);
-                        const serializedOpts = JSON.stringify(updateOpts);
-                        const script = `$._com_arceditor_.ArcEditor.updateSvgShapeLayer(${serializedRef}, ${serializedIR}, ${serializedOpts})`;
-                        hostRes = await evalScriptAsync(wrapExtendScript(script));
-                    } else {
-                        // Create new shape layer(s)
-                        const createOpts = {
-                            ordering: params.ordering || null,
-                            relativeTo: params.relativeTo || params.relativeToLayerRef || null
-                        };
-                        const serializedName = JSON.stringify(params.layerName || "SVG Vector Layer");
-                        const serializedIR = JSON.stringify(ir);
-                        const serializedOpts = JSON.stringify(createOpts);
-                        const script = `$._com_arceditor_.ArcEditor.addSvgShapeLayer(${serializedName}, ${serializedIR}, ${serializedOpts})`;
-                        hostRes = await evalScriptAsync(wrapExtendScript(script));
-                    }
-
-                    observations.push(`- Tool "createSvgShape": ${hostRes}`);
-                } catch (err) {
-                    observations.push(`- Tool "createSvgShape": Error transpiling SVG: ${err.message}`);
-                }
-                continue;
             } else if (toolName === "createScript") {
                 const sName = params.scriptName;
                 const content = params.content;
