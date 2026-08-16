@@ -1590,18 +1590,6 @@ function showToast(message, type = "info") {
         
         toast.style.opacity = "0";
         toast.style.transform = "translateY(10px) scale(0.95)";
-        
-        // Remove hover blur if no other toast is hovered (excluding the current one)
-        setTimeout(() => {
-            const otherHovered = Array.from(container.querySelectorAll(".toast:hover"))
-                .filter(t => t !== toast);
-            if (otherHovered.length === 0) {
-                const pane = document.getElementById("pane-chat");
-                if (pane) {
-                    pane.classList.remove("blur-chat");
-                }
-            }
-        }, 50);
 
         setTimeout(() => {
             if (toast.parentNode) {
@@ -1615,26 +1603,6 @@ function showToast(message, type = "info") {
         dismiss();
     });
     toast.appendChild(closeBtn);
-
-    // Hover blur effects
-    toast.addEventListener("mouseenter", () => {
-        const pane = document.getElementById("pane-chat");
-        if (pane) {
-            pane.classList.add("blur-chat");
-        }
-    });
-
-    toast.addEventListener("mouseleave", () => {
-        setTimeout(() => {
-            const hovered = container.querySelector(".toast:hover");
-            if (!hovered) {
-                const pane = document.getElementById("pane-chat");
-                if (pane) {
-                    pane.classList.remove("blur-chat");
-                }
-            }
-        }, 50);
-    });
 
     // Append to container
     container.appendChild(toast);
