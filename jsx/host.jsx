@@ -2518,6 +2518,244 @@ $._com_arceditor_ = $._com_arceditor_ || {};
             var finalIndex = contents.numProperties - targetIdx + 1;
 
             return "Success: Added styled shape '" + (groupName || shapeType) + "' to layer '" + layer.name + "' at index " + finalIndex;
+        },
+
+        /**
+         * Recursively constructs an After Effects vector shape group from parsed SVG Intermediate Representation.
+         */
+        _buildSvgGroup: function (parentContents, groupData) {
+            if (!parentContents || !groupData) return null;
+
+            if (groupData.isContainer && groupData.shapes) {
+                var container = parentContents.addProperty("ADBE Vector Group");
+                container.name = groupData.name || "Group";
+                var containerContents = container.property("Contents") || container.property("ADBE Vectors Group");
+                if (containerContents) {
+                    // Reverse iteration: In AE shape layers, property 1 renders on top.
+                    // Adding SVG elements in reverse order puts SVG foreground items at property 1 (top).
+                    for (var s = groupData.shapes.length - 1; s >= 0; s--) {
+                        this._buildSvgGroup(containerContents, groupData.shapes[s]);
+                    }
+                }
+                return container;
+            }
+
+            var group = parentContents.addProperty("ADBE Vector Group");
+            group.name = groupData.name || "Shape Group";
+            var groupContents = group.property("Contents") || group.property("ADBE Vectors Group");
+            if (!groupContents) return group;
+
+            // 1. Add all Bezier Paths (supporting compound subpaths)
+            if (groupData.paths && groupData.paths.length > 0) {
+                for (var p = 0; p < groupData.paths.length; p++) {
+                    var pData = groupData.paths[p];
+                    var pathProp = groupContents.addProperty("ADBE Vector Shape - Group");
+                    var shapeObj = new Shape();
+                    shapeObj.vertices = pData.vertices || [];
+                    shapeObj.inTangents = pData.inTangents || [];
+                    shapeObj.outTangents = pData.outTangents || [];
+                    shapeObj.closed = (pData.closed !== undefined) ? !!pData.closed : true;
+                    if (pathProp && pathProp.property("Path")) {
+                        pathProp.property("Path").setValue(shapeObj);
+                    }
+                }
+            }
+
+            // 2. Add Fill or Gradient Fill
+            var styles = groupData.styles || {};
+            if (styles.fill) {
+                if (styles.fill.gradient) {
+                    try {
+                        var gFill = groupContents.addProperty("ADBE Vector Graphic - G-Fill");
+                        if (gFill) {
+                            if (styles.fill.gradient.type === "radial") {
+                                try { gFill.property("ADBE Vector Grad Type").setValue(2); } catch (e) { }
+                            } else {
+                                try { gFill.property("ADBE Vector Grad Type").setValue(1); } catch (e) { }
+                            }
+                            if (styles.fill.opacity !== undefined && gFill.property("Opacity")) {
+                                gFill.property("Opacity").setValue(Number(styles.fill.opacity));
+                            }
+                        }
+                    } catch (gErr) {
+                        // Fallback to solid fill if G-Fill fails
+                        var fbFill = groupContents.addProperty("ADBE Vector Graphic - Fill");
+                        if (fbFill && fbFill.property("Color")) {
+                            fbFill.property("Color").setValue(styles.fill.rgb || [0.8, 0.8, 0.8]);
+                        }
+                    }
+                } else {
+                    var fill = groupContents.addProperty("ADBE Vector Graphic - Fill");
+                    if (fill) {
+                        if (fill.property("Color")) {
+                            fill.property("Color").setValue(styles.fill.rgb || [0.8, 0.8, 0.8]);
+                        }
+                        if (styles.fill.opacity !== undefined && fill.property("Opacity")) {
+                            fill.property("Opacity").setValue(Number(styles.fill.opacity));
+                        }
+                        if (styles.fill.rule === 2) {
+                            try { fill.property("ADBE Vector Fill Rule").setValue(2); } catch (e) { }
+                        }
+                    }
+                }
+            }
+
+            // 3. Add Stroke
+            if (styles.stroke) {
+                var stroke = groupContents.addProperty("ADBE Vector Graphic - Stroke");
+                if (stroke) {
+                    if (stroke.property("Color")) {
+                        stroke.property("Color").setValue(styles.stroke.rgb || [0, 0, 0]);
+                    }
+                    if (stroke.property("Stroke Width")) {
+                        stroke.property("Stroke Width").setValue(Number(styles.stroke.width || 1));
+                    }
+                    if (styles.stroke.opacity !== undefined && stroke.property("Opacity")) {
+                        stroke.property("Opacity").setValue(Number(styles.stroke.opacity));
+                    }
+                    if (styles.stroke.lineCap && stroke.property("Line Cap")) {
+                        try { stroke.property("Line Cap").setValue(styles.stroke.lineCap); } catch (e) { }
+                    }
+                    if (styles.stroke.lineJoin && stroke.property("Line Join")) {
+                        try { stroke.property("Line Join").setValue(styles.stroke.lineJoin); } catch (e) { }
+                    }
+                    if (styles.stroke.miterLimit && stroke.property("Miter Limit")) {
+                        try { stroke.property("Miter Limit").setValue(styles.stroke.miterLimit); } catch (e) { }
+                    }
+                    if (styles.stroke.dashArray && styles.stroke.dashArray.length > 0) {
+                        try {
+                            var dashes = stroke.property("Dashes") || stroke.property("ADBE Vector Stroke Dashes");
+                            if (dashes) {
+                                var dash1 = dashes.addProperty("ADBE Vector Stroke Dash 1");
+                                if (dash1) dash1.setValue(styles.stroke.dashArray[0]);
+                                if (styles.stroke.dashArray.length > 1) {
+                                    var gap1 = dashes.addProperty("ADBE Vector Stroke Gap 1");
+                                    if (gap1) gap1.setValue(styles.stroke.dashArray[1]);
+                                }
+                            }
+                        } catch (dashErr) { }
+                    }
+                }
+            }
+
+            // 4. Set Group Transform Opacity
+            if (styles.opacity !== undefined && styles.opacity !== 100) {
+                var tf = group.property("Transform") || group.property("Transform - Group") || group.property("ADBE Vector Transform Group");
+                if (tf && tf.property("Opacity")) {
+                    tf.property("Opacity").setValue(Number(styles.opacity));
+                }
+            }
+
+            return group;
+        },
+
+        /**
+         * Creates Shape Layer(s) directly from parsed SVG Intermediate Representation.
+         */
+        addSvgShapeLayer: function (layerName, svgIR, options) {
+            var comp = getActiveComp();
+            if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+            if (!svgIR || !svgIR.layers || svgIR.layers.length === 0) {
+                throw new Error("Invalid SVG data provided.");
+            }
+
+            var opts = options || {};
+            var createdLayers = [];
+
+            for (var l = 0; l < svgIR.layers.length; l++) {
+                var layData = svgIR.layers[l];
+                var targetName = layData.layerName || layerName || "SVG Vector Layer";
+                var shapeLayer = comp.layers.addShape();
+                shapeLayer.name = targetName;
+
+                if (layData.position && shapeLayer.property("Position")) {
+                    shapeLayer.property("Position").setValue(layData.position);
+                }
+                if (layData.scale && shapeLayer.property("Scale")) {
+                    shapeLayer.property("Scale").setValue(layData.scale);
+                }
+
+                var contents = shapeLayer.property("Contents") || shapeLayer.property("ADBE Root Vectors Group");
+                if (contents && layData.groups) {
+                    // Reverse iteration: In AE shape layers, property 1 renders on top.
+                    // Adding SVG elements in reverse order puts SVG foreground items at property 1 (top).
+                    for (var g = layData.groups.length - 1; g >= 0; g--) {
+                        this._buildSvgGroup(contents, layData.groups[g]);
+                    }
+                }
+
+                // Handle timeline ordering if requested
+                if (opts.ordering) {
+                    try {
+                        this.reorderLayer(shapeLayer.id, opts.ordering, opts.relativeTo || opts.relativeToLayerRef);
+                    } catch (ordErr) { }
+                }
+
+                createdLayers.push({
+                    id: shapeLayer.id,
+                    name: shapeLayer.name,
+                    index: shapeLayer.index
+                });
+            }
+
+            return ArcJSON.stringify({
+                status: "Success",
+                message: "Created " + createdLayers.length + " SVG shape layer(s).",
+                layers: createdLayers
+            });
+        },
+
+        /**
+         * Updates or replaces vector geometry on an existing Shape Layer from SVG Intermediate Representation.
+         */
+        updateSvgShapeLayer: function (layerRef, svgIR, options) {
+            var comp = getActiveComp();
+            if (!comp || !(comp instanceof CompItem)) throw new Error("No active composition.");
+            var layer = this.resolveLayer(layerRef);
+            if (!layer) throw new Error("Layer not found: " + layerRef);
+
+            var opts = options || {};
+            var contents = layer.property("Contents") || layer.property("ADBE Root Vectors Group");
+            if (!contents) throw new Error("Could not access shape layer contents.");
+
+            if (opts.targetGroup) {
+                // Update specific group inside the layer
+                var existingGroup = this.resolveShape(contents, opts.targetGroup);
+                var targetIdx = existingGroup ? existingGroup.propertyIndex : contents.numProperties;
+                if (existingGroup) {
+                    existingGroup.remove();
+                }
+
+                // Build new groups from the first layer in svgIR (reverse order for AE stacking)
+                if (svgIR && svgIR.layers && svgIR.layers.length > 0) {
+                    var layData = svgIR.layers[0];
+                    for (var g = layData.groups.length - 1; g >= 0; g--) {
+                        var newGrp = this._buildSvgGroup(contents, layData.groups[g]);
+                        if (newGrp && targetIdx <= contents.numProperties) {
+                            try { this.moveShapeGroup(contents, newGrp, targetIdx); } catch (e) { }
+                        }
+                    }
+                }
+            } else {
+                // Replace all contents in the shape layer
+                while (contents.numProperties > 0) {
+                    contents.property(1).remove();
+                }
+
+                if (svgIR && svgIR.layers && svgIR.layers.length > 0) {
+                    var layData = svgIR.layers[0];
+                    for (var g = layData.groups.length - 1; g >= 0; g--) {
+                        this._buildSvgGroup(contents, layData.groups[g]);
+                    }
+                }
+            }
+
+            return ArcJSON.stringify({
+                status: "Success",
+                message: "Updated SVG shape layer '" + layer.name + "' successfully.",
+                layerId: layer.id,
+                layerName: layer.name
+            });
         }
     };
 

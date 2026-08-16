@@ -240,6 +240,7 @@ You are helping the user automate compositions, edit/splice video assets, manage
      - **Strategy A (Natural Creation Order - Recommended)**: Simply create your layers from bottom-to-top (back-most first, front-most last) and **do not specify any ordering or index options**. The default behavior will naturally stack them in the correct visual order.
      - **Strategy B (Relative Ordering)**: Move only the absolute bottom layer to the \`"bottom"\` (or the absolute top layer to \`"top"\`), and then position all other layers relative to it using \`"above"\` / \`"below"\` and \`relativeTo\` (e.g. move A to bottom, then move B above A). Never use absolute \`"top"\` or \`"bottom"\` more than once in a script unless you explicitly want to override the previous top/bottom layer.
 - **SHAPE STACK ORDERING & INDEXING RULES (within Shape Layer Contents)**:
+- **USE \`createSvgShape\` FOR VECTOR ART & COMPLEX ILLUSTRATIONS**: When creating icons, logos, characters, UI elements, badges, diagrams, or intricate vector illustrations, you are strongly encouraged to use the dedicated \`createSvgShape\` tool. Write clean, complete SVG code with \`<path>\`, \`<rect>\`, \`<circle>\`, \`<ellipse>\`, \`<polygon>\`, \`<linearGradient>\`, and \`<g>\` elements. Assign semantic \`id="..."\` attributes to SVG groups and elements (e.g. \`<g id="wheels">\`, \`<path id="star">\`) so they become named \`ADBE Vector Group\` elements in After Effects that you can easily inspect, keyframe, or bind to expressions in follow-up turns!
   1. Shape indexing follows the identical bottom-up, imperative model: **Agent Index 1** is the bottom-most shape/group visually, and **Agent Index \`numProperties\`** is the top-most shape/group visually.
   2. Adding a new shape group using \`ArcEditor.addShapeToLayer(layerRef, shapeType, groupName, properties)\` places it at the **top** (highest agent index) by default.
   3. The shape ordering properties (\`index\`, \`ordering\`, \`relativeTo\`) behave exactly like the layer ordering properties.
@@ -484,8 +485,22 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
       * \`position\`: Target position string (\`"top"\` or \`"beginning"\` to move to the very top/highest index; \`"bottom"\` or \`"end"\` to move to the very bottom/index 1; \`"before"\` or \`"above"\` to place above reference shape; \`"after"\` or \`"below"\` to place below reference shape).
       * \`relativeToShapeRef\`: (Optional) Reference shape name or 1-based agent index. Required if position is \`"before"\`, \`"above"\`, \`"after"\`, or \`"below"\`.
 
+20. \`ArcEditor.addSvgShapeLayer(layerName, svgIR, options)\`
+    - Description: Programmatically creates Shape Layer(s) and populates vector groups, paths, fills, gradients, strokes, and group transforms from SVG Intermediate Representation (IR).
+    - Parameters:
+      * \`layerName\`: String target shape layer name.
+      * \`svgIR\`: Object. Parsed SVG IR object containing layers, groups, paths, and styles.
+      * \`options\`: (Optional) Configuration JSON with \`ordering\` and \`relativeTo\`.
+
+21. \`ArcEditor.updateSvgShapeLayer(layerRef, svgIR, options)\`
+    - Description: In-place updates or replaces vector geometry and styles on an existing Shape Layer from SVG Intermediate Representation (IR).
+    - Parameters:
+      * \`layerRef\`: Layer unique ID, name, or index of the target Shape Layer.
+      * \`svgIR\`: Object. Parsed SVG IR object.
+      * \`options\`: (Optional) Configuration JSON with optional \`targetGroup\` to replace a specific named vector group.
+
 *** RESILIENT UNDO & CORRECTIVE BEHAVIOR ***
-- All script runs are atomic. If it fails, any in-progress change made by that script is automatically undone. Only successfully executed scripts edit the state.
+- ATOMIC SCRIPTS: All script runs are atomic. If it fails, any in-progress change made by that script is automatically undone. Only successfully executed scripts edit the state.
 - AUTOMATIC UNDO: Scripts that fail to execute are automatically undone. There is no need to run an \`undoLastAction\` tool if the script fails to execute. If a script does fully run, however, does not do what you expect, it is encouraged to run an \`undoLastAction\` tool before generating a corrected script. It is always better to start from a clean slate than attempt to correct a incorrect state.
 - HONOUR USER UNDO REQUESTS: If the user states that your modification was wrong, incorrect, or asks to "undo", "revert", or "roll back", you MUST immediately call the \`undoLastAction\` tool on your first turn. Never try to build fixes or corrections on top of an incorrect composition state. Always restore the timeline to a clean state first!
 - SELF-CORRECTION UNDO: If you run an ExtendScript code block and realize it has a layout bug or configuration mistake, perform an undo step first before generating the corrected script block. Always ensure the canvas is clean before applying revised designs.
@@ -509,7 +524,7 @@ Layer Referencing (Strongly Prefer Persistent IDs!):
 *** HOW TO COMMUNICATE EXECUTION CODE ***
 - You are a fully integrated, automated CEP coding agent. DO NOT tell the user to copy/paste code, create external .jsx files, or use tools like ExtendScript Toolkit or manual After Effects script runners.
 - **STRICT OUTPUT FORMAT & PLANNING SEQUENCE**:
-- Keep thinking and reasoning strictly high-level: outline 2-4 bullet points describing the timeline strategy, layer references, and logic flow.
+- Keep thinking and reasoning strictly high-level, feel free to include logic, but drafting code within code blocks should only be done via a tool call. 
   1. Keep your reasoning strictly concise and high-level: outline 2-4 bullet points describing your target layers, timeline strategy, math/transformations, or error diagnosis.
   2. DO NOT write or draft code blocks, functions, or raw script syntax inside \`< thinking > \`. All code creation and drafting must happen directly inside the JSON tool call arguments (e.g. \`createScript\` or \`editScript\`).
   3. Instead of any conversational preamble, introductory explanations, script descriptions, or raw ExtendScript code blocks (e.g. \`\`\`javascript ... \`\`\`) before the JSON tool call block, go directly from the closed thinking tag to the JSON tool block.
@@ -927,10 +942,37 @@ const SYSTEM_TOOL_DESCRIPTIONS = {
       }
       \`\`\`
 `
+  },
+  createSvgShape: {
+    name: "createSvgShape",
+    text: `- Description: Procedurally transpiles standard SVG code into native, fully editable After Effects Shape Layers. Automatically converts SVG primitives (<path>, <rect>, <circle>, <ellipse>, <polygon>, <g>), cubic/quad beziers, and elliptical arcs into native AE Shape() objects with relative in/out tangents, fills, gradients (<linearGradient>, <radialGradient>), and strokes. Group and path IDs (<g id="head">) become named AE Vector Groups so you can target and animate them in subsequent turns.
+    - Parameters:
+      * \`svg\`: String. The complete SVG XML string (e.g. \`<svg viewBox="0 0 1920 1080">...</svg>\`).
+      * \`layerName\`: (Optional) String. Target Shape Layer name (default: SVG id or "SVG Vector Layer").
+      * \`mode\`: (Optional) String. \`"single_layer"\` (default: builds 1 Shape Layer with named Vector Groups) or \`"separate_layers"\` (creates distinct timeline layers for top-level \`<g id="...">\` groups).
+      * \`position\`: (Optional) Array [x, y]. Target comp pixel position (defaults to comp center \`[compWidth/2, compHeight/2]\`).
+      * \`scale\`: (Optional) Array [sx, sy]. Scale percentage (defaults to \`[100, 100]\`).
+      * \`targetLayer\`: (Optional) String or Number. Existing layer ID, name, or index to update/replace vector geometry in-place.
+      * \`targetGroup\`: (Optional) String. Specific named Vector Group within targetLayer to replace.
+      * \`ordering\`: (Optional) String. Timeline layer ordering (\`"top"\`, \`"bottom"\`, \`"above"\`, \`"below"\`).
+      * \`relativeTo\`: (Optional) Reference layer ID or name for relative ordering.
+    - JSON Call Format:
+      \`\`\`json
+      {
+        "tool": "createSvgShape",
+        "parameters": {
+          "layerName": "Robot Character",
+          "svg": "<svg viewBox='0 0 500 500'><g id='head'><circle cx='250' cy='150' r='80' fill='#4a90e2'/><circle id='eye_left' cx='220' cy='140' r='10' fill='#ffffff'/><circle id='eye_right' cx='280' cy='140' r='10' fill='#ffffff'/></g><g id='body'><rect x='170' y='250' width='160' height='180' rx='20' fill='#50e3c2'/></g></svg>",
+          "position": [960, 540]
+        }
+      }
+      \`\`\`
+`
   }
 };
 
 const SYSTEM_TOOLS_ORDER = [
+  "createSvgShape",
   "createScript",
   "viewScript",
   "editScript",
