@@ -56,15 +56,21 @@
         silver: [0.753, 0.753, 0.753],
         coral: [1, 0.498, 0.314],
         salmon: [0.98, 0.502, 0.447],
-        indigo: [0.294, 0, 0.51]
+        indigo: [0.294, 0, 0.51],
+        violet: [0.933, 0.51, 0.933],
+        brown: [0.647, 0.165, 0.165],
+        beige: [0.961, 0.961, 0.863],
+        khaki: [0.941, 0.902, 0.549],
+        transparent: [0, 0, 0]
     };
 
     /**
      * Color Parser: parses hex, rgb, rgba, hsl, hsla, and named CSS colors into [r, g, b] (0..1) + opacity (0..100)
      */
-    function parseColor(str) {
+    function parseColor(str, parentColor) {
         if (!str || typeof str !== 'string') return null;
         var trimmed = str.trim();
+
         // Check if URL reference to a gradient: url(#gradId) - preserve exact case
         var gradMatch = trimmed.match(/url\(\s*['"]?#([^'"]+)['"]?\s*\)/i);
         if (gradMatch) {
@@ -72,7 +78,14 @@
         }
 
         var s = trimmed.toLowerCase();
-        if (s === 'none' || s === 'transparent') return { none: true };
+        if (s === 'none') return { none: true };
+        if (s === 'transparent') return { none: true, opacity: 0 };
+        if (s === 'currentcolor') {
+            if (parentColor && parentColor.rgb) {
+                return { rgb: [parentColor.rgb[0], parentColor.rgb[1], parentColor.rgb[2]], opacity: parentColor.opacity !== undefined ? parentColor.opacity : 100 };
+            }
+            return { rgb: [0, 0, 0], opacity: 100 };
+        }
 
         // Named colors
         if (CSS_COLORS[s]) {
@@ -339,6 +352,7 @@
         };
 
         while (i < tokens.length) {
+            var prevI = i;
             if (tokens[i].type === 'cmd') {
                 curCmd = tokens[i++].val;
             }
@@ -566,6 +580,11 @@
                 lastCp2 = null;
                 lastQuadCp = null;
             }
+
+            // Safety guard: guarantee loop progress to prevent infinite hang on unexpected tokens
+            if (i === prevI) {
+                i++;
+            }
         }
 
         return subpaths;
@@ -785,10 +804,80 @@
     }
 
     /**
-     * Extracts styles from element attributes or inline style property
+     * Parses embedded CSS <style> block declarations
      */
-    function extractElementStyles(elem, parentStyles) {
+    function parseCssRules(svgDoc) {
+        var rules = { classes: {}, ids: {}, tags: {} };
+        if (!svgDoc) return rules;
+
+        var styleNodes = svgDoc.querySelectorAll ? svgDoc.querySelectorAll('style') : [];
+        for (var s = 0; s < styleNodes.length; s++) {
+            var content = styleNodes[s].textContent || styleNodes[s].innerText || styleNodes[s].text || '';
+            if (!content && styleNodes[s].children && styleNodes[s].children.length > 0) {
+                content = styleNodes[s].children.map(function (c) { return c.textContent || ''; }).join(' ');
+            }
+            if (!content) continue;
+
+            // Simple CSS block regex: selector { decls }
+            var blockRegex = /([^{]+)\{([^}]+)\}/g;
+            var match;
+            while ((match = blockRegex.exec(content)) !== null) {
+                var selector = match[1].trim();
+                var declsStr = match[2].trim();
+                var decls = {};
+                var dParts = declsStr.split(';');
+                for (var d = 0; d < dParts.length; d++) {
+                    var colonIdx = dParts[d].indexOf(':');
+                    if (colonIdx !== -1) {
+                        var k = dParts[d].substring(0, colonIdx).trim().toLowerCase();
+                        var v = dParts[d].substring(colonIdx + 1).trim();
+                        if (k && v) decls[k] = v;
+                    }
+                }
+
+                var subSelectors = selector.split(',');
+                for (var selIdx = 0; selIdx < subSelectors.length; selIdx++) {
+                    var sel = subSelectors[selIdx].trim();
+                    if (sel.charAt(0) === '.') {
+                        rules.classes[sel.substring(1)] = Object.assign(rules.classes[sel.substring(1)] || {}, decls);
+                    } else if (sel.charAt(0) === '#') {
+                        rules.ids[sel.substring(1)] = Object.assign(rules.ids[sel.substring(1)] || {}, decls);
+                    } else if (sel) {
+                        rules.tags[sel.toLowerCase()] = Object.assign(rules.tags[sel.toLowerCase()] || {}, decls);
+                    }
+                }
+            }
+        }
+
+        return rules;
+    }
+
+    /**
+     * Extracts styles from element attributes, CSS rules, or inline style property
+     */
+    function extractElementStyles(elem, parentStyles, cssRules) {
         var styles = Object.assign({}, parentStyles || {});
+        var tag = elem.tagName.toLowerCase();
+        var elemId = elem.getAttribute('id');
+        var elemClass = elem.getAttribute('class');
+
+        // Apply CSS rules hierarchy: tag -> class -> id
+        if (cssRules) {
+            if (cssRules.tags && cssRules.tags[tag]) {
+                Object.assign(styles, cssRules.tags[tag]);
+            }
+            if (elemClass && cssRules.classes) {
+                var classes = elemClass.split(/\s+/);
+                for (var c = 0; c < classes.length; c++) {
+                    if (cssRules.classes[classes[c]]) {
+                        Object.assign(styles, cssRules.classes[classes[c]]);
+                    }
+                }
+            }
+            if (elemId && cssRules.ids && cssRules.ids[elemId]) {
+                Object.assign(styles, cssRules.ids[elemId]);
+            }
+        }
 
         var getAttrOrStyle = function (name) {
             if (elem.hasAttribute(name)) return elem.getAttribute(name);
@@ -798,13 +887,22 @@
                 var match = styleAttr.match(regex);
                 if (match) return match[1].trim();
             }
+            if (styles[name] !== undefined) return styles[name];
             return null;
         };
+
+        // Visibility / Display Pruning
+        var disp = getAttrOrStyle('display');
+        var vis = getAttrOrStyle('visibility');
+        if (disp === 'none' || vis === 'hidden') {
+            styles.hidden = true;
+            return styles;
+        }
 
         // Fill
         var fillVal = getAttrOrStyle('fill');
         if (fillVal !== null) {
-            styles.fill = parseColor(fillVal);
+            styles.fill = parseColor(fillVal, parentStyles ? parentStyles.fill : null);
         } else if (!parentStyles || !parentStyles.fill) {
             styles.fill = { rgb: [0, 0, 0], opacity: 100 }; // Default black fill in SVG
         }
@@ -818,7 +916,7 @@
         // Stroke
         var strokeVal = getAttrOrStyle('stroke');
         if (strokeVal !== null) {
-            styles.stroke = parseColor(strokeVal);
+            styles.stroke = parseColor(strokeVal, parentStyles ? parentStyles.stroke : null);
         }
 
         // Stroke Width
@@ -836,7 +934,7 @@
         // Line Cap (butt=1, round=2, projecting=3)
         var capVal = getAttrOrStyle('stroke-linecap');
         if (capVal) {
-            capVal = capVal.toLowerCase();
+            capVal = String(capVal).toLowerCase();
             if (capVal === 'round') styles.lineCap = 2;
             else if (capVal === 'square') styles.lineCap = 3;
             else styles.lineCap = 1;
@@ -845,7 +943,7 @@
         // Line Join (miter=1, round=2, bevel=3)
         var joinVal = getAttrOrStyle('stroke-linejoin');
         if (joinVal) {
-            joinVal = joinVal.toLowerCase();
+            joinVal = String(joinVal).toLowerCase();
             if (joinVal === 'round') styles.lineJoin = 2;
             else if (joinVal === 'bevel') styles.lineJoin = 3;
             else styles.lineJoin = 1;
@@ -860,7 +958,13 @@
         // Dash Array
         var dashVal = getAttrOrStyle('stroke-dasharray');
         if (dashVal && dashVal !== 'none') {
-            styles.dashArray = dashVal.trim().split(/[\s,]+/).map(parseFloat);
+            styles.dashArray = String(dashVal).trim().split(/[\s,]+/).map(parseFloat);
+        }
+
+        // Dash Offset
+        var dashOffsetVal = getAttrOrStyle('stroke-dashoffset');
+        if (dashOffsetVal !== null) {
+            styles.dashOffset = parseFloat(dashOffsetVal);
         }
 
         // Overall Opacity
@@ -873,83 +977,206 @@
         // Fill Rule (nonzero=1, evenodd=2)
         var ruleVal = getAttrOrStyle('fill-rule');
         if (ruleVal) {
-            styles.fillRule = ruleVal.toLowerCase() === 'evenodd' ? 2 : 1;
+            styles.fillRule = String(ruleVal).toLowerCase() === 'evenodd' ? 2 : 1;
         }
 
         return styles;
     }
 
     /**
-     * Parses <linearGradient> and <radialGradient> definitions in <defs>
+     * Parses <linearGradient> and <radialGradient> definitions in SVG
      */
-    function parseGradients(svgDoc) {
+    function parseGradients(svgDoc, vbW, vbH, minX, minY) {
         var gradients = {};
         if (!svgDoc) return gradients;
 
-        var linearElems = svgDoc.querySelectorAll('linearGradient');
+        var vW = vbW || 100;
+        var vH = vbH || 100;
+        var mX = minX || 0;
+        var mY = minY || 0;
+        var offsetX = mX + vW / 2;
+        var offsetY = mY + vH / 2;
+
+        var parseCoord = function (val, defaultVal, isY) {
+            if (val === null || val === undefined || val === '') return defaultVal;
+            var str = String(val).trim();
+            if (str.indexOf('%') !== -1) {
+                var pct = parseFloat(str) / 100;
+                return isY ? (mY + pct * vH) : (mX + pct * vW);
+            }
+            var num = parseFloat(str);
+            // If between 0 and 1 without unit, treated as fraction of bbox unless userSpaceOnUse
+            if (num >= 0 && num <= 1 && str.indexOf('.') !== -1 && !isFinite(parseInt(str, 10)) && str.charAt(0) === '0') {
+                return isY ? (mY + num * vH) : (mX + num * vW);
+            }
+            return num;
+        };
+
+        var parseStop = function (st) {
+            var offsetStr = st.getAttribute('offset') || '0';
+            var styleAttr = st.getAttribute('style') || '';
+
+            // Extract from attributes or inline style
+            var stopColor = st.getAttribute('stop-color');
+            var stopOpacity = st.getAttribute('stop-opacity');
+
+            if (styleAttr) {
+                var cMatch = styleAttr.match(/(?:^|;)\s*stop-color\s*:\s*([^;]+)/i);
+                if (cMatch && !stopColor) stopColor = cMatch[1].trim();
+                var oMatch = styleAttr.match(/(?:^|;)\s*stop-opacity\s*:\s*([^;]+)/i);
+                if (oMatch && stopOpacity === null) stopOpacity = oMatch[1].trim();
+                var offMatch = styleAttr.match(/(?:^|;)\s*offset\s*:\s*([^;]+)/i);
+                if (offMatch && (!offsetStr || offsetStr === '0')) offsetStr = offMatch[1].trim();
+            }
+
+            var offset = String(offsetStr).indexOf('%') !== -1 ? parseFloat(offsetStr) / 100 : parseFloat(offsetStr);
+            var parsedC = parseColor(stopColor || '#000000');
+            var op = stopOpacity !== null && stopOpacity !== undefined ? parseFloat(stopOpacity) * 100 : (parsedC && parsedC.opacity !== undefined ? parsedC.opacity : 100);
+
+            return {
+                offset: Math.max(0, Math.min(1, isNaN(offset) ? 0 : offset)),
+                rgb: parsedC && parsedC.rgb ? parsedC.rgb : [0, 0, 0],
+                opacity: isNaN(op) ? 100 : op
+            };
+        };
+
+        var linearElems = svgDoc.querySelectorAll ? svgDoc.querySelectorAll('linearGradient') : [];
         for (var i = 0; i < linearElems.length; i++) {
             var lg = linearElems[i];
             var id = lg.getAttribute('id');
             if (!id) continue;
 
             var stops = [];
-            var stopElems = lg.querySelectorAll('stop');
+            var stopElems = lg.querySelectorAll ? lg.querySelectorAll('stop') : [];
             for (var s = 0; s < stopElems.length; s++) {
-                var st = stopElems[s];
-                var offsetStr = st.getAttribute('offset') || '0';
-                var offset = offsetStr.indexOf('%') !== -1 ? parseFloat(offsetStr) / 100 : parseFloat(offsetStr);
-                var stopColor = st.getAttribute('stop-color') || '#000000';
-                var stopOpacity = st.getAttribute('stop-opacity');
-                var parsedC = parseColor(stopColor);
-                stops.push({
-                    offset: Math.max(0, Math.min(1, offset)),
-                    rgb: parsedC && parsedC.rgb ? parsedC.rgb : [0, 0, 0],
-                    opacity: stopOpacity !== null ? parseFloat(stopOpacity) * 100 : (parsedC ? parsedC.opacity : 100)
-                });
+                stops.push(parseStop(stopElems[s]));
+            }
+            if (stops.length === 0) {
+                stops.push({ offset: 0, rgb: [0, 0, 0], opacity: 100 }, { offset: 1, rgb: [1, 1, 1], opacity: 100 });
             }
 
+            // Sort stops by offset
+            stops.sort(function (a, b) { return a.offset - b.offset; });
+
+            var x1 = parseCoord(lg.getAttribute('x1'), mX, false);
+            var y1 = parseCoord(lg.getAttribute('y1'), mY, true);
+            var x2 = parseCoord(lg.getAttribute('x2'), mX + vW, false);
+            var y2 = parseCoord(lg.getAttribute('y2'), mY, true);
+
+            var gradTf = parseTransform(lg.getAttribute('gradientTransform'));
+            var p1 = applyMatrix(gradTf, [x1, y1]);
+            var p2 = applyMatrix(gradTf, [x2, y2]);
+
+            var startPt = [round2(p1[0] - offsetX), round2(p1[1] - offsetY)];
+            var endPt = [round2(p2[0] - offsetX), round2(p2[1] - offsetY)];
+
+            var firstStop = stops[0];
+            var lastStop = stops[stops.length - 1];
+
             gradients[id] = {
+                id: id,
                 type: 'linear',
-                x1: lg.getAttribute('x1') || '0%',
-                y1: lg.getAttribute('y1') || '0%',
-                x2: lg.getAttribute('x2') || '100%',
-                y2: lg.getAttribute('y2') || '0%',
-                stops: stops
+                startPt: startPt,
+                endPt: endPt,
+                stops: stops,
+                startColor: [firstStop.rgb[0], firstStop.rgb[1], firstStop.rgb[2], (firstStop.opacity || 100) / 100],
+                endColor: [lastStop.rgb[0], lastStop.rgb[1], lastStop.rgb[2], (lastStop.opacity || 100) / 100]
             };
         }
 
-        var radialElems = svgDoc.querySelectorAll('radialGradient');
+        var radialElems = svgDoc.querySelectorAll ? svgDoc.querySelectorAll('radialGradient') : [];
         for (var r = 0; r < radialElems.length; r++) {
             var rg = radialElems[r];
             var rId = rg.getAttribute('id');
             if (!rId) continue;
 
             var rStops = [];
-            var rStopElems = rg.querySelectorAll('stop');
+            var rStopElems = rg.querySelectorAll ? rg.querySelectorAll('stop') : [];
             for (var rs = 0; rs < rStopElems.length; rs++) {
-                var rst = rStopElems[rs];
-                var rOffsetStr = rst.getAttribute('offset') || '0';
-                var rOffset = rOffsetStr.indexOf('%') !== -1 ? parseFloat(rOffsetStr) / 100 : parseFloat(rOffsetStr);
-                var rStopColor = rst.getAttribute('stop-color') || '#000000';
-                var rStopOpacity = rst.getAttribute('stop-opacity');
-                var rParsedC = parseColor(rStopColor);
-                rStops.push({
-                    offset: Math.max(0, Math.min(1, rOffset)),
-                    rgb: rParsedC && rParsedC.rgb ? rParsedC.rgb : [0, 0, 0],
-                    opacity: rStopOpacity !== null ? parseFloat(rStopOpacity) * 100 : (rParsedC ? rParsedC.opacity : 100)
-                });
+                rStops.push(parseStop(rStopElems[rs]));
+            }
+            if (rStops.length === 0) {
+                rStops.push({ offset: 0, rgb: [1, 1, 1], opacity: 100 }, { offset: 1, rgb: [0, 0, 0], opacity: 100 });
             }
 
+            rStops.sort(function (a, b) { return a.offset - b.offset; });
+
+            var cx = parseCoord(rg.getAttribute('cx'), mX + vW / 2, false);
+            var cy = parseCoord(rg.getAttribute('cy'), mY + vH / 2, true);
+            var rStr = rg.getAttribute('r') || '50%';
+            var rVal = String(rStr).indexOf('%') !== -1 ? (parseFloat(rStr) / 100) * ((vW + vH) / 2) : parseFloat(rStr);
+
+            var rGradTf = parseTransform(rg.getAttribute('gradientTransform'));
+            var centerPt = applyMatrix(rGradTf, [cx, cy]);
+            var edgePt = applyMatrix(rGradTf, [cx + rVal, cy]);
+
+            var rStartPt = [round2(centerPt[0] - offsetX), round2(centerPt[1] - offsetY)];
+            var rEndPt = [round2(edgePt[0] - offsetX), round2(edgePt[1] - offsetY)];
+
+            var rFirstStop = rStops[0];
+            var rLastStop = rStops[rStops.length - 1];
+
             gradients[rId] = {
+                id: rId,
                 type: 'radial',
-                cx: rg.getAttribute('cx') || '50%',
-                cy: rg.getAttribute('cy') || '50%',
-                r: rg.getAttribute('r') || '50%',
-                stops: rStops
+                startPt: rStartPt,
+                endPt: rEndPt,
+                radius: round2(rVal),
+                stops: rStops,
+                startColor: [rFirstStop.rgb[0], rFirstStop.rgb[1], rFirstStop.rgb[2], (rFirstStop.opacity || 100) / 100],
+                endColor: [rLastStop.rgb[0], rLastStop.rgb[1], rLastStop.rgb[2], (rLastStop.opacity || 100) / 100]
             };
         }
 
         return gradients;
+    }
+
+    /**
+     * Expands <use> and <symbol> elements
+     */
+    function expandUseElements(svgDoc) {
+        if (!svgDoc) return;
+        var useElems = svgDoc.querySelectorAll ? svgDoc.querySelectorAll('use') : [];
+        for (var u = 0; u < useElems.length; u++) {
+            var useElem = useElems[u];
+            var href = useElem.getAttribute('href') || useElem.getAttribute('xlink:href');
+            if (!href || href.charAt(0) !== '#') continue;
+            var targetId = href.substring(1);
+            var target = svgDoc.querySelector ? svgDoc.querySelector('#' + targetId) : null;
+            if (!target) continue;
+
+            var x = parseFloat(useElem.getAttribute('x') || 0);
+            var y = parseFloat(useElem.getAttribute('y') || 0);
+            var uTf = useElem.getAttribute('transform') || '';
+            var combinedTf = (x || y) ? ('translate(' + x + ',' + y + ') ' + uTf) : uTf;
+
+            if (typeof useElem.cloneNode === 'function') {
+                var clone = target.cloneNode(true);
+                if (combinedTf) {
+                    var exTf = clone.getAttribute('transform') || '';
+                    clone.setAttribute('transform', (exTf ? (exTf + ' ') : '') + combinedTf);
+                }
+                var copyAttrs = ['fill', 'stroke', 'stroke-width', 'opacity', 'id', 'class'];
+                for (var a = 0; a < copyAttrs.length; a++) {
+                    var aName = copyAttrs[a];
+                    if (useElem.hasAttribute(aName) && !clone.hasAttribute(aName)) {
+                        clone.setAttribute(aName, useElem.getAttribute(aName));
+                    }
+                }
+                if (useElem.parentNode) {
+                    useElem.parentNode.replaceChild(clone, useElem);
+                }
+            } else {
+                // Fallback custom node
+                useElem.tagName = target.tagName;
+                useElem.attributes = Object.assign({}, target.attributes, useElem.attributes);
+                if (combinedTf) {
+                    var exTf = target.getAttribute('transform') || '';
+                    useElem.attributes['transform'] = (exTf ? (exTf + ' ') : '') + combinedTf;
+                }
+                useElem.children = target.children ? target.children.slice() : [];
+            }
+        }
     }
 
     /**
@@ -972,9 +1199,14 @@
                 },
                 querySelector: function (sel) {
                     var target = sel.toLowerCase();
-                    if (this.tagName === target) return this;
+                    if (target.charAt(0) === '#') {
+                        var id = target.substring(1);
+                        if (this.getAttribute('id') === id) return this;
+                    } else if (this.tagName === target) {
+                        return this;
+                    }
                     for (var c = 0; c < this.children.length; c++) {
-                        var res = this.children[c].querySelector(target);
+                        var res = this.children[c].querySelector(sel);
                         if (res) return res;
                     }
                     return null;
@@ -982,9 +1214,14 @@
                 querySelectorAll: function (sel) {
                     var target = sel.toLowerCase();
                     var list = [];
-                    if (this.tagName === target) list.push(this);
+                    if (target.charAt(0) === '#') {
+                        var id = target.substring(1);
+                        if (this.getAttribute('id') === id) list.push(this);
+                    } else if (this.tagName === target) {
+                        list.push(this);
+                    }
                     for (var c = 0; c < this.children.length; c++) {
-                        var sub = this.children[c].querySelectorAll(target);
+                        var sub = this.children[c].querySelectorAll(sel);
                         for (var s = 0; s < sub.length; s++) list.push(sub[s]);
                     }
                     return list;
@@ -1025,7 +1262,7 @@
             var isSelfClosing = match[3] === '/' || tagName.toLowerCase() === 'path' || tagName.toLowerCase() === 'rect' ||
                 tagName.toLowerCase() === 'circle' || tagName.toLowerCase() === 'ellipse' ||
                 tagName.toLowerCase() === 'line' || tagName.toLowerCase() === 'polyline' ||
-                tagName.toLowerCase() === 'polygon' || tagName.toLowerCase() === 'stop';
+                tagName.toLowerCase() === 'polygon' || tagName.toLowerCase() === 'stop' || tagName.toLowerCase() === 'use';
 
             if (isClosing) {
                 if (stack.length > 1) {
@@ -1042,10 +1279,20 @@
                 }
 
                 var node = createNode(tagName, attrs);
+
+                // If style tag, extract text content up to </style>
+                if (tagName.toLowerCase() === 'style') {
+                    var styleEnd = cleanStr.indexOf('</style>', tagRegex.lastIndex);
+                    if (styleEnd !== -1) {
+                        node.textContent = cleanStr.substring(tagRegex.lastIndex, styleEnd).trim();
+                        tagRegex.lastIndex = styleEnd + 8; // skip past </style>
+                    }
+                }
+
                 var parent = stack[stack.length - 1];
                 parent.children.push(node);
 
-                if (!isSelfClosing && match[0].indexOf('/>') === -1) {
+                if (!isSelfClosing && match[0].indexOf('/>') === -1 && tagName.toLowerCase() !== 'style') {
                     stack.push(node);
                 }
             }
@@ -1056,14 +1303,6 @@
 
     /**
      * Main Transpilation Function: Converts SVG string into Shape Layer Intermediate Representation (IR)
-     * @param {string} svgString Full SVG XML content
-     * @param {Object} options Configuration options:
-     *   - compWidth: number (default: 1920)
-     *   - compHeight: number (default: 1080)
-     *   - position: [x, y] comp coordinates (default: comp center)
-     *   - scale: [sx, sy] percentage (default: [100, 100])
-     *   - mode: "single_layer" | "separate_layers" (default: "single_layer")
-     *   - layerName: string (optional target shape layer name)
      */
     function transpile(svgString, options) {
         var opts = options || {};
@@ -1090,6 +1329,8 @@
             throw new Error('No <svg> root element found in provided input.');
         }
 
+        expandUseElements(doc);
+
         // ViewBox & Canvas dimensions
         var viewBoxAttr = svgElem.getAttribute('viewBox');
         var svgW = parseFloat(svgElem.getAttribute('width')) || compW;
@@ -1109,8 +1350,6 @@
         // Check if viewBox matches comp dimensions 1:1
         var isCompSized = (Math.abs(vbW - compW) < 1 && Math.abs(vbH - compH) < 1 && minX === 0 && minY === 0);
 
-        // Center offset calculation:
-        // In AE, shape layer contents are positioned relative to the layer anchor point [0, 0]
         var offsetX = minX + vbW / 2;
         var offsetY = minY + vbH / 2;
 
@@ -1121,20 +1360,20 @@
         var transformCoord = function (pt, matrix) {
             var p = pt;
             if (matrix) p = applyMatrix(matrix, p);
-            // Translate relative to SVG center so [0,0] is at shape anchor point
             return [
                 p[0] - offsetX,
                 p[1] - offsetY
             ];
         };
 
-        var gradients = parseGradients(doc);
+        var cssRules = parseCssRules(doc);
+        var gradients = parseGradients(doc, vbW, vbH, minX, minY);
         var layers = [];
 
         // Traversal function for elements
         var processElement = function (elem, parentMatrix, parentStyles, groupList) {
             var tag = elem.tagName.toLowerCase();
-            if (tag === 'defs' || tag === 'style' || tag === 'script' || tag === 'title' || tag === 'desc') return;
+            if (tag === 'defs' || tag === 'style' || tag === 'script' || tag === 'title' || tag === 'desc' || tag === 'symbol') return;
 
             var localMatrix = parseTransform(elem.getAttribute('transform'));
             var curMatrix = parentMatrix ? [
@@ -1146,7 +1385,9 @@
                 parentMatrix[1] * localMatrix[4] + parentMatrix[3] * localMatrix[5] + parentMatrix[5]
             ] : localMatrix;
 
-            var styles = extractElementStyles(elem, parentStyles);
+            var styles = extractElementStyles(elem, parentStyles, cssRules);
+            if (styles.hidden) return;
+
             var elemId = elem.getAttribute('id') || elem.getAttribute('class') || '';
 
             if (tag === 'g') {
@@ -1185,11 +1426,17 @@
 
             if (shapePaths.length === 0) return;
 
-            // Resolve gradient if fill uses url(#id)
+            // Resolve gradient if fill or stroke uses url(#id)
             var fillData = styles.fill;
-            var gradientData = null;
+            var fillGradData = null;
             if (fillData && fillData.gradientId && gradients[fillData.gradientId]) {
-                gradientData = gradients[fillData.gradientId];
+                fillGradData = gradients[fillData.gradientId];
+            }
+
+            var strokeData = styles.stroke;
+            var strokeGradData = null;
+            if (strokeData && strokeData.gradientId && gradients[strokeData.gradientId]) {
+                strokeGradData = gradients[strokeData.gradientId];
             }
 
             var groupName = elemId || (tag.charAt(0).toUpperCase() + tag.slice(1));
@@ -1198,19 +1445,21 @@
                 paths: shapePaths,
                 styles: {
                     fill: fillData && !fillData.none ? {
-                        rgb: fillData.rgb || [0.8, 0.8, 0.8],
-                        opacity: styles.fillOpacity !== undefined ? styles.fillOpacity : (fillData.opacity !== undefined ? fillData.opacity : 100),
+                        rgb: (fillGradData && fillGradData.startColor ? [fillGradData.startColor[0], fillGradData.startColor[1], fillGradData.startColor[2]] : (fillData.rgb || [0.8, 0.8, 0.8])),
+                        opacity: styles.fillOpacity !== undefined ? styles.fillOpacity : (fillGradData && fillGradData.stops && fillGradData.stops[0] ? fillGradData.stops[0].opacity : (fillData.opacity !== undefined ? fillData.opacity : 100)),
                         rule: styles.fillRule || 1,
-                        gradient: gradientData
+                        gradient: fillGradData
                     } : null,
-                    stroke: styles.stroke && !styles.stroke.none ? {
-                        rgb: styles.stroke.rgb || [0, 0, 0],
+                    stroke: strokeData && !strokeData.none ? {
+                        rgb: (strokeGradData && strokeGradData.startColor ? [strokeGradData.startColor[0], strokeGradData.startColor[1], strokeGradData.startColor[2]] : (strokeData.rgb || [0, 0, 0])),
                         width: styles.strokeWidth !== undefined ? styles.strokeWidth : 1,
-                        opacity: styles.strokeOpacity !== undefined ? styles.strokeOpacity : (styles.stroke.opacity !== undefined ? styles.stroke.opacity : 100),
+                        opacity: styles.strokeOpacity !== undefined ? styles.strokeOpacity : (strokeGradData && strokeGradData.stops && strokeGradData.stops[0] ? strokeGradData.stops[0].opacity : (strokeData.opacity !== undefined ? strokeData.opacity : 100)),
                         lineCap: styles.lineCap || 1,
                         lineJoin: styles.lineJoin || 1,
                         miterLimit: styles.miterLimit || 4,
-                        dashArray: styles.dashArray || null
+                        dashArray: styles.dashArray || null,
+                        dashOffset: styles.dashOffset !== undefined ? styles.dashOffset : null,
+                        gradient: strokeGradData
                     } : null,
                     opacity: styles.opacity !== undefined ? styles.opacity : 100
                 }
@@ -1225,7 +1474,7 @@
             for (var t = 0; t < topChildren.length; t++) {
                 var topElem = topChildren[t];
                 var topTag = topElem.tagName.toLowerCase();
-                if (topTag === 'defs' || topTag === 'style' || topTag === 'script' || topTag === 'title' || topTag === 'desc') continue;
+                if (topTag === 'defs' || topTag === 'style' || topTag === 'script' || topTag === 'title' || topTag === 'desc' || topTag === 'symbol') continue;
 
                 var topId = topElem.getAttribute('id') || topElem.getAttribute('class') || ('Layer ' + (t + 1));
                 var layerGroups = [];
@@ -1290,6 +1539,8 @@
             lines.push('var ' + lVar + '_contents = ' + lVar + '.property("Contents");');
             lines.push('');
 
+            var layerGradient = null;
+
             var emitGroup = function (grp, parentVar, pfx) {
                 if (grp.isContainer && grp.shapes) {
                     var containerVar = pfx + '_g';
@@ -1347,10 +1598,13 @@
                         lines.push(stVar + '.property("Opacity").setValue(' + grp.styles.stroke.opacity + ');');
                     }
                     if (grp.styles.stroke.lineCap !== 1) {
-                        lines.push(stVar + '.property("Line Cap").setValue(' + grp.styles.stroke.lineCap + ');');
+                        lines.push('try { ' + stVar + '.property("Line Cap").setValue(' + grp.styles.stroke.lineCap + '); } catch(e){}');
                     }
                     if (grp.styles.stroke.lineJoin !== 1) {
-                        lines.push(stVar + '.property("Line Join").setValue(' + grp.styles.stroke.lineJoin + ');');
+                        lines.push('try { ' + stVar + '.property("Line Join").setValue(' + grp.styles.stroke.lineJoin + '); } catch(e){}');
+                    }
+                    if (grp.styles.stroke.dashOffset) {
+                        lines.push('try { ' + stVar + '.property("ADBE Vector Stroke Dashes").property("ADBE Vector Stroke Offset").setValue(' + grp.styles.stroke.dashOffset + '); } catch(e){}');
                     }
                 }
 
@@ -1378,6 +1632,9 @@
         subpathToAeShape: subpathToAeShape,
         arcToBeziers: arcToBeziers,
         parseColor: parseColor,
+        parseGradients: parseGradients,
+        parseCssRules: parseCssRules,
         primitiveToPathData: primitiveToPathData
     };
 }));
+

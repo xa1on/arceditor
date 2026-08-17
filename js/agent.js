@@ -1616,8 +1616,13 @@ async function executeToolCalls(jsonStr) {
                     const serializedName = JSON.stringify(params.layerName || "SVG Vector Layer");
                     const serializedIR = JSON.stringify(ir);
                     const serializedOpts = JSON.stringify(createOpts);
-                    const script = `$._com_arceditor_.ArcEditor.addSvgShapeLayer(${serializedName}, ${serializedIR}, ${serializedOpts})`;
+                    const script = `return $._com_arceditor_.ArcEditor.addSvgShapeLayer(${serializedName}, ${serializedIR}, ${serializedOpts});`;
                     const hostResStr = await evalScriptAsync(wrapExtendScript(script));
+
+                    if (typeof hostResStr === "string" && hostResStr.indexOf("Error") === 0) {
+                        observations.push(`- Tool "createSvgShape": ${hostResStr}`);
+                        continue;
+                    }
 
                     // 4. Return concise observation reporting created layer ID, name, and vector groups
                     let hostResObj = null;

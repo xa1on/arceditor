@@ -2561,89 +2561,91 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 }
             }
 
-            // 2. Add Fill or Gradient Fill
+            // 2. Add Fill
             var styles = groupData.styles || {};
             if (styles.fill) {
-                if (styles.fill.gradient) {
-                    try {
-                        var gFill = groupContents.addProperty("ADBE Vector Graphic - G-Fill");
-                        if (gFill) {
-                            if (styles.fill.gradient.type === "radial") {
-                                try { gFill.property("ADBE Vector Grad Type").setValue(2); } catch (e) { }
-                            } else {
-                                try { gFill.property("ADBE Vector Grad Type").setValue(1); } catch (e) { }
-                            }
-                            if (styles.fill.opacity !== undefined && gFill.property("Opacity")) {
-                                gFill.property("Opacity").setValue(Number(styles.fill.opacity));
-                            }
-                        }
-                    } catch (gErr) {
-                        // Fallback to solid fill if G-Fill fails
-                        var fbFill = groupContents.addProperty("ADBE Vector Graphic - Fill");
-                        if (fbFill && fbFill.property("Color")) {
-                            fbFill.property("Color").setValue(styles.fill.rgb || [0.8, 0.8, 0.8]);
-                        }
-                    }
-                } else {
+                try {
                     var fill = groupContents.addProperty("ADBE Vector Graphic - Fill");
                     if (fill) {
-                        if (fill.property("Color")) {
-                            fill.property("Color").setValue(styles.fill.rgb || [0.8, 0.8, 0.8]);
+                        var fColor = styles.fill.rgb || [0.8, 0.8, 0.8];
+                        try {
+                            if (fill.property("Color")) fill.property("Color").setValue(fColor);
+                        } catch (e1) {
+                            try { if (fill.property("ADBE Vector Fill Color")) fill.property("ADBE Vector Fill Color").setValue(fColor); } catch (e2) { }
                         }
-                        if (styles.fill.opacity !== undefined && fill.property("Opacity")) {
-                            fill.property("Opacity").setValue(Number(styles.fill.opacity));
+                        if (styles.fill.opacity !== undefined) {
+                            try {
+                                if (fill.property("Opacity")) fill.property("Opacity").setValue(Number(styles.fill.opacity));
+                            } catch (e3) {
+                                try { if (fill.property("ADBE Vector Fill Opacity")) fill.property("ADBE Vector Fill Opacity").setValue(Number(styles.fill.opacity)); } catch (e4) { }
+                            }
                         }
                         if (styles.fill.rule === 2) {
-                            try { fill.property("ADBE Vector Fill Rule").setValue(2); } catch (e) { }
+                            try { fill.property("ADBE Vector Fill Rule").setValue(2); } catch (e5) { }
                         }
                     }
-                }
+                } catch (fErr) { }
             }
 
             // 3. Add Stroke
             if (styles.stroke) {
-                var stroke = groupContents.addProperty("ADBE Vector Graphic - Stroke");
-                if (stroke) {
-                    if (stroke.property("Color")) {
-                        stroke.property("Color").setValue(styles.stroke.rgb || [0, 0, 0]);
-                    }
-                    if (stroke.property("Stroke Width")) {
-                        stroke.property("Stroke Width").setValue(Number(styles.stroke.width || 1));
-                    }
-                    if (styles.stroke.opacity !== undefined && stroke.property("Opacity")) {
-                        stroke.property("Opacity").setValue(Number(styles.stroke.opacity));
-                    }
-                    if (styles.stroke.lineCap && stroke.property("Line Cap")) {
-                        try { stroke.property("Line Cap").setValue(styles.stroke.lineCap); } catch (e) { }
-                    }
-                    if (styles.stroke.lineJoin && stroke.property("Line Join")) {
-                        try { stroke.property("Line Join").setValue(styles.stroke.lineJoin); } catch (e) { }
-                    }
-                    if (styles.stroke.miterLimit && stroke.property("Miter Limit")) {
-                        try { stroke.property("Miter Limit").setValue(styles.stroke.miterLimit); } catch (e) { }
-                    }
-                    if (styles.stroke.dashArray && styles.stroke.dashArray.length > 0) {
+                try {
+                    var stroke = groupContents.addProperty("ADBE Vector Graphic - Stroke");
+                    if (stroke) {
+                        var sColor = styles.stroke.rgb || [0, 0, 0];
                         try {
-                            var dashes = stroke.property("Dashes") || stroke.property("ADBE Vector Stroke Dashes");
-                            if (dashes) {
-                                var dash1 = dashes.addProperty("ADBE Vector Stroke Dash 1");
-                                if (dash1) dash1.setValue(styles.stroke.dashArray[0]);
-                                if (styles.stroke.dashArray.length > 1) {
-                                    var gap1 = dashes.addProperty("ADBE Vector Stroke Gap 1");
-                                    if (gap1) gap1.setValue(styles.stroke.dashArray[1]);
-                                }
+                            if (stroke.property("Color")) stroke.property("Color").setValue(sColor);
+                        } catch (se1) {
+                            try { if (stroke.property("ADBE Vector Stroke Color")) stroke.property("ADBE Vector Stroke Color").setValue(sColor); } catch (se2) { }
+                        }
+                        if (styles.stroke.width !== undefined) {
+                            try {
+                                if (stroke.property("Stroke Width")) stroke.property("Stroke Width").setValue(Number(styles.stroke.width));
+                            } catch (se3) {
+                                try { if (stroke.property("ADBE Vector Stroke Width")) stroke.property("ADBE Vector Stroke Width").setValue(Number(styles.stroke.width)); } catch (se4) { }
                             }
-                        } catch (dashErr) { }
+                        }
+                        if (styles.stroke.opacity !== undefined) {
+                            try {
+                                if (stroke.property("Opacity")) stroke.property("Opacity").setValue(Number(styles.stroke.opacity));
+                            } catch (se5) {
+                                try { if (stroke.property("ADBE Vector Stroke Opacity")) stroke.property("ADBE Vector Stroke Opacity").setValue(Number(styles.stroke.opacity)); } catch (se6) { }
+                            }
+                        }
+                        if (styles.stroke.lineCap && stroke.property("Line Cap")) {
+                            try { stroke.property("Line Cap").setValue(styles.stroke.lineCap); } catch (se7) { }
+                        }
+                        if (styles.stroke.lineJoin && stroke.property("Line Join")) {
+                            try { stroke.property("Line Join").setValue(styles.stroke.lineJoin); } catch (se8) { }
+                        }
+                        if (styles.stroke.miterLimit && stroke.property("Miter Limit")) {
+                            try { stroke.property("Miter Limit").setValue(styles.stroke.miterLimit); } catch (se9) { }
+                        }
+                        if (styles.stroke.dashArray && styles.stroke.dashArray.length > 0) {
+                            try {
+                                var dashes = stroke.property("Dashes") || stroke.property("ADBE Vector Stroke Dashes");
+                                if (dashes) {
+                                    var dash1 = dashes.addProperty("ADBE Vector Stroke Dash 1");
+                                    if (dash1) dash1.setValue(styles.stroke.dashArray[0]);
+                                    if (styles.stroke.dashArray.length > 1) {
+                                        var gap1 = dashes.addProperty("ADBE Vector Stroke Gap 1");
+                                        if (gap1) gap1.setValue(styles.stroke.dashArray[1]);
+                                    }
+                                }
+                            } catch (dashErr) { }
+                        }
                     }
-                }
+                } catch (stErr) { }
             }
 
             // 4. Set Group Transform Opacity
             if (styles.opacity !== undefined && styles.opacity !== 100) {
-                var tf = group.property("Transform") || group.property("Transform - Group") || group.property("ADBE Vector Transform Group");
-                if (tf && tf.property("Opacity")) {
-                    tf.property("Opacity").setValue(Number(styles.opacity));
-                }
+                try {
+                    var tf = group.property("Transform") || group.property("Transform - Group") || group.property("ADBE Vector Transform Group");
+                    if (tf && tf.property("Opacity")) {
+                        tf.property("Opacity").setValue(Number(styles.opacity));
+                    }
+                } catch (tfErr) { }
             }
 
             return group;
@@ -2669,10 +2671,10 @@ $._com_arceditor_ = $._com_arceditor_ || {};
                 shapeLayer.name = targetName;
 
                 if (layData.position && shapeLayer.property("Position")) {
-                    shapeLayer.property("Position").setValue(layData.position);
+                    try { shapeLayer.property("Position").setValue(layData.position); } catch (pe) { }
                 }
                 if (layData.scale && shapeLayer.property("Scale")) {
-                    shapeLayer.property("Scale").setValue(layData.scale);
+                    try { shapeLayer.property("Scale").setValue(layData.scale); } catch (se) { }
                 }
 
                 var contents = shapeLayer.property("Contents") || shapeLayer.property("ADBE Root Vectors Group");
