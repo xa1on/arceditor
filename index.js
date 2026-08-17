@@ -1378,7 +1378,7 @@ function addBubble(sender, text, base64Images = null, intermediateTurns = null, 
                     imgWrap.style.marginTop = "0"; // Reset margin since container has gap
                     
                     const imgElement = document.createElement("img");
-                    imgElement.src = `data:${item.mimeType};base64,${item.data}`;
+                    imgElement.src = typeof formatDataUrl === "function" ? formatDataUrl(item.mimeType, item.data) : `data:${item.mimeType || 'image/png'};base64,${item.data}`;
                     imgElement.alt = item.name;
                     imgElement.title = item.name;
                     imgWrap.appendChild(imgElement);
@@ -1731,10 +1731,10 @@ function updateContextSizeInfo() {
                         } else {
                             embeddedText += `\n\n[Attached Binary File: ${item.name} (${item.mimeType}, ${item.size} bytes) - Note: Model provider does not support native PDF uploads]`;
                         }
-                    } else if (item.type === "image" || item.mimeType.startsWith("image/")) {
+                    } else if (item.type === "image" || (item.mimeType && item.mimeType.startsWith("image/"))) {
                         contentParts.push({
                             type: "image_url",
-                            image_url: { url: `data:${item.mimeType};base64,${item.data}` }
+                            image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl(item.mimeType, item.data) : `data:${item.mimeType || 'image/png'};base64,${item.data}` }
                         });
                     } else {
                         if (currentProvider === "gemini") {
@@ -1750,7 +1750,7 @@ function updateContextSizeInfo() {
                         }
                     }
                 } else {
-                    contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${item}` } });
+                    contentParts.push({ type: "image_url", image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl("image/png", item) : `data:image/png;base64,${item}` } });
                 }
             });
             
@@ -1831,7 +1831,7 @@ function renderAttachmentDock() {
 
         if (isImage) {
             const img = document.createElement("img");
-            img.src = `data:${mimeType};base64,${data}`;
+            img.src = typeof formatDataUrl === "function" ? formatDataUrl(mimeType, data) : `data:${mimeType};base64,${data}`;
             img.alt = name;
             wrap.appendChild(img);
 

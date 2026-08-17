@@ -112,7 +112,29 @@ function abortActiveRequests() {
     activeRequests = [];
 }
 
+function formatDataUrl(mimeType, data) {
+    if (!data) return "";
+    let str = typeof data === "string" ? data.trim() : String(data);
+    let detectedMime = (mimeType && typeof mimeType === "string" && mimeType.startsWith("image/") && mimeType !== "image/undefined") ? mimeType : "image/png";
+    while (str.startsWith("data:")) {
+        const commaIdx = str.indexOf(",");
+        if (commaIdx === -1) break;
+        const header = str.substring(0, commaIdx);
+        const match = header.match(/data:([^;]+);/);
+        if (match && match[1] && match[1] !== "undefined" && match[1].indexOf("/") !== -1) {
+            detectedMime = match[1];
+        }
+        str = str.substring(commaIdx + 1).trim();
+    }
+    if (!detectedMime || detectedMime === "undefined" || !detectedMime.startsWith("image/")) {
+        detectedMime = "image/png";
+    }
+    return `data:${detectedMime};base64,${str}`;
+}
+window.formatDataUrl = formatDataUrl;
+
 ArcEditor.api = ArcEditor.api || {
+    formatDataUrl,
     sanitizePayload,
     sanitizeLogHeaders,
     sanitizeLogUrl,
@@ -475,13 +497,33 @@ function prepareGeminiPayload(messages, skipSystemInstructions) {
                 m.content.forEach(c => {
                     if (c.type === "text") parts.push({ text: c.text });
                     if (c.type === "image_url") {
-                        const partsOfUrl = c.image_url.url.split(',');
-                        const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                        const rawUrl = c.image_url && c.image_url.url ? c.image_url.url : "";
                         let mimeType = "image/png";
-                        const match = partsOfUrl[0].match(/data:(.*?);/);
-                        if (match && match[1]) {
-                            mimeType = match[1];
+                        let base64Data = "";
+                        if (rawUrl.startsWith("data:")) {
+                            const commaIdx = rawUrl.indexOf(",");
+                            if (commaIdx !== -1) {
+                                const header = rawUrl.substring(0, commaIdx);
+                                base64Data = rawUrl.substring(commaIdx + 1);
+                                const match = header.match(/data:([^;]+);/);
+                                if (match && match[1] && match[1] !== "undefined") {
+                                    mimeType = match[1];
+                                }
+                            } else {
+                                base64Data = rawUrl;
+                            }
+                        } else {
+                            base64Data = rawUrl;
                         }
+                        while (base64Data.startsWith("data:")) {
+                            const nestedComma = base64Data.indexOf(",");
+                            if (nestedComma !== -1) {
+                                base64Data = base64Data.substring(nestedComma + 1);
+                            } else {
+                                break;
+                            }
+                        }
+                        base64Data = base64Data.trim();
                         parts.push({
                             inlineData: {
                                 mimeType: mimeType,
@@ -659,7 +701,22 @@ Here is the ExtendScript to build it:
                         systemContents.push(textParts);
                     }
                 } else {
-                    finalMessages.push(msg);
+                    const cleanedMsg = { ...msg };
+                    if (Array.isArray(cleanedMsg.content)) {
+                        cleanedMsg.content = cleanedMsg.content.map(part => {
+                            if (part && part.type === "image_url" && part.image_url && typeof part.image_url.url === "string") {
+                                return {
+                                    ...part,
+                                    image_url: {
+                                        ...part.image_url,
+                                        url: formatDataUrl("image/png", part.image_url.url)
+                                    }
+                                };
+                            }
+                            return part;
+                        });
+                    }
+                    finalMessages.push(cleanedMsg);
                 }
             }
 
@@ -911,13 +968,33 @@ Here is the ExtendScript to build it:
                     m.content.forEach(c => {
                         if (c.type === "text") contentArr.push({ type: "text", text: c.text });
                         if (c.type === "image_url") {
-                            const partsOfUrl = c.image_url.url.split(',');
-                            const base64Data = partsOfUrl[1] || partsOfUrl[0];
+                            const rawUrl = c.image_url && c.image_url.url ? c.image_url.url : "";
                             let mimeType = "image/png";
-                            const match = partsOfUrl[0].match(/data:(.*?);/);
-                            if (match && match[1]) {
-                                mimeType = match[1];
+                            let base64Data = "";
+                            if (rawUrl.startsWith("data:")) {
+                                const commaIdx = rawUrl.indexOf(",");
+                                if (commaIdx !== -1) {
+                                    const header = rawUrl.substring(0, commaIdx);
+                                    base64Data = rawUrl.substring(commaIdx + 1);
+                                    const match = header.match(/data:([^;]+);/);
+                                    if (match && match[1] && match[1] !== "undefined") {
+                                        mimeType = match[1];
+                                    }
+                                } else {
+                                    base64Data = rawUrl;
+                                }
+                            } else {
+                                base64Data = rawUrl;
                             }
+                            while (base64Data.startsWith("data:")) {
+                                const nestedComma = base64Data.indexOf(",");
+                                if (nestedComma !== -1) {
+                                    base64Data = base64Data.substring(nestedComma + 1);
+                                } else {
+                                    break;
+                                }
+                            }
+                            base64Data = base64Data.trim();
                             contentArr.push({
                                 type: "image",
                                 source: {

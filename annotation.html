@@ -539,7 +539,19 @@
                     }
                     fileInfo.innerText = data.name || "composition_frame.png";
 
-                    img.src = `data:${data.mimeType || 'image/png'};base64,${data.base64Data}`;
+                    let rawData = data.base64Data || "";
+                    let rawMime = (data.mimeType && data.mimeType.startsWith("image/")) ? data.mimeType : "image/png";
+                    while (rawData.startsWith("data:")) {
+                        const commaIdx = rawData.indexOf(",");
+                        if (commaIdx === -1) break;
+                        const header = rawData.substring(0, commaIdx);
+                        const match = header.match(/data:([^;]+);/);
+                        if (match && match[1] && match[1] !== "undefined") {
+                            rawMime = match[1];
+                        }
+                        rawData = rawData.substring(commaIdx + 1).trim();
+                    }
+                    img.src = `data:${rawMime};base64,${rawData}`;
                     img.onload = () => {
                         baseWidth = img.clientWidth;
                         baseHeight = img.clientHeight;

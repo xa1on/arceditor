@@ -101,6 +101,12 @@ async function burnAnnotationsIntoImage(item) {
         const img = new Image();
         img.onload = () => {
             try {
+                if (!img.width || !img.height) {
+                    console.warn("Invalid image dimensions in burnAnnotationsIntoImage:", img.width, img.height);
+                    resolve(item.data);
+                    return;
+                }
+
                 const canvas = document.createElement("canvas");
                 canvas.width = img.width;
                 canvas.height = img.height;
@@ -209,7 +215,7 @@ async function burnAnnotationsIntoImage(item) {
                 });
 
                 const dataUrl = canvas.toDataURL("image/png");
-                const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+                const base64 = dataUrl.replace(/^data:[^;]+;base64,/, "");
                 resolve(base64);
             } catch (err) {
                 console.error("Error in canvas drawing operations:", err);
@@ -220,7 +226,7 @@ async function burnAnnotationsIntoImage(item) {
             console.error("Failed to load image in burnAnnotationsIntoImage helper");
             resolve(item.data);
         };
-        img.src = `data:${item.mimeType || 'image/png'};base64,${item.data}`;
+        img.src = typeof formatDataUrl === "function" ? formatDataUrl(item.mimeType, item.data) : `data:${item.mimeType || 'image/png'};base64,${item.data}`;
     });
 }
 
@@ -516,16 +522,18 @@ async function runAgenticExecutionLoop(userText) {
                             embeddedText += `\n*Note: Use these percentage values relative to the composition width/height (obtainable from getTimelineContext) to calculate precise coordinates.*`;
                         }
 
+                        const finalData = item.annotatedData || item.data;
+                        const finalMime = item.annotatedData ? "image/png" : (item.mimeType || "image/png");
                         contentParts.push({
                             type: "image_url",
-                            image_url: { url: `data:${item.mimeType};base64,${item.annotatedData || item.data}` }
+                            image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl(finalMime, finalData) : `data:${finalMime};base64,${finalData}` }
                         });
                     } else {
                         if (currentProvider === "gemini") {
                             contentParts.push({
                                 type: "inline_data",
                                 inline_data: {
-                                    mimeType: item.mimeType,
+                                    mimeType: item.mimeType || "image/png",
                                     data: item.annotatedData || item.data
                                 }
                             });
@@ -536,7 +544,7 @@ async function runAgenticExecutionLoop(userText) {
                 } else {
                     contentParts.push({
                         type: "image_url",
-                        image_url: { url: `data:image/png;base64,${item}` }
+                        image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl("image/png", item) : `data:image/png;base64,${item}` }
                     });
                 }
             });
@@ -842,10 +850,10 @@ async function runAgenticExecutionLoop(userText) {
                         ];
                         if (Array.isArray(capturedFrameDataDuringLoop)) {
                             capturedFrameDataDuringLoop.forEach(img => {
-                                contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } });
+                                contentParts.push({ type: "image_url", image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl("image/png", img) : `data:image/png;base64,${img}` } });
                             });
                         } else {
-                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
+                            contentParts.push({ type: "image_url", image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl("image/png", capturedFrameDataDuringLoop) : `data:image/png;base64,${capturedFrameDataDuringLoop}` } });
                         }
                         obsMsg = {
                             role: "user",
@@ -930,7 +938,7 @@ async function runAgenticExecutionLoop(userText) {
                             const contentParts = [
                                 { type: "text", text: `[System Observation - Visual Verification]: You have modified the composition but did not request a visual capture to inspect your changes. The system has automatically captured the active frame. Please analyze this attached canvas frame to visually verify that all layout coordinates, typography styles, shape sizes, colors, and blend modes are perfectly aligned and correct.\n\n- If everything looks correct: finalize your response as per the Detailed Final Conclusion guidelines in the System Instructions.\n- If you spot any layout bugs, rendering defects, or alignment issues: execute a corrected ExtendScript to fix them before finalizing.` }
                             ];
-                            contentParts.push({ type: "image_url", image_url: { url: `data:image/png;base64,${base64Data}` } });
+                            contentParts.push({ type: "image_url", image_url: { url: typeof formatDataUrl === "function" ? formatDataUrl("image/png", base64Data) : `data:image/png;base64,${base64Data}` } });
 
                             const obsMsg = {
                                 role: "user",
